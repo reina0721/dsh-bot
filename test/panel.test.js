@@ -1321,6 +1321,62 @@ test('MediaPage: image status, text-only source, generation/edit payloads and lo
   } finally { globalThis.fetch = originalFetch }
 })
 
+test('MediaPage stickers: libraryAvailable controls list/upload/tag/delete/preview with images off', async () => {
+  const originalFetch = globalThis.fetch, OriginalReader = globalThis.FileReader
+  const originalPrompt = window.prompt, originalConfirm = window.confirm
+  const calls = []
+  const item = { id: 'cat', name: 'cat.png', tags: ['猫'] }
+  // Deliberately disagree with the legacy alias to verify all controls use the new field.
+  const status = { enabled: true, images: { enabled: false }, stickers: { available: false, libraryAvailable: true, sendAvailable: false, sendReason: 'IMAGES_DISABLED', count: 1 } }
+  const session = { values: [status, [item], false], index: 0 }
+  const render = () => {
+    session.index = 0
+    hookSession = session
+    try { return panel.MediaPage({ toast() {} }) } finally { hookSession = null }
+  }
+  const libraryPanel = tree => treeNodes(tree).find(node => node.type?.name === 'Panel' && node.props.title === '表情包库')
+  const uploadInput = tree => treeNodes(libraryPanel(tree).props.actions).find(node => node.type === 'input')
+  let reader
+  globalThis.FileReader = class { readAsDataURL() { reader = this } }
+  window.prompt = () => '新标签'
+  window.confirm = () => true
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, body: init.body ? JSON.parse(init.body) : undefined })
+    const payload = path.endsWith('/media/status') ? status
+      : path.includes('/media/stickers?') ? { ok: true, items: [item] } : { ok: true, items: [] }
+    return { ok: true, json: async () => payload }
+  }
+  try {
+    const tree = render()
+    assert.match(JSON.stringify(tree), /库可用；图片开关关闭导致发送禁用/)
+    assert.equal(uploadInput(tree).props.disabled, false)
+    assert.ok(treeNodes(tree).some(node => node.type === 'img' && node.props.src.endsWith('/media/stickers/file?id=cat')))
+    await control(libraryPanel(tree).props.actions, '刷新').props.onClick()
+    assert.ok(calls.some(call => call.path.endsWith('/media/stickers?limit=200')))
+    const refreshed = render()
+    await control(refreshed, '编辑标签').props.onClick()
+    await control(refreshed, '删除').props.onClick()
+    uploadInput(render()).props.onChange({ target: { files: [{ name: 'cat.png', type: 'image/png' }], value: 'cat.png' } })
+    reader.result = 'data:image/png;base64,aW1hZ2U='
+    await reader.onload()
+    assert.deepEqual(calls.filter(call => call.body), [
+      { path: panel.API_PREFIX + '/media/stickers/tag', body: { id: 'cat', tags: ['新标签'] } },
+      { path: panel.API_PREFIX + '/media/stickers/delete', body: { id: 'cat' } },
+      { path: panel.API_PREFIX + '/media/stickers/upload', body: { name: 'cat.png', mime: 'image/png', data: 'aW1hZ2U=' } },
+    ])
+    // Let the action-triggered refreshes settle before testing a closed library.
+    await new Promise(resolve => setImmediate(resolve))
+    session.values[0] = { ...status, stickers: { available: true, libraryAvailable: false, sendAvailable: false } }
+    const closed = render()
+    assert.equal(uploadInput(closed).props.disabled, true)
+    assert.equal(treeNodes(libraryPanel(closed)).some(node => node.type === 'img'), false)
+    assert.equal(treeNodes(libraryPanel(closed)).some(node => node.children?.includes('编辑标签') || node.children?.includes('删除')), false)
+  } finally {
+    globalThis.fetch = originalFetch; globalThis.FileReader = OriginalReader
+    window.prompt = originalPrompt; window.confirm = originalConfirm
+  }
+})
+
 test('CogTimeline: all remains default, Event filter queries API and renders event tone', async () => {
   const calls = [], restore = mockCognitionApi(calls)
   const refresh = (tree) => control(treeNodes(tree).find((node) => node.type?.name === 'Panel').props.actions, '刷新')
@@ -1884,7 +1940,7 @@ test('ModulesPage WebUI: unknown/invalid/stale/absent UI falls back without hidi
       assert.match(JSON.stringify(detail), /UI 描述不可用或未声明/)
       assert.equal(treeNodes(detail).filter((node) => node.type === 'li' || node.type?.name === 'FieldRow' || node.props?.['aria-label'] === '模块配置').length, 0)
       assert.ok(!treeNodes(detail).some((node) => node.type === 'iframe' || node.type === 'script'))
-      assert.ok(control(actions(item.name), '启用'))
+      assert.ok(treeNodes(detail).some(node => node.type === panel.CoreModuleActions && node.props.moduleId === item.id))
     }
   } finally { globalThis.fetch = original }
 })
@@ -1911,8 +1967,8 @@ test('ModulesPage WebUI: UI request failure preserves list, toggles and safe det
   } finally { globalThis.fetch = original }
 })
 
-test('ModulesPage: 启停 payload、状态 toast、失败后清除 busy，空/错误/加载状态', async () => {
-  const item = { id: 'builtin-sample', builtin: true, status: 'disabled', enabled: false, canReload: false, canToggle: true }
+test('ModulesPage external: compatible 启停 payload、状态 toast、失败后清除 busy，空/错误/加载状态', async () => {
+  const item = { id: 'external-sample', builtin: false, status: 'disabled', enabled: false, canReload: false, canToggle: true }
   const session = { values: [[item], false, '', ''], index: 0 }, toasts = [], calls = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
   const button = () => control(treeNodes(render()).find((node) => node.props?.title === item.id).props.actions, '启用')
@@ -2085,9 +2141,26 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
   const session = { values: [[item], false, '', '', null, '', moduleCatalog(moduleUi(item))], index: 0 }, calls = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
   const payload = { ok: true, schema: { version: 1, fields: [{ path: 'message', type: 'text', label: '示例回复' }] }, values: { message: 'original' }, revision: 3 }
-  const original = globalThis.fetch
+  const original = globalThis.fetch, confirm = window.confirm
+  window.confirm = () => true
+  const catalog = () => ({ ok: true, moduleId: item.id, expectedGeneration: 'runtime', items: [{ actionId: item.enabled ? 'module.disable' : 'module.enable', available: true }] })
+  const toggle = async label => {
+    if (source === 'external') return moduleControl(render(), label).props.onClick()
+    const node = treeNodes(render()).find(node => node.type === panel.CoreModuleActions)
+    const saved = hookSession
+    stateOverrides = [catalog(), '', false, { current: true }]
+    let tree
+    try { tree = node.type(node.props) } finally { stateOverrides = null; hookSession = saved }
+    return control(tree, label).props.onClick()
+  }
   globalThis.fetch = async (path, options) => {
     calls.push([path, options.method])
+    if (path.includes('/modules/actions?')) return { ok: true, json: async () => catalog() }
+    if (path.endsWith('/modules/action')) {
+      const enabled = JSON.parse(options.body).actionId === 'module.enable'
+      item = { ...item, enabled, status: enabled ? 'loaded' : 'disabled' }
+      return { ok: true, json: async () => ({ ok: true, operation: { id: 'op', status: 'succeeded', phase: 'done', result: { ok: true } } }) }
+    }
     if (path.endsWith('/modules/toggle')) {
       const enabled = JSON.parse(options.body).enabled
       item = { ...item, enabled, status: enabled ? 'loaded' : 'disabled' }
@@ -2105,17 +2178,17 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
     assert.equal(control(render(), '保存配置').props.disabled, true)
     await control(render(), '保存配置').props.onClick()
     assert.equal(calls.filter(([, method]) => method === 'POST').length, 0)
-    await moduleControl(render(), '启用').props.onClick()
+    await toggle('启用')
     row = treeNodes(render()).find((node) => node.type?.name === 'FieldRow')
     assert.equal(row.props.disabled, false)
     row.props.onChange('draft')
     assert.equal(session.values[4].values.message, 'draft')
-    await moduleControl(render(), '停用').props.onClick()
+    await toggle('停用')
     assert.equal(control(render(), '保存配置').props.disabled, true)
     await control(render(), '保存配置').props.onClick()
     assert.equal(calls.some(([path, method]) => path.endsWith('/modules/config') && method === 'POST'), false)
     assert.ok(!treeNodes(render()).some((node) => ['iframe', 'script'].includes(node.type)))
-  } finally { globalThis.fetch = original }
+  } finally { globalThis.fetch = original; window.confirm = confirm }
 })
 
 test('module ownership metadata survives normalization and rejects unbounded/non-string IDs', () => {
@@ -2263,7 +2336,7 @@ test('ModulesPage trusted previews render bounded read-only drafts without reque
       ['proactivity', ['模块启用：开启', '主动行为开关：开启（仅私聊）', '安静时段（本地小时）：23–8', '滚动 24 小时私聊上限：1', '最低熟悉度：0.5；无回应退避：24 小时']],
       ['reminders', ['模块启用：开启', '主人提醒开关：开启', '每人格活跃提醒上限：25', '最短重复间隔：120 s', '最长重复间隔：3600 s', '到期检查间隔：5000 ms']],
       ['sample', ['示例回复：<img src=x onerror=evil()> 只读样例']],
-      ['media-features', ['模块启用：开启', 'B站公共内容：关闭', '表情包开关：开启', '表情包有效状态：开启']],
+      ['media-features', ['模块启用：开启', 'B站公共内容：关闭', '表情包开关：开启', '表情包库有效状态：开启', '表情包发送有效状态：开启']],
     ]
     for (const [name, expected] of cases) {
       const item = { id: 'builtin-' + name, name: 'n'.repeat(200), builtin: true, source: 'builtin', enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
@@ -2285,6 +2358,21 @@ test('ModulesPage trusted previews render bounded read-only drafts without reque
       if (name === 'typing') {
         for (const module of [{ ...preview.props.module, enabled: false }, { ...preview.props.module, status: 'error' }]) assert.match(JSON.stringify(preview.type({ ...preview.props, module })), /输入状态有效状态：未生效/)
         assert.match(JSON.stringify(preview.type({ ...preview.props, config: { enabled: false } })), /输入状态有效状态：未生效/)
+      }
+      if (name === 'media-features') {
+        const imagesOff = preview.type({ ...preview.props, config: { ...preview.props.config, imagesEnabled: false } })
+        assert.match(JSON.stringify(imagesOff), /表情包库有效状态：开启/)
+        assert.match(JSON.stringify(imagesOff), /表情包发送有效状态：未生效/)
+        for (const module of [{ ...preview.props.module, enabled: false }, { ...preview.props.module, status: 'error' }]) {
+          const closed = JSON.stringify(preview.type({ ...preview.props, module }))
+          assert.match(closed, /表情包库有效状态：未生效/)
+          assert.match(closed, /表情包发送有效状态：未生效/)
+        }
+        for (const flag of ['mediaEnabled', 'stickersEnabled']) {
+          const closed = JSON.stringify(preview.type({ ...preview.props, config: { ...preview.props.config, [flag]: false } }))
+          assert.match(closed, /表情包库有效状态：未生效/)
+          assert.match(closed, /表情包发送有效状态：未生效/)
+        }
       }
       if (name === 'reply-delivery') assert.match(JSON.stringify(preview.type({ ...preview.props, config: { ...preview.props.config, split: false } })), /分条关闭，无条间等待/)
     }
@@ -2473,8 +2561,323 @@ test('media module panel mounts only in loaded builtin detail; content tab only 
   assert.ok(treeNodes(render()).some(node => node.type === panel.MediaFeaturesPanel))
   assert.equal(treeNodes(render({ enabled: false, status: 'disabled' })).some(node => node.type === panel.MediaFeaturesPanel), false)
   const navigation = []
-  const tree = panel.ContentPage({ go: value => navigation.push(value) })
+  const tree = panel.ContentPage({ goTo: value => navigation.push(value) })
   control(tree, '打开模块').props.onClick()
-  assert.deepEqual(navigation, ['modules'])
+  assert.deepEqual(navigation, [{ tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' }])
   assert.equal(treeNodes(tree).some(node => node.type === panel.MediaFeaturesPanel || node.type === 'input'), false)
+})
+
+// C07: execute handlers and effects with the existing React shim; no browser required.
+test('C07 health: core lifecycle, ownership, dependencies, generations and null counters remain distinct', () => {
+  const data = { ok: true, items: [{ moduleId: 'builtin-reminders', lifecycle: 'loaded', phase: 'draining', health: 'degraded', reasonCode: 'STOP_PENDING', reasons: ['STOP_PENDING'], runtimeGeneration: 'run-2', telemetryGeneration: 'run-1', lastError: { reasonCode: 'PROVIDER_STOP_FAILED', observedAt: 1, runtimeGeneration: 'run-1' }, dependencies: [{ moduleId: 'dependency', available: false }], providers: [{ name: 'reminders', registeredModuleId: 'builtin-reminders', owner: 'core', ownerModuleId: null, state: 'active', fallback: { active: true, reasonCode: 'PROVIDER_UNAVAILABLE' } }], scheduler: { running: 0, scheduled: null }, engine: { runs: 4, skipped: 3 } }] }
+  stateOverrides = [data, '', false]
+  let tree
+  try { tree = panel.CoreModuleHealth({ moduleId: 'builtin-reminders' }) } finally { stateOverrides = null }
+  const text = JSON.stringify(tree)
+  for (const word of ['lifecycle', 'loaded', 'health', 'degraded', 'STOP_PENDING', 'lastError', 'PROVIDER_STOP_FAILED', 'registeredModuleId', 'ownerModuleId', 'core', 'fallback', 'dependency', 'run-1', 'run-2', '调度计数', '引擎计数', '未观察']) assert.ok(text.includes(word), word)
+  stateOverrides = [{ items: [{ moduleId: 'plain', providers: [], dependencies: [] }] }, '', false]
+  try { assert.match(JSON.stringify(panel.CoreModuleHealth({ moduleId: 'plain' })), /不适用（无 Provider）/) } finally { stateOverrides = null }
+})
+
+test('C07 actions: guarded admission, effects confirmation, STOP_PENDING polling, no success on skip/busy/fail', async () => {
+  const original = globalThis.fetch, confirm = window.confirm, calls = [], confirms = [], observations = []
+  const catalog = { ok: true, moduleId: 'builtin-learning', expectedGeneration: 'runtime-generation', expectedPersonaId: 'self', expectedPersonaGeneration: 2, items: [{ actionId: 'learning.runPending', available: true }] }
+  let terminal = { id: 'op', status: 'failed', phase: 'done', code: 'NO_TASK', result: { ok: false, code: 'NO_TASK' } }, poll = 0
+  window.confirm = text => { confirms.push(text); return true }
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, method: init.method, body: init.body && JSON.parse(init.body) })
+    const response = path.includes('/actions?') ? catalog : init.method === 'POST' ? { ok: true, operation: { id: 'op', status: 'queued', phase: 'queued' } } : { ok: true, operation: ++poll === 1 ? { id: 'op', status: 'STOP_PENDING', phase: 'draining', code: 'STOP_PENDING' } : terminal }
+    return { ok: true, json: async () => response }
+  }
+  try {
+    const result = await panel.invokeModuleAction(catalog.moduleId, 'learning.runPending', { wait: async () => {}, onOperation: value => observations.push(value.status) })
+    assert.deepEqual(observations, ['queued', 'queued', 'STOP_PENDING', 'failed'])
+    assert.equal(panel.operationSucceeded(result), false)
+    const submitted = calls.find(row => row.method === 'POST').body
+    assert.equal(submitted.expectedGeneration, 'runtime-generation')
+    assert.equal(submitted.expectedPersonaId, 'self'); assert.equal(submitted.expectedPersonaGeneration, 2)
+    assert.match(submitted.requestId, /^[A-Za-z0-9_-]{1,128}$/)
+    assert.match(confirms[0], /外部检索、调用模型/)
+    assert.equal(calls.filter(row => row.method === 'POST').length, 1)
+    for (const code of ['BUSY', 'MODULE_RUN_FAILED', 'NO_TASK']) assert.equal(panel.operationSucceeded({ ...terminal, code }), false)
+    assert.equal(panel.operationSucceeded({ status: 'succeeded', result: { ok: false } }), false)
+    assert.equal(panel.operationSucceeded({ status: 'succeeded', result: { ok: true } }), true)
+    const count = calls.length
+    window.confirm = () => false
+    assert.equal(await panel.invokeModuleAction(catalog.moduleId, 'learning.runPending', { catalog }), null)
+    assert.equal(calls.length, count)
+    await assert.rejects(panel.invokeModuleAction('external', 'proactivity.runOnce', { catalog: { moduleId: 'external', items: [{ actionId: 'proactivity.runOnce', available: false }] } }), /MODULE_ACTION_UNAVAILABLE/)
+    assert.equal(calls.length, count)
+  } finally { globalThis.fetch = original; window.confirm = confirm }
+})
+
+test('C07 actions: lost POST response recovers by same requestId; rejected/stale admissions never retry', async () => {
+  const original = globalThis.fetch, confirm = window.confirm, calls = []
+  const catalog = { moduleId: 'builtin-proactivity', expectedGeneration: 'runtime', items: [{ actionId: 'proactivity.runOnce', available: true }] }
+  let reject = false, body
+  window.confirm = text => { assert.match(text, /模型并向 QQ 发送消息/); return true }
+  globalThis.fetch = async (path, init) => {
+    calls.push([path, init.method])
+    if (init.method === 'POST') {
+      body = JSON.parse(init.body)
+      if (!reject) throw Error('response lost')
+      return { ok: true, json: async () => ({ ok: false, code: 'MODULE_RUNTIME_CONFLICT' }) }
+    }
+    assert.equal(new URL(path, 'http://local').searchParams.get('requestId'), body.requestId)
+    return { ok: true, json: async () => ({ ok: true, operation: { id: 'op', status: 'succeeded', phase: 'done', result: { ok: true } } }) }
+  }
+  try {
+    assert.equal(panel.operationSucceeded(await panel.invokeModuleAction(catalog.moduleId, 'proactivity.runOnce', { catalog })), true)
+    assert.equal(calls.filter(([, method]) => method === 'POST').length, 1)
+    reject = true
+    const observed = []
+    await assert.rejects(panel.invokeModuleAction(catalog.moduleId, 'proactivity.runOnce', { catalog, onOperation: value => observed.push(value) }), /MODULE_RUNTIME_CONFLICT/)
+    assert.equal(observed.at(-1).status, 'failed')
+    assert.equal(calls.filter(([, method]) => method === 'GET').length, 1)
+  } finally { globalThis.fetch = original; window.confirm = confirm }
+})
+
+test('C07 action controls: service catalog only, duplicate click guard, pending/error display and terminal toast', async () => {
+  const original = globalThis.fetch, confirm = window.confirm, toasts = []
+  const catalog = { moduleId: 'external', expectedGeneration: 'runtime', items: [{ actionId: 'module.reload', available: true }, { actionId: 'proactivity.runOnce', available: false, reasonCode: 'MODULE_ACTION_UNAVAILABLE' }, { actionId: 'evil', available: true }] }
+  const session = { values: [catalog, '', false], index: 0 }
+  const render = () => { session.index = 0; hookSession = session; try { return panel.CoreModuleActions({ moduleId: 'external', toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
+  let release, posts = 0
+  window.confirm = () => true
+  globalThis.fetch = async (path, init) => {
+    if (init.method === 'POST') { posts++; await new Promise(resolve => { release = resolve }); return { ok: true, json: async () => ({ ok: true, operation: { id: 'op', status: 'failed', phase: 'done', code: 'BUSY', result: { ok: false } } }) } }
+    return { ok: true, json: async () => ({ ok: true, ...catalog }) }
+  }
+  try {
+    const tree = render()
+    assert.equal(control(tree, '执行一次主动行为').props.disabled, true)
+    assert.doesNotMatch(JSON.stringify(tree), /evil/)
+    const running = control(tree, '重载').props.onClick()
+    await control(tree, '重载').props.onClick()
+    assert.equal(posts, 1)
+    assert.equal(control(render(), '重载').props.disabled, true)
+    release(); await running
+    assert.deepEqual(toasts, [['BUSY', 'err']])
+    session.values[4] = { id: 'op', status: 'STOP_PENDING', phase: 'draining', code: 'STOP_PENDING' }
+    assert.match(JSON.stringify(render()), /仍在排空/)
+    assert.ok(control(render(), '继续观察操作'))
+  } finally { globalThis.fetch = original; window.confirm = confirm }
+})
+
+test('C07 typed navigation: same mounted cognition/config destinations, go compatibility and backlinks', async () => {
+  assert.deepEqual(panel.navigationTarget({ tab: 'cognition', section: 'loop', decisionId: 'decision_1', taskId: 'task_1', anchor: 'tasks', extra: 'ignored' }), { tab: 'cognition', section: 'loop', decisionId: 'decision_1', taskId: 'task_1', anchor: 'tasks' })
+  for (const input of [{ tab: 'sidebar' }, { tab: 'modules', moduleId: '../bad' }, { tab: 'cognition', taskId: {} }]) assert.throws(() => panel.navigationTarget(input), /无效/)
+  const originalEffect = reactShim.useEffect, effects = []
+  reactShim.useEffect = (effect, deps) => effects.push({ effect, deps })
+  const props = { navigation: { tab: 'cognition', section: 'learning', taskId: 'task_1' } }
+  const mountedPanel = registration.factory(requireShim)
+  const render = mountNode({ type: mountedPanel.CognitionTab, props })
+  try {
+    assert.equal(render().props.active, 'learning')
+    for (const section of ['proactivity', 'loop', 'learning']) {
+      props.navigation = { tab: 'cognition', section }
+      effects.length = 0; render()
+      effects.find(row => row.deps?.length === 2 && row.deps[0] === props.navigation).effect()
+      assert.equal(render().props.active, section)
+    }
+    assert.ok(panel.COG_SECTIONS.some(row => row.label === '主动行为'))
+    assert.ok(panel.COG_SECTIONS.some(row => row.label === '闭环'))
+  } finally { reactShim.useEffect = originalEffect }
+  // Root go() remains compatible with config group arguments and shares typed state.
+  const session = { values: ['overview', { gateway: {} }, {}, {}, false], index: 0 }
+  const root = () => { session.index = 0; hookSession = session; try { return panel.OneBotPage() } finally { hookSession = null } }
+  const currentPage = () => treeNodes(root()).find(node => typeof node.props?.goTo === 'function')
+  currentPage().props.go('cognition', 'cog-llm')
+  assert.equal(currentPage().props.configTarget, 'cog-llm')
+  assert.deepEqual(currentPage().props.navigation, { tab: 'cognition', section: 'settings', anchor: 'cog-llm' })
+  currentPage().props.goTo({ tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' })
+  assert.deepEqual(currentPage().props.navigation, { tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' })
+  const navigate = []
+  const shared = { goTo: value => navigate.push(value) }
+  for (const [moduleId, label, target] of [
+    ['builtin-media-features', '表情包库', { tab: 'media', anchor: 'stickers' }],
+    ['builtin-proactivity', '主动行为', { tab: 'cognition', section: 'proactivity' }],
+    ['builtin-learning', '学习', { tab: 'cognition', section: 'learning' }],
+    ['builtin-reminders', '提醒数据', { tab: 'modules', moduleId: 'builtin-reminders', anchor: 'reminders' }],
+  ]) {
+    control(panel.ModuleFeatureLinks({ ...shared, item: { id: moduleId, builtin: true, source: 'builtin' } }), label).props.onClick()
+    assert.deepEqual(navigate.at(-1), target)
+  }
+  assert.equal(panel.ModuleFeatureLinks({ ...shared, item: { id: 'builtin-learning', builtin: false, source: 'external' } }), null)
+  for (const [Component, moduleId] of [[panel.CogLearning, 'builtin-learning'], [panel.CogProactivity, 'builtin-proactivity'], [panel.MediaPage, 'builtin-media-features']]) {
+    if (Component === panel.MediaPage) stateOverrides = [{}, [], false]
+    let tree
+    try { tree = Component({ ...shared, toast() {} }) } finally { stateOverrides = null }
+    control(tree, '返回模块详情').props.onClick()
+    assert.deepEqual(navigate.at(-1), { tab: 'modules', moduleId })
+  }
+})
+
+test('C07 mounted module navigation opens target config once and consumes repeated same-tab requests', async () => {
+  const item = { id: 'builtin-sample', builtin: true, source: 'builtin', hasConfig: true, enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
+  const props = { navigation: { tab: 'modules', moduleId: item.id, anchor: 'config' } }
+  const session = { values: [[item], false, '', '', null, '', moduleCatalog(moduleUi(item)), '', ''], index: 0 }
+  const originalEffect = reactShim.useEffect, originalFetch = globalThis.fetch, effects = [], calls = []
+  reactShim.useEffect = (effect, deps) => effects.push({ effect, deps })
+  globalThis.fetch = async path => { calls.push(path); return { ok: true, json: async () => ({ ok: true, schema: { version: 1, fields: [{ path: 'message', type: 'text', label: 'message' }] }, values: { message: 'saved' }, revision: 1 }) } }
+  const mountedPanel = registration.factory(requireShim)
+  const render = () => { session.index = 0; effects.length = 0; hookSession = session; try { return mountedPanel.ModulesPage(props) } finally { hookSession = null } }
+  const navigate = async () => {
+    render(); effects.find(row => row.deps?.length === 5 && row.deps[0] === props.navigation).effect()
+    await new Promise(resolve => setImmediate(resolve))
+    return render()
+  }
+  try {
+    let tree = await navigate()
+    assert.equal(treeNodes(tree).filter(node => node.type?.name === 'FieldRow').length, 1)
+    assert.ok(treeNodes(tree).some(node => node.type === mountedPanel.CoreModuleHealth))
+    assert.ok(treeNodes(tree).some(node => node.type === mountedPanel.CoreModuleActions))
+    assert.equal(calls.length, 1)
+    await navigate(); assert.equal(calls.length, 1, 'consumed target must preserve editor draft')
+    props.navigation = { ...props.navigation }
+    await navigate(); assert.equal(calls.length, 2, 'same mounted target responds to new request')
+  } finally { reactShim.useEffect = originalEffect; globalThis.fetch = originalFetch }
+})
+
+test('C07 learning: queue toolbar only, task-specific retry/cancel and selected task; reminder count reuses persona API', async () => {
+  const task = { id: 'task-1', status: 'pending', surface: 'concept', plan: [], attempts: 0 }
+  stateOverrides = [{ items: [] }, '', false, { items: [task] }, '', false, { items: [] }, '', false]
+  let tree
+  try { tree = panel.CogLearning({ navigation: { taskId: task.id }, toast() {} }) } finally { stateOverrides = null }
+  const all = [tree, ...treeNodes(tree).map(node => node.props?.actions)]
+  assert.equal(treeNodes(all).some(node => node.children?.includes('运行')), false)
+  assert.ok(treeNodes(all).some(node => node.type === panel.CoreModuleActions && node.props.actionIds.includes('learning.runPending')))
+  assert.ok(treeNodes(tree).some(node => node.props?.['aria-current'] === 'true'))
+  const originalFetch = globalThis.fetch, calls = []
+  globalThis.fetch = async (path, init) => { calls.push({ path, body: init.body && JSON.parse(init.body) }); return { ok: true, json: async () => ({ ok: true }) } }
+  try {
+    await control(tree, '重试').props.onClick()
+    await control(tree, '取消').props.onClick()
+    assert.deepEqual(calls.filter(row => row.body).map(row => row.body), [{ taskId: task.id }, { taskId: task.id }])
+  } finally { globalThis.fetch = originalFetch }
+  stateOverrides = [{ summary: { groups: [{ id: 'reminders', count: 7 }] } }, '', false]
+  try { assert.match(JSON.stringify(panel.ReminderData({})), /提醒记录：7/) } finally { stateOverrides = null }
+})
+
+test('C07 loop rendering: stages, partial/interrupted receipts, provenance/policy and research links; no raw fields', () => {
+  const navigation = []
+  const data = {
+    item: { id: 'loop_1', kind: 'social', status: 'interrupted', moduleId: 'builtin-learning', decisionId: 'decision_1', unknownId: 'unknown_1', stages: [{ stage: 'detected', at: 1 }, { stage: 'delivering', at: 2 }], raw: 'PRIVATE_CONTENT' },
+    receipts: [
+      { id: 'r1', kind: 'delivery', status: 'interrupted', attemptedParts: 3, eventId: 'PRIVATE_EVENT_ID', data: { status: 'partial', parts: 1, failedPart: 2, errorCode: 'SEND_FAILED', content: 'PRIVATE_CONTENT' } },
+      { id: 'r2', kind: 'feedback', status: 'completed', data: { source: 'manual', attribution: 'direct', observation: 'negative', policyUpdated: true, sourceEventId: 'PRIVATE_EVENT_ID' } },
+    ],
+    feedback: [{ id: 'outcome_1', source: 'manual', attribution: 'direct', attributionConfidence: 1, reward: -0.8, policyUpdated: true, policyBefore: { trials: 0 }, policyAfter: { trials: 1 }, sourceEventId: 'PRIVATE_EVENT_ID' }],
+    research: { unknowns: [{ id: 'unknown_1', status: 'open' }], tasks: [{ id: 'task_1', status: 'done' }], evidence: [{ id: 'evidence_1', taskId: 'task_1' }], claims: [{ id: 'claim_1', taskId: 'task_1', status: 'active' }], taskCount: 1, evidenceCount: 1, claimCount: 1 },
+  }
+  const tree = panel.LoopDetail({ data, goTo: value => navigation.push(value) }), text = JSON.stringify(tree)
+  for (const word of ['已中断', 'detected', 'delivering', '部分发送', 'attemptedParts：3', 'sent parts：1', 'failedPart：2', 'SEND_FAILED', 'manual', 'direct', 'negative', 'policy committed：已提交', 'unknown_1', 'task_1', 'evidence_1', 'claim_1']) assert.ok(text.includes(word), word)
+  assert.doesNotMatch(text, /PRIVATE_CONTENT|PRIVATE_EVENT_ID|sourceEventId/)
+  control(tree, '查看学习任务').props.onClick()
+  assert.deepEqual(navigation.at(-1), { tab: 'cognition', section: 'learning', taskId: 'task_1', anchor: 'tasks' })
+  control(tree, '查看决策').props.onClick()
+  assert.deepEqual(navigation.at(-1), { tab: 'cognition', section: 'policy', decisionId: 'decision_1' })
+  assert.match(JSON.stringify(panel.LoopDetail({ data: { item: { id: 'loop_2', kind: 'social', stages: [] } } })), /未观察/)
+  assert.match(JSON.stringify(panel.LoopDetail({ data: { item: { id: 'loop_3', kind: 'research', stages: [] } } })), /不适用/)
+  assert.match(JSON.stringify(panel.LoopDetail({})), /不可用/)
+})
+
+test('C07 loop summary/detail loader: local current-persona paths, pagination, failed reads and safe projection', async () => {
+  const originalFetch = globalThis.fetch, calls = []
+  const props = { navigation: { decisionId: 'decision_1' } }
+  const render = mountNode({ type: panel.CogLoop, props })
+  let personaId = 'self', fail = false, mixed = false
+  const summary = () => ({ ok: true, personaId, retained: { loops: 2, receipts: 1, attemptedParts: null, sentParts: 1, sentPartsComplete: false, loopStates: { interrupted: 1 }, feedback: { count: 1, policyCommitted: 1 } }, businessRecords: { evidenceCount: 2 }, raw: 'DO_NOT_RENDER' })
+  globalThis.fetch = async path => {
+    calls.push(path)
+    let result = fail ? { ok: false, code: 'LOOP_READ_UNAVAILABLE' } : path.includes('/summary') ? summary() : path.includes('/runs?') ? { ok: true, items: [{ id: 'loop_1', personaId, kind: 'social', status: 'interrupted', stage: 'delivering' }], nextBefore: 'signed.cursor' } : { ok: true, item: { id: 'loop_1', personaId: mixed ? 'other' : personaId, kind: 'social', stages: [] } }
+    return { ok: true, json: async () => result }
+  }
+  try {
+    await moduleControl(render(), '刷新闭环').props.onClick()
+    const tree = render(), text = JSON.stringify(tree)
+    assert.match(text, /attemptedParts/); assert.match(text, /未观察/); assert.match(text, /policyCommitted/)
+    assert.doesNotMatch(text, /DO_NOT_RENDER/)
+    assert.ok(treeNodes(tree).some(node => node.type === panel.LoopDetail))
+    assert.ok(calls.some(path => path.endsWith('/system/loop/detail?decisionId=decision_1')))
+    assert.equal(calls.some(path => path.includes('personaId=')), false)
+    control(tree, '下一页').props.onClick()
+    await moduleControl(render(), '刷新闭环').props.onClick()
+    assert.ok(calls.some(path => path.includes('before=signed.cursor')))
+    mixed = true
+    await moduleControl(render(), '刷新闭环').props.onClick()
+    assert.match(JSON.stringify(render()), /当前人格已变化/)
+    assert.equal(treeNodes(render()).some(node => node.type === panel.LoopDetail), false)
+    fail = true
+    await moduleControl(render(), '刷新闭环').props.onClick()
+    assert.match(JSON.stringify(render()), /闭环不可用/)
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('C07 decision feedback supplies C06 requestId; task navigation promotes a loaded target beyond first 20', async () => {
+  const originalFetch = globalThis.fetch, calls = []
+  globalThis.fetch = async (path, init) => { if (init.body) calls.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ ok: true }) } }
+  try {
+    stateOverrides = [{ items: [{ id: 'decision_1', action: 'reply', status: 'sent' }] }, '', false]
+    let tree
+    try { tree = panel.CogPolicy({ toast() {} }) } finally { stateOverrides = null }
+    assert.ok(treeNodes(tree).some(node => node.props?.id === 'ob-cog-decision-decision_1'))
+    await control(tree, '标记正向').props.onClick()
+    await control(tree, '标记负向').props.onClick()
+    assert.equal(calls.length, 2)
+    for (const body of calls) { assert.equal(body.decisionId, 'decision_1'); assert.match(body.requestId, /^[A-Za-z0-9_-]{1,128}$/) }
+    assert.notEqual(calls[0].requestId, calls[1].requestId)
+    const tasks = Array.from({ length: 25 }, (_, index) => ({ id: 'task_' + index, status: 'pending' }))
+    stateOverrides = [{ items: [] }, '', false, { items: tasks }, '', false, { items: [] }, '', false]
+    try { tree = panel.CogLearning({ navigation: { taskId: 'task_24' }, toast() {} }) } finally { stateOverrides = null }
+    assert.equal(treeNodes(tree).filter(node => node.props?.id?.startsWith('ob-cog-task-')).length, 20)
+    assert.equal(treeNodes(tree).find(node => node.props?.['aria-current'] === 'true').props.id, 'ob-cog-task-task_24')
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('C07 ordinary module detail survives directory/action refresh and reloads health without duplicating config', async () => {
+  const item = { id: 'builtin-sample', builtin: true, source: 'builtin', hasConfig: true, enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
+  const props = { navigation: { tab: 'modules' } }, session = { values: [[item], false, '', '', null, '', moduleCatalog(moduleUi(item)), '', ''], index: 0 }
+  const originalEffect = reactShim.useEffect, originalFetch = globalThis.fetch, effects = []
+  reactShim.useEffect = (effect, deps) => effects.push({ effect, deps })
+  const instance = registration.factory(requireShim)
+  const render = () => { effects.length = 0; session.index = 0; hookSession = session; try { return instance.ModulesPage(props) } finally { hookSession = null } }
+  const applyNavigation = () => effects.find(row => row.deps?.length === 5 && row.deps[0] === props.navigation).effect()
+  globalThis.fetch = async path => ({ ok: true, json: async () => path.endsWith('/modules') ? { ok: true, items: [item] } : path.endsWith('/modules/ui') ? moduleCatalog(moduleUi(item)) : { ok: true, schema: { version: 1, fields: [{ path: 'message', type: 'text', label: 'message' }] }, values: { message: 'saved' }, revision: 1 } })
+  try {
+    let tree = render(); applyNavigation()
+    await moduleControl(tree, '详情').props.onClick()
+    tree = render()
+    treeNodes(tree).find(node => node.type?.name === 'FieldRow').props.onChange('draft')
+    const previousKey = treeNodes(tree).find(node => node.type === instance.CoreModuleHealth).props.key
+    await moduleControl(tree, '刷新详情').props.onClick()
+    tree = render(); applyNavigation(); tree = render()
+    assert.ok(treeNodes(tree).some(node => node.props?.['aria-label'] === '模块详情'))
+    assert.notEqual(treeNodes(tree).find(node => node.type === instance.CoreModuleHealth).props.key, previousKey)
+    assert.equal(treeNodes(tree).filter(node => node.type?.name === 'FieldRow').length, 1)
+    assert.equal(session.values[4].values.message, 'draft')
+  } finally { reactShim.useEffect = originalEffect; globalThis.fetch = originalFetch }
+})
+
+test('C07 task-specific controls never report nested disabled/null/failed task results as success', async () => {
+  const task = { id: 'task_1', status: 'pending' }, toasts = [], original = globalThis.fetch
+  const render = () => {
+    stateOverrides = [{ items: [] }, '', false, { items: [task] }, '', false, { items: [] }, '', false]
+    try { return panel.CogLearning({ toast: (...args) => toasts.push(args) }) } finally { stateOverrides = null }
+  }
+  let response
+  globalThis.fetch = async () => ({ ok: true, json: async () => response })
+  try {
+    for (const value of [null, { ok: false, reason: 'MODULE_DISABLED' }, { id: task.id, status: 'failed' }]) {
+      response = { ok: true, task: value }
+      await control(render(), '重试').props.onClick()
+      await control(render(), '取消').props.onClick()
+    }
+    assert.equal(toasts.length, 6); assert.equal(toasts.some(([, tone]) => tone === 'ok'), false)
+    for (const [label, status] of [['重试', 'pending'], ['取消', 'cancelled']]) {
+      response = { ok: true, task: { id: task.id, status } }
+      await control(render(), label).props.onClick()
+      assert.equal(toasts.at(-1)[1], 'ok')
+    }
+  } finally { globalThis.fetch = original }
 })

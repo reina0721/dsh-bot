@@ -658,6 +658,7 @@ test('modules v2：保留前缀、API 版本、requires 验证，忽略伪造来
     ['builtin-evil', {}], ['v2', { apiVersion: 2 }], ['vstring', { apiVersion: '1' }],
     ['dup', { requires: ['valid', 'valid'] }], ['self', { requires: ['self'] }],
     ['invalid-dep', { requires: ['../bad'] }], ['many', { requires: Array.from({ length: 17 }, (_, i) => 'd' + i) }],
+    ['declares-actions', { actions: [{ actionId: 'module.restart' }] }],
     ['valid', { apiVersion: 1, source: 'builtin', builtin: true, canReload: false, canToggle: false }],
   ]) await moduleDir(h.root, id, manifest, 'export function setup(api) { if (api.source !== "external" || api.builtin !== false) throw Error("source") }')
   await h.kernel.start()
@@ -674,10 +675,9 @@ test('modules v2：稳定依赖顺序跨来源，重载/启停级联逆序清理
   const h = await harness([
     builtin('builtin-root', () => { imports++; return { setup() { trace.push('+builtin-root'); return () => trace.push('-builtin-root') } } }, {}, true),
     builtin('builtin-child', () => { imports++; return { setup() { trace.push('+builtin-child'); return () => trace.push('-builtin-child') } } }, { requires: ['a'] }, true),
-  ]); t.after(() => h.kernel.dispose())
-  // 外部代码通过事件发送日志，不需进程全局测试状态。
-  const source = (id) => `export async function setup(api) { await api.sendText({chatType:'private',chatId:'owner',text:'+${id}'}); return () => api.sendText({chatType:'private',chatId:'owner',text:'-${id}'}) }`
-  h.sent.push = (payload) => { trace.push(payload.segments[0].data.text) }
+  ], { info(message) { if (/^[+-]/.test(message)) trace.push(message) } }); t.after(() => h.kernel.dispose())
+  // 清理只记日志；排空后不再接纳新的出站发送。
+  const source = (id) => `export function setup(api) { api.log.info('+${id}'); return () => api.log.info('-${id}') }`
   await moduleDir(h.root, 'a', { permissions: ['send:text'], requires: ['builtin-root'] }, source('a'))
   await moduleDir(h.root, 'z', { permissions: ['send:text'] }, source('z'))
   await h.kernel.start()
@@ -917,7 +917,7 @@ test('modules：sendText 优先 delivery，保留结果/来源与旧 outbound ha
     `)
     await h.kernel.start()
     assert.equal(h.kernel.list()[0].status, 'loaded')
-    const expected = { chatType: 'group', chatId: '20001', segments: [{ type: 'text', data: { text: 'hello' } }], source: 'module:sender' }
+    const expected = { chatType: 'group', chatId: '20001', segments: [{ type: 'text', data: { text: 'hello' } }], source: 'module:sender', moduleId: 'sender', runtimeGeneration: h.kernel.list()[0].runtimeGeneration }
     assert.deepEqual(injected ? calls : h.sent, [expected])
     if (injected) {
       assert.equal(h.sent.length, 0)
@@ -925,4 +925,84 @@ test('modules：sendText 优先 delivery，保留结果/来源与旧 outbound ha
       assert.deepEqual(stored.result, result)
     }
   }
+})
+
+test('module actions: builtin restart drains reverse closure, uses cached setup once and preserves config/storage', async t => {
+  const order = [], imports = new Map(), apis = new Map()
+  const descriptor = (id, requires = [], defaultEnabled = true) => ({
+    manifest: { id, requires, permissions: ['storage', 'events'] }, defaultEnabled,
+    config: { version: 1, fields: [{ path: 'value', type: 'text', label: 'Value', default: 'original', maxChars: 50 }] },
+    load() {
+      imports.set(id, (imports.get(id) || 0) + 1)
+      return { async setup(api) {
+        order.push(`setup:${id}`); apis.set(id, api)
+        assert.equal(api.config.get().value, id === 'builtin-root' ? 'saved' : 'original')
+        if (id === 'builtin-root') assert.equal(await api.storage.get('retained', 'initial'), order.filter(x => x === `setup:${id}`).length === 1 ? 'initial' : 'storage')
+        return () => { order.push(`dispose:${id}`) }
+      } }
+    },
+  })
+  const h = await harness([descriptor('builtin-root'), descriptor('builtin-child', ['builtin-root']), descriptor('builtin-off', ['builtin-root'], false)])
+  t.after(async () => { await h.kernel.dispose(); await rm(h.root, { recursive: true, force: true }) })
+  await mkdir(join(h.root, '.builtin', 'builtin-root'), { recursive: true })
+  await writeFile(join(h.root, '.builtin', 'builtin-root', 'config.json'), JSON.stringify({ version: 1, revision: 7, values: { value: 'saved' } }))
+  await h.kernel.start()
+  await apis.get('builtin-root').storage.set('retained', 'storage')
+  const previous = h.kernel.list().find(x => x.id === 'builtin-root').runtimeGeneration
+  const catalog = h.kernel.actions('builtin-root')
+  assert.equal(catalog.items.find(x => x.actionId === 'module.reload').available, false)
+  const input = { moduleId: 'builtin-root', actionId: 'module.restart', requestId: 'restart-closure', expectedGeneration: catalog.expectedGeneration }
+  const first = h.kernel.action(input)
+  assert.equal(h.kernel.action(input).operation.id, first.operation.id)
+  assert.throws(() => h.kernel.action({ ...input, moduleId: 'builtin-child', expectedGeneration: h.kernel.actions('builtin-child').expectedGeneration, requestId: 'overlap' }), { code: 'MODULE_ACTION_BUSY' })
+  while (!h.kernel.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(h.kernel.getOperation({ requestId: input.requestId }).operation.status, 'succeeded')
+  assert.deepEqual(order, ['setup:builtin-root', 'setup:builtin-child', 'dispose:builtin-child', 'dispose:builtin-root', 'setup:builtin-root', 'setup:builtin-child'])
+  assert.deepEqual([...imports], [['builtin-root', 1], ['builtin-child', 1]])
+  assert.notEqual(h.kernel.list().find(x => x.id === 'builtin-root').runtimeGeneration, previous)
+  assert.equal(h.kernel.list().find(x => x.id === 'builtin-off').status, 'disabled')
+  assert.equal((await h.kernel.getModuleConfig('builtin-root')).revision, 7)
+})
+
+test('module actions: failed replacement stays visible, blocks descendants and never auto retries', async t => {
+  let setups = 0
+  const h = await harness([
+    { manifest: { id: 'builtin-root' }, defaultEnabled: true, load: () => ({ setup() { if (++setups > 1) throw Error('private failure') } }) },
+    { manifest: { id: 'builtin-child', requires: ['builtin-root'] }, defaultEnabled: true, load: () => ({ setup() {} }) },
+  ])
+  t.after(async () => { await h.kernel.dispose(); await rm(h.root, { recursive: true, force: true }) })
+  await h.kernel.start()
+  const input = { moduleId: 'builtin-root', actionId: 'module.restart', requestId: 'failure', expectedGeneration: h.kernel.actions('builtin-root').expectedGeneration }
+  h.kernel.action(input)
+  while (!h.kernel.getOperation({ requestId: 'failure' }).operation.completedAt) await new Promise(setImmediate)
+  const failed = h.kernel.getOperation({ requestId: 'failure' }).operation
+  assert.equal(failed.status, 'failed')
+  assert.doesNotMatch(JSON.stringify(failed), /private/)
+  assert.equal(h.kernel.list().find(x => x.id === 'builtin-root').status, 'error')
+  assert.equal(h.kernel.list().find(x => x.id === 'builtin-child').status, 'blocked')
+  assert.equal(h.kernel.health('builtin-child').items[0].dependencies[0].available, false)
+  for (let i = 0; i < 5; i++) { h.kernel.health(); h.kernel.actions('builtin-root'); h.kernel.action(input) }
+  assert.equal(setups, 2)
+})
+
+test('module actions: failed cleanup is visible and unrelated reconcile does not retry; old storage references revoke', async t => {
+  let cleanups = 0, oldStorage
+  const h = await harness([
+    { manifest: { id: 'builtin-root', permissions: ['storage'] }, defaultEnabled: true, load: () => ({ setup(api) {
+      oldStorage = api.storage
+      return () => { cleanups++; throw Error('cleanup secret') }
+    } }) },
+    { manifest: { id: 'builtin-other' }, defaultEnabled: false, load: () => ({ setup() {} }) },
+  ])
+  t.after(async () => { await h.kernel.dispose(); await rm(h.root, { recursive: true, force: true }) })
+  await h.kernel.start()
+  const input = { moduleId: 'builtin-root', actionId: 'module.restart', expectedGeneration: h.kernel.actions('builtin-root').expectedGeneration, requestId: 'cleanup-failure' }
+  h.kernel.action(input)
+  while (!h.kernel.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(h.kernel.getOperation({ requestId: input.requestId }).operation.code, 'MODULE_CLEANUP_FAILED')
+  assert.equal(h.kernel.list().find(x => x.id === 'builtin-root').status, 'error')
+  assert.throws(() => oldStorage.set('late', true), /停止/)
+  await h.kernel.setEnabled('builtin-other', true)
+  assert.equal(cleanups, 1)
+  assert.equal(h.kernel.list().find(x => x.id === 'builtin-root').status, 'error')
 })

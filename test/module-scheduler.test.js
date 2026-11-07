@@ -275,3 +275,63 @@ test('scheduler: sync/async callback exceptions isolated, safe logs and logger f
   assert.equal(logs.length, 5)
   assert.equal(h.kernel.list()[0].status, 'loaded')
 })
+
+test('scheduler health counts registration/fire/cancel/completion/failure without guessing business health', async t => {
+  const clock = fakeClock(t), apis = []
+  const h = await harness(t, [builtin('builtin-clock', api => { apis.push(api) })])
+  await h.kernel.start()
+  const read = () => h.kernel.health('builtin-clock').items[0]
+  const scheduler = apis[0].scheduler
+  assert.deepEqual(read().scheduler, { active: 0, running: 0, scheduled: 0, fired: 0, cancelled: 0, completed: 0, failed: 0, nextDueAt: null })
+  assert.equal(read().telemetry.timerScheduled, false)
+  const cancelled = scheduler.setTimeout(() => {}, 200)
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  scheduler.setTimeout(() => gate, 10)
+  scheduler.setTimeout(() => { throw Error('SECRET') }, 20)
+  assert.equal(read().scheduler.active, 3)
+  const nextDueAt = read().scheduler.nextDueAt
+  assert.equal(read().telemetry.nextRunAt, nextDueAt)
+  assert.equal(read().health, 'unknown', 'a timer is not business success')
+  assert.equal(cancelled.dispose(), true)
+  clock.advance(10)
+  assert.equal(read().scheduler.running, 1)
+  assert.equal(read().scheduler.fired, 1)
+  assert.equal(read().scheduler.active, 1)
+  release(); await new Promise(setImmediate)
+  assert.equal(read().scheduler.completed, 1)
+  assert.equal(read().scheduler.running, 0)
+  clock.advance(10)
+  await new Promise(setImmediate)
+  assert.deepEqual(read().scheduler, { active: 0, running: 0, scheduled: 3, fired: 2, cancelled: 1, completed: 1, failed: 1, nextDueAt: null })
+  assert.equal(read().reasonCode, 'SCHEDULER_CALLBACK_FAILED')
+  assert.equal(read().lastError.reasonCode, 'SCHEDULER_CALLBACK_FAILED')
+  assert.equal(read().health, 'degraded')
+  assert.equal(read().lifecycle, 'loaded')
+  const oldGeneration = read().runtimeGeneration
+  scheduler.setTimeout(() => {}, 100)
+  await h.kernel.setEnabled('builtin-clock', false)
+  assert.equal(read().scheduler.cancelled, 2)
+  assert.equal(read().telemetryGeneration, oldGeneration)
+  assert.equal(read().telemetry.timerScheduled, false)
+  await h.kernel.setEnabled('builtin-clock', true)
+  assert.notEqual(read().runtimeGeneration, oldGeneration)
+  assert.equal(read().scheduler.scheduled, 0)
+})
+
+test('scheduler health rejects old async completions after a new setup generation', async t => {
+  const clock = fakeClock(t), apis = []
+  const h = await harness(t, [builtin('builtin-clock', api => { apis.push(api) })])
+  await h.kernel.start()
+  let reject
+  apis[0].scheduler.setTimeout(() => new Promise((resolve, fail) => { reject = fail }), 0)
+  clock.advance(0)
+  assert.equal(h.kernel.health().items[0].scheduler.running, 1)
+  await h.kernel.setEnabled('builtin-clock', false)
+  await h.kernel.setEnabled('builtin-clock', true)
+  const before = h.kernel.health()
+  reject(Error('SECRET'))
+  await new Promise(setImmediate)
+  assert.deepEqual(h.kernel.health().items, before.items)
+  assert.equal(h.kernel.health().revision, before.revision)
+})

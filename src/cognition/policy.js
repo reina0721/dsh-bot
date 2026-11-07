@@ -168,7 +168,7 @@ export function inferReward(observation = {}) {
   return round(clamp(reward, -1, 1), 3)
 }
 
-export function createPolicyService({ store, getConfig, clock, rng = Math.random } = {}) {
+export function createPolicyService({ store, getConfig, clock, rng = Math.random, observer = null } = {}) {
   const cfg = () => getConfig()?.cognition || {}
 
   function rateSnapshot(chatType, chatId, now = clock.now()) {
@@ -258,35 +258,49 @@ export function createPolicyService({ store, getConfig, clock, rng = Math.random
     return next
   }
 
-  function recordOutcome(decisionId, observation = {}) {
-    const decision = store.get('decision', decisionId)
-    if (!decision) return null
-    const reward = inferReward(observation)
-    const outcome = {
-      id: uid('outcome'),
-      decisionId,
-      observed: observation,
-      reward,
-      attributionConfidence: clamp(Number(observation.attributionConfidence ?? 0.5), 0, 1),
-      createdAt: clock.now(),
-    }
-    store.tx(() => {
+  function recordOutcome(decisionId, observation = {}, { source = 'unknown', dedupeKey } = {}) {
+    if (typeof decisionId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,95}$/.test(decisionId)
+      || !['incoming', 'reaction', 'manual', 'unknown'].includes(source)
+      || typeof dedupeKey !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,95}$/.test(dedupeKey)
+      || !observation || typeof observation !== 'object' || Array.isArray(observation)) throw Error('FEEDBACK_QUERY_INVALID')
+    const booleanKeys = ['explicitCorrection', 'userContinued', 'userIgnored', 'recalled', 'safetyViolation', 'positiveReaction']
+    if (Object.keys(observation).some(key => ![...booleanKeys, 'sentiment', 'attribution', 'attributionConfidence', 'observation'].includes(key))
+      || booleanKeys.some(key => observation[key] != null && typeof observation[key] !== 'boolean')
+      || ['sentiment', 'attributionConfidence'].some(key => observation[key] != null && !Number.isFinite(observation[key]))
+      || (observation.attribution != null && !['direct', 'heuristic', 'unobserved'].includes(observation.attribution))
+      || (observation.observation != null && !['positive', 'negative', 'neutral', 'unobserved'].includes(observation.observation))) throw Error('FEEDBACK_QUERY_INVALID')
+    const observed = Object.fromEntries(booleanKeys.map(key => [key, observation[key] === true]))
+    observed.sentiment = clamp(observation.sentiment ?? 0, -1, 1)
+    const unobserved = observation.observation === 'unobserved' || observation.attribution === 'unobserved'
+    const attribution = unobserved ? 'unobserved' : ['incoming', 'unknown'].includes(source) ? 'heuristic' : observation.attribution || (source === 'manual' ? 'direct' : 'heuristic')
+    const attributionConfidence = clamp(observation.attributionConfidence ?? 0.5, 0, 1)
+    // Expiry/no observation is not a policy trial, including a neutral trial.
+    if (unobserved) return { id: null, decisionId, reward: null, policyUpdated: false, source, attribution, attributionConfidence }
+    if (store.atomicTransactions !== true || !observer?.commitFeedback || !observer?.ownsFeedbackStore?.(store)) throw Error('FEEDBACK_ATOMICITY_UNAVAILABLE')
+    const duplicate = () => store.list('outcome', { limit: 1, where: o => o.decisionId === decisionId && o.dedupeKey === dedupeKey })[0]
+    const prior = duplicate()
+    if (prior) return prior // Business dedupe survives short-lived observation eviction.
+    return observer.commitFeedback(decisionId, () => {
+      const prior = duplicate()
+      if (prior) return { duplicate: true, outcome: prior }
+      const decision = store.get('decision', decisionId)
+      if (!decision) throw Error('FEEDBACK_DECISION_NOT_FOUND')
+      const reward = inferReward(observed)
+      const beta = betaFor(decision.action, decision.contextKey)
+      const snapshot = record => ({ alpha: record.alpha, beta: record.beta, trials: record.trials || 0, rewardSum: record.rewardSum || 0 })
+      const before = snapshot(beta.record)
+      const success = reward > 0 ? 1 : reward < 0 ? 0 : 0.5
+      const after = { alpha: round(before.alpha + success, 3), beta: round(before.beta + (1 - success), 3),
+        trials: before.trials + 1, rewardSum: round(before.rewardSum + reward, 3) }
+      const outcome = { id: uid('outcome'), decisionId, observed, reward, source, dedupeKey,
+        sourceEventId: uid('observation'), attribution, attributionConfidence,
+        policyUpdated: true, policyBefore: before, policyAfter: after, createdAt: clock.now() }
       store.put('outcome', outcome.id, outcome)
       store.put('decision', decisionId, { ...decision, status: 'observed', reward, outcomeId: outcome.id, updatedAt: clock.now() })
-      const beta = betaFor(decision.action, decision.contextKey)
-      const success = reward > 0 ? 1 : reward < 0 ? 0 : 0.5
-      store.put('policy', beta.id, {
-        id: beta.id,
-        action: decision.action,
-        contextKey: decision.contextKey,
-        alpha: round(beta.record.alpha + success, 3),
-        beta: round(beta.record.beta + (1 - success), 3),
-        trials: (beta.record.trials || 0) + 1,
-        rewardSum: round((beta.record.rewardSum || 0) + reward, 3),
-        updatedAt: clock.now(),
-      })
+      store.put('policy', beta.id, { id: beta.id, action: decision.action, contextKey: decision.contextKey, ...after, updatedAt: clock.now() })
+      return { outcome, data: { source, sourceEventId: outcome.sourceEventId, attribution, attributionConfidence,
+        observation: reward > 0 ? 'positive' : reward < 0 ? 'negative' : 'neutral', reward, outcomeId: outcome.id, policyUpdated: true } }
     })
-    return outcome
   }
 
   function history({ limit = 50 } = {}) {

@@ -185,3 +185,25 @@ test('outbound: gateway errors never echo secrets into results, logs or policy',
   assert.equal(result.message, 'send_failed')
   assert.ok(!JSON.stringify([result, logs, policy.calls, outbound.stats()]).includes(leakKey))
 })
+
+test('outbound: direct attempts record gates/dryRun/transport result without parent or private content', async t => {
+  const { loopHarness } = await import('./helpers/loop.js')
+  const h = loopHarness(t)
+  for (const [error, options] of [
+    ['ACCESS_DENIED', { access: { canSend: () => ({ allowed: false, reason: 'PRIVATE_REASON' }) } }],
+    ['RATE_LIMITED', { policy: { canSend: () => ({ ok: false, reason: 'PRIVATE_REASON' }) } }],
+    ['SEND_FAILED', { gateway: { actions: { sendMessage() { throw Error('PRIVATE_ERROR') } } } }],
+    [null, { getConfig: () => ({ cognition: { dryRun: true } }) }],
+  ]) {
+    h.advance(1)
+    const outbound = createOutbound({ observer: h.observer, ...options })
+    await outbound.deliver({ chatType: 'private', chatId: 'PRIVATE_TARGET', segments: 'PRIVATE_BODY' })
+    const row = h.receipts().find(row => row.recordedAt === h.clock.now())
+    assert.equal(row.data.errorCode, error)
+    assert.equal(row.data.parts, 0)
+    assert.equal(row.data.status, error ? 'failed' : 'dry_run')
+    assert.equal(row.loopId, null)
+    assert.doesNotMatch(JSON.stringify(row), /PRIVATE_/)
+  }
+  assert.equal(h.loops().length, 0)
+})

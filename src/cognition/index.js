@@ -3,6 +3,8 @@
 // 平台层只通过 ingestRaw()/observe() 输入；内部服务不 import gateway/http。
 // 所有状态由本服务单写；查询/命令通过 snapshot()/api 暴露。
 
+import { createLoopQuery } from '../observability/loop-query.js'
+import { createLoopObserver } from '../observability/loop.js'
 import { join } from 'node:path'
 import { appendJsonl, dataDir as pluginDataDir } from '../core/store.js'
 import { createStore } from './store.js'
@@ -110,6 +112,8 @@ export function createCognition({
       })
       const personaStore = state.scopedStore
       state.services.personaStore = personaStore
+      state.services.loopObserver = createLoopObserver({ base: state.store, getPersonaId: personaStore.currentPersonaId, clock })
+      state.services.loopQuery = createLoopQuery({ observer: state.services.loopObserver, store: personaStore, getGeneration: () => state.services.persona.scopeGeneration(), clock })
       state.services.emotion = createEmotionService({ store: personaStore, getConfig, clock })
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
@@ -126,9 +130,10 @@ export function createCognition({
         scheduler,
         logger: log,
       })
-      state.services.policy = createPolicyService({ store: personaStore, getConfig, clock, rng })
+      state.services.policy = createPolicyService({ store: personaStore, getConfig, clock, rng, observer: state.services.loopObserver })
       state.services.llm = createLlmClient({ ctx, models, getConfig, store: personaStore, clock, log })
       state.services.outbound = createOutbound({
+        observer: state.services.loopObserver,
         getConfig,
         gateway: {
           get actions() {
@@ -183,6 +188,7 @@ export function createCognition({
       state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock })
       state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
+        observer: state.services.loopObserver,
         turnHooks,
         deliveryRegistry,
         store: personaStore,
@@ -535,7 +541,10 @@ export function createCognition({
   function editPersona(patch, personaId = '') { return state.services.persona?.edit?.(patch, personaId) || null }
   function resetPersona(personaId = '') { return state.services.persona?.reset?.(personaId) || null }
   function decisions(query = {}) { return state.services.policy?.history?.(query) || [] }
-  function correctDecision(decisionId, observation) { return state.services.policy?.recordOutcome?.(decisionId, observation) || null }
+  function correctDecision(decisionId, observation, requestId) {
+    if (!state.services.policy?.recordOutcome) throw Error('FEEDBACK_UNAVAILABLE')
+    return state.services.policy.recordOutcome(decisionId, observation, { source: 'manual', dedupeKey: requestId })
+  }
   function policyStats() { return state.services.policy?.stats?.() || null }
   function resetPolicy() { return state.services.policy?.resetLearning?.() || null }
   function skillsList() { return state.services.skills?.list?.() || [] }
@@ -658,6 +667,10 @@ export function createCognition({
     pause,
     resume,
     snapshot: publicSnapshot,
+    loopReadiness: () => ({ ready: state.ready, enabled: Boolean(cfg().enabled), paused: Boolean(state.paused || cfg().paused), dryRun: Boolean(cfg().dryRun), startedAt: state.startedAt }),
+    loopSummary: () => state.services.loopQuery?.summary() || { ok: false, code: 'LOOP_READ_UNAVAILABLE' },
+    loopRuns: query => state.services.loopQuery?.runs(query) || { ok: false, code: 'LOOP_READ_UNAVAILABLE' },
+    loopDetail: query => state.services.loopQuery?.detail(query) || { ok: false, code: 'LOOP_READ_UNAVAILABLE' },
     overview,
     persons,
     personDetail,

@@ -74,3 +74,27 @@ test('store：事务回滚与备份', () => withStore((store, dir) => {
   const backup = store.backup(join(dir, 'backup.sqlite'))
   assert.equal(existsSync(backup), true)
 }))
+
+test('JSON fallback transactions publish one complete snapshot and leave no partial writes on failure', async t => {
+  const { mkdirSync, readFileSync } = await import('node:fs')
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-json-atomic-')), file = join(dir, 'fallback.sqlite')
+  mkdirSync(file)
+  const store = createStore({ file })
+  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }) })
+  assert.equal(store.mode, 'json'); assert.equal(store.atomicTransactions, true)
+  store.put('state', 'baseline', { value: 1 })
+  const disk = () => readFileSync(join(dir, 'fallback.json'), 'utf8')
+  const baseline = disk()
+  assert.throws(() => store.tx(() => {
+    store.put('outcome', 'o', { reward: 1 })
+    assert.equal(disk(), baseline)
+    store.tx(() => store.put('policy', 'p', { trials: 1 }))
+    assert.equal(disk(), baseline)
+    throw Error('rollback')
+  }), /rollback/)
+  assert.equal(disk(), baseline); assert.equal(store.get('outcome', 'o'), null)
+  assert.equal(store.get('policy', 'p'), null)
+  store.tx(() => { store.put('outcome', 'o', { reward: 1 }); store.put('policy', 'p', { trials: 1 }) })
+  const persisted = JSON.parse(disk()).records
+  assert.equal(persisted['outcome:o'].data.reward, 1); assert.equal(persisted['policy:p'].data.trials, 1)
+})

@@ -100,7 +100,9 @@ export function apply(ctx, rowConfig) {
     setConfig,
     media,
   })
+  const reminderControl = {}
   const modules = createModuleKernel({
+    reminderControl,
     media, stickers,
     providerRegistry,
     access,
@@ -269,6 +271,7 @@ export function apply(ctx, rowConfig) {
   }
 
   const routes = createRoutes({
+    ingress,
     providerRegistry,
     ctx,
     getConfig,
@@ -293,19 +296,35 @@ export function apply(ctx, rowConfig) {
   let disposed = false
   let modulesSettled = false
   let reminderProvider = null
+  let reminderOwner = null
+  let uncertainReminderStop = false
+  let coreRemindersActive = false
+  const publishReminder = (state, owner = reminderOwner, reasonCode = null, fallback = null) => {
+    providerRegistry.publishHealth('reminders', { ...owner, state, reasonCode, ...(fallback ? { fallback } : {}) })
+  }
   let failedProvider = null
   let providerRevision = 0
   let ownerRevision = -1
   let failedRevision = -1
   let ownership = Promise.resolve()
+  let reminderRecovery = false
   async function stopReminderProvider(provider = reminderProvider) {
     if (!provider) return
-    try { await provider.stop({ dispose: disposed }) } catch { log.warn('提醒 provider 停止失败') }
+    publishReminder('draining')
+    try {
+      await provider.stop({ dispose: disposed })
+      uncertainReminderStop = false
+      publishReminder('unowned', null)
+    } catch {
+      uncertainReminderStop = true
+      publishReminder('failed', reminderOwner, 'PROVIDER_STOP_FAILED')
+      log.warn('提醒 provider 停止失败')
+    }
   }
 
   function syncReminderOwnership() {
     const work = async () => {
-      if (disposed || !modulesSettled) return
+      if (disposed || !modulesSettled || reminderRecovery || uncertainReminderStop) return
       for (;;) {
         const revision = providerRevision
         const selected = providerRegistry.get('reminders')
@@ -313,36 +332,78 @@ export function apply(ctx, rowConfig) {
         if (reminderProvider && (reminderProvider !== desired || ownerRevision !== revision)) {
           const previous = reminderProvider
           await stopReminderProvider(previous)
+          if (uncertainReminderStop) return
           reminderProvider = null
           if (disposed) return
           continue
         }
-        if (!desired) { cognition.startReminders(); return }
+        if (!desired) {
+          if (!uncertainReminderStop && !coreRemindersActive) publishReminder('starting', { owner: 'core' })
+          try {
+            cognition.startReminders()
+            coreRemindersActive = true
+            if (!uncertainReminderStop) publishReminder('active', { owner: 'core' }, null, { active: true, reasonCode: selected ? 'PROVIDER_START_FAILED' : 'NO_PROVIDER' })
+          } catch (error) { publishReminder('failed', { owner: 'core' }, 'PROVIDER_START_FAILED'); throw error }
+          return
+        }
         if (reminderProvider === desired) return
-        await cognition.stopReminders()
+        if (coreRemindersActive) publishReminder('draining', { owner: 'core' })
+        try { await cognition.stopReminders() }
+        catch (error) { publishReminder('failed', { owner: 'core' }, 'PROVIDER_STOP_FAILED'); throw error }
+        coreRemindersActive = false
+        publishReminder('unowned', null)
         if (disposed) return
         if (providerRevision !== revision) continue
         reminderProvider = desired
         ownerRevision = revision
+        const registered = providerRegistry.registration('reminders')
+        reminderOwner = { owner: 'module', ownerModuleId: registered?.moduleId || null, ownerRuntimeGeneration: registered?.runtimeGeneration || null }
+        publishReminder('starting')
         try { await desired.start() }
         catch {
+          publishReminder('failed', reminderOwner, 'PROVIDER_START_FAILED')
           log.warn('提醒 provider 启动失败，回退核心提醒')
           await stopReminderProvider(desired)
           reminderProvider = null
           failedProvider = desired
           failedRevision = revision
-          if (disposed) return
+          if (disposed || uncertainReminderStop) return
           continue
         }
         // Synchronous teardown can occur during an asynchronous start.
         if (disposed) { await stopReminderProvider(desired); return }
         if (providerRevision !== revision) continue
+        publishReminder('active')
         return
       }
     }
     ownership = ownership.then(work, work)
     return ownership
   }
+  Object.assign(reminderControl, {
+    async begin() {
+      reminderRecovery = true
+      try {
+        await ownership
+        if (uncertainReminderStop) throw Object.assign(new Error('PROVIDER_STOP_FAILED'), { code: 'PROVIDER_STOP_FAILED' })
+        if (coreRemindersActive) {
+          publishReminder('draining', { owner: 'core' })
+          try { await cognition.stopReminders() }
+          catch { uncertainReminderStop = true; publishReminder('failed', { owner: 'core' }, 'PROVIDER_STOP_FAILED'); throw Object.assign(new Error('PROVIDER_STOP_FAILED'), { code: 'PROVIDER_STOP_FAILED' }) }
+          coreRemindersActive = false
+          publishReminder('unowned', null)
+        }
+      } catch (error) { reminderRecovery = false; throw error }
+    },
+    async stop(provider) {
+      if (provider !== reminderProvider) return false
+      await stopReminderProvider(provider)
+      if (uncertainReminderStop) throw Object.assign(new Error('PROVIDER_STOP_FAILED'), { code: 'PROVIDER_STOP_FAILED' })
+      reminderProvider = null
+      return true
+    },
+    async end() { reminderRecovery = false; await syncReminderOwnership() },
+  })
   const unsubscribeProviders = providerRegistry.subscribe(({ name }) => {
     if (name !== 'reminders') return
     providerRevision++
@@ -385,6 +446,8 @@ export function apply(ctx, rowConfig) {
     } catch (error) {}
     try {
       cognition.dispose()
+      if (coreRemindersActive && !uncertainReminderStop) publishReminder('unowned', null)
+      coreRemindersActive = false
     } catch (error) {}
     try {
       models.dispose()

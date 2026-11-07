@@ -11,6 +11,22 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
+## 闭环 v2 管理与导航（C07）
+
+C01–C07 的提交链、贴纸库/发送矩阵、恢复与系统闭环验收、包检查和离线限制统一见 [C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)。C08 不新增生产功能；main/sidebar.panellist 仍恰好两项 DSH 注册，无自动 restart、exactly-once 或 UI 权限扩展。
+
+[ADR-018](architecture/ADR-018-module-closed-loop.md) 定义模块健康与人工恢复；C03/C04 已实现核心 API，C07 接入核心客户端详情。lifecycle 的 loaded 只证明 setup 完成；ModuleHealth 只呈现缓存遥测，实际 provider owner 由宿主协调状态确定。提醒注册不等于接管，核心 fallback 必须在实际启动后才显示 active；其它功能模块停用仍无 fallback。未知/不适用字段为 null，不能显示为 0/false；runtimeGeneration 绑定每次 setup，独立于 UI 授权可轮换的 generation。
+
+健康 GET 不扫描、不 import、不调用 provider status/stats 或网络探针。详情独立显示 lifecycle/health/reasons/lastError、注册与实际 owner/fallback、依赖、scheduler/engine/telemetry，并保留 telemetryGeneration。核心 action allowlist 包含 enable/disable/restart/reload、proactivity.runOnce、learning.runPending，可用性来自 `/modules/actions?id=`，必须经过核心 operation registry、requestId 幂等与 expectedGeneration 校验；先下游后目标停止排空，再按依赖正序恢复。10 秒未排空显示 STOP_PENDING，保持同一操作并阻止第二 owner，不强行重启或自动循环恢复。外部模块继续原 toggle/reload 与授权规则；纯 React preview 和隔离 iframe 均不获得 action bridge 或宿主执行权。
+
+[ADR-019](architecture/ADR-019-system-closed-loop.md) 的系统 loop/receipt 只供核心管理面关联，禁止正文与跨人格读取，每人格合计 7 天/5000 条；模块不自行写 delivery receipt、不把 decision.status 当发送事实，也不能借观测 API 更新 policy、发送或执行研究。未观察反馈不算负面，研究首次轮次缺失保持 null；重启中断只记录 interrupted，不重发/重跑。
+
+核心动作区不读取 manifest 的动作声明；外部 `module.actions` surface 仍不能提供执行器或桥接。发送/模型等副作用先在 UI 确认，`POST /modules/action` 只表示接纳；客户端按同一 operation 轮询，只有 succeeded 且 result.ok 才提示完成。busy、skip、NO_TASK、失败均不提示成功；STOP_PENDING 继续观察。提交响应丢失按原 requestId 查询，查询失败可点「继续观察操作」，不自动生成新请求重试。动作终态刷新健康与目录；页面离开后停止轮询，服务端操作继续，UI 不跨页面持久保存 operation。
+
+客户端使用 `goTo({tab,section,moduleId,anchor,decisionId,taskId})`，兼容 `go(id,group)`；同一已挂载页面也响应新目标。内置功能目的地由核心 `MODULE_DESTINATIONS` 定义：B站直达媒体模块 panel，表情包库到媒体页，主动/学习到认知分区，提醒到当前人格提醒记录数，配置锚点定位已有唯一编辑器。媒体/主动/学习提供返回模块详情。无新增 DSH slot/sidebar、配置键或后端契约；外部 schema/iframe 授权与隔离保持。
+
+「认知 → 闭环」使用既有 `/system/loop/summary`、`runs`、`detail`，每页 50 条与服务端 cursor 翻页；可从决策直达详情。只显示核心投影的阶段、交付状态和 attempted/sent parts、反馈来源/归因/观测、policy committed 与 Beta before/after、研究 unknown/task/evidence/claim 允许 ID 和关联入口。不显示正文、QQ/消息/事件 ID、路径或任意 JSON；没有人格选择参数，跨读取人格变化丢弃结果。未观察、不适用、不可用、已中断分别呈现。学习页保留队列「运行待处理」及 taskId 精确重试/取消，移除逐任务“运行”；目标在最近 100 条内会优先显示，超出时提示定位限制。提醒仅复用人格数据汇总，逐条查看/取消沿用 QQ 命令。无浏览器或真实 QQ/模型验收。
+
 ## 内置媒体功能（one-shot 模块 1）
 
 当前目录共七个内置模块：learning、proactivity、media-features、reminders、reply-delivery、typing 默认启用，sample 默认关闭。`builtin-media-features` 是 Bilibili 功能服务、`/bili`、表情包策略和 `/sticker` 的唯一所有者；停用不恢复核心实现。其 `mediaFeatures` 槽位仅允许此模块注册，模块 setup 自行 start，start/stop 幂等；宿主提醒订阅只处理 `reminders`，媒体启停不改变提醒所有权。
@@ -37,7 +53,7 @@ memory/LLM 等待前后和发送前检查人格/切换代次/runtime；停止使
 
 现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，外部允许 status/schema 与显式授权的 sandbox renderer，内置额外允许 builtin-react。拒绝未知字段/能力、重复 ID/hook、非法 componentKey、越权 sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不重扫模块目录、不读配置值；隔离 UI 读取会校验公开资源；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
 
-核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。module.panel/detail 的 sandbox 经授权后仅在详情 iframe 中执行；actions、未支持的 hook/renderer 组合与不可用配置保留禁用占位；builtin-react 在 module.detail 查找编译期预览组件，媒体功能另有固定 module.panel。
+核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。module.panel/detail 的 sandbox 经授权后仅在详情 iframe 中执行；外部 actions surface、未支持的 hook/renderer 组合与不可用配置保留禁用占位；核心动作区独立于这些 surface；builtin-react 在 module.detail 查找编译期预览组件，媒体功能另有固定 module.panel。
 
 reply-delivery、typing、reminders 使用 `legacy-core`（available:true），sample 使用 `module-file`（available:true）；均为 schemaVersion:1 并包含 module.config/schema surface。前三者从现有 `configInfo.groups` 按字段 `module` 归属读取表单，值来自全局 draft，以 `saveUiPatch({[path]:value})` 即时保存并显示既有保存状态，不访问 `/modules/config`。归属元数据只允许最多 64 字符的模块 ID 字符串，不包含配置值或新存储位置。
 

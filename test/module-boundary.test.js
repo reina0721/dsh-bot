@@ -87,7 +87,7 @@ test('final module boundary: every external privileged use fails, including mani
 for (const spoof of [false, true]) test(`final module boundary: external ${spoof ? 'with config/source spoof' : 'without config'} has no undeclared privileges or media resources/routes`, async t => {
   const h = await harness(t)
   await external(h.root, 'external-probe', ['commands', 'cognition:read'], `
-    for (const key of ['scheduler', 'personaStore', 'reminderRepository', 'legacyConfig',
+    for (const key of ['health', 'actions', 'action', 'getOperation', 'scheduler', 'personaStore', 'reminderRepository', 'legacyConfig',
       'media', 'stickers', 'gateway', 'routes', 'http', 'ctx', 'store', 'providerRegistry', 'deliveryRegistry', 'turnHooks']) {
       assert.equal(Object.hasOwn(api, key), false, key)
     }

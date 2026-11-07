@@ -111,3 +111,25 @@ test('delivery service: production wiring injects the shared service into every 
   assert.match(service, /executeDeliveryPlan\(/)
   assert.doesNotMatch(service, /gateway|fallbackDeliver|sendMessage/)
 })
+
+test('DeliveryService: every preflight rejection uses executor-owned receipt without touching outbound', async t => {
+  const { loopHarness } = await import('./helpers/loop.js')
+  const h = loopHarness(t)
+  const service = createDeliveryService({ observer: h.observer, outbound: { deliver() { assert.fail('preflight must not send') } } })
+  for (const [input, status, code] of [
+    [{ text: 'hello' }, 'failed', 'INVALID_TARGET'],
+    [{ ...target }, 'empty', 'EMPTY_MESSAGE'],
+    [{ ...target, segments: null }, 'empty', 'EMPTY_MESSAGE'],
+  ]) {
+    h.advance(1)
+    const result = await service.deliver(input)
+    const row = h.receipts().find(row => row.recordedAt === h.clock.now())
+    assert.equal(row.data.status, status)
+    assert.equal(row.data.errorCode, code)
+    assert.equal(result.parts, 0)
+  }
+  h.advance(1)
+  await createDeliveryService({ observer: h.observer }).deliver({ ...target, text: 'hello' })
+  assert.equal(h.receipts().length, 4)
+  assert.ok(h.receipts().some(row => row.data.errorCode === 'OUTBOUND_UNAVAILABLE'))
+})

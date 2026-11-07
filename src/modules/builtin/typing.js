@@ -1,6 +1,9 @@
 export function setup(api) {
   async function setStatus({ turn, settings }, eventType) {
-    if (settings.typingEnabled !== true || turn?.chatType !== 'private') return
+    if (settings.typingEnabled !== true || turn?.chatType !== 'private') {
+      api.health?.report({ state: 'healthy', result: 'observation', reasonCode: 'BUSINESS_DISABLED' })
+      return
+    }
     // Best effort only; gateway errors may contain private chat IDs.
     try { await api.status.setInputStatus(String(turn.chatId), eventType) } catch (error) {}
   }

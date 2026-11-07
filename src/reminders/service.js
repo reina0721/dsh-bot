@@ -1,7 +1,8 @@
+import { reportEngine } from '../modules/health.js'
 // Shared reminder rules; all persistence and delivery enter through injected ports.
 import { hashText, uid } from '../cognition/util.js'
 
-export function createReminderEngine({ repository, getConfig, owner, clock = { now: Date.now }, scheduler, deliver, logger }) {
+export function createReminderEngine({ repository, getConfig, owner, clock = { now: Date.now }, scheduler, deliver, logger, health }) {
   let running = false
   let started = false
   let disposed = false
@@ -67,13 +68,20 @@ export function createReminderEngine({ repository, getConfig, owner, clock = { n
     return publicRecord(repository.put({ id, ...row, status: 'cancelled' }))
   }
   function tick() {
-    if (disposed || running || !config().enabled) return Promise.resolve()
+    if (disposed || running) return Promise.resolve()
+    if (!config().enabled) {
+      reportEngine(health, 'started')
+      reportEngine(health, 'skipped', 'BUSINESS_DISABLED')
+      return Promise.resolve()
+    }
     running = true
+    reportEngine(health, 'started')
     const epoch = generation
     pending = runTick(epoch)
     return pending
   }
   async function runTick(epoch) {
+    let failed = false
     try {
       const captured = repository.capture()
       const due = captured.findDue(clock.now(), 20)
@@ -86,6 +94,7 @@ export function createReminderEngine({ repository, getConfig, owner, clock = { n
           result = await deliver({ chatType: row.scopeType, chatId: row.scopeId,
             text: row.text, source: 'reminder' })
         } catch { result = { ok: false } }
+        if (result?.ok !== true) failed = true
         if (disposed) break
         const current = captured.get(row.id)
         if (!current || JSON.stringify(current) !== JSON.stringify(row)) continue
@@ -97,6 +106,10 @@ export function createReminderEngine({ repository, getConfig, owner, clock = { n
               nextAt: now + Math.max(60, config().minIntervalSeconds) * 1000 }
         captured.put({ ...current, ...patch })
       }
+      reportEngine(health, failed ? 'failure' : due.length ? 'success' : 'skipped', failed ? 'REMINDER_TICK_FAILED' : due.length ? null : 'NO_TASK')
+    } catch (error) {
+      reportEngine(health, 'failure', 'REMINDER_TICK_FAILED')
+      throw error
     } finally { running = false; pending = null }
   }
   function schedule(epoch) {

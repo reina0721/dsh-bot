@@ -1,4 +1,5 @@
 // Host-only learning service. All writes and external data stay in core.
+import { observeLoop } from '../observability/loop.js'
 import { createPersonaScopedStore } from '../cognition/persona-scope.js'
 import { extractResearchClaim } from '../cognition/research.js'
 import { hashText, uid } from '../cognition/util.js'
@@ -8,9 +9,18 @@ const owners = new WeakMap()
 const bounded = (value, max, fallback) => Math.max(1, Math.min(max, Math.floor(Number(value) || fallback)))
 const token = () => Object.freeze({})
 const taskReceipt = task => task ? { id: task.id, status: task.status, version: task.version, attempts: task.attempts || 0, nextRunAt: task.nextRunAt || 0 } : null
-export function createLearningPort({ getConfig, store, services = {}, getState = () => ({}), assertActive = () => {}, clock = { now: () => getState().now ?? Date.now() } } = {}) {
+export function createLearningPort({ getConfig, store, services = {}, getState = () => ({}), assertActive = () => {}, clock = { now: () => getState().now ?? Date.now() }, moduleId = 'builtin-learning', runtimeGeneration = null } = {}) {
   const leases = new WeakMap(), unknowns = new WeakMap()
   const cfg = () => getConfig?.()?.cognition || {}
+  const observer = services.loopObserver
+  function researchEvent(run, status, result = {}) {
+    observeLoop(observer, 'research', run.loop, { status, unknownId: run.task.unknownId,
+      firstDetectedTurnId: run.firstDetectedTurnId, evidenceCount: run.evidence.size,
+      claimId: result.claimId || null, errorCode: result.error === 'no_evidence' ? 'NO_EVIDENCE' : result.error || null })
+    if (status !== 'running') observeLoop(observer, 'finishLoop', run.loop, {
+      status: status === 'failed' ? 'failed' : status === 'interrupted' || status === 'cancelled' ? 'interrupted' : 'completed',
+      reasonCode: status === 'cancelled' ? 'CANCELLED' : status === 'interrupted' ? 'STALE_CONTEXT' : null })
+  }
   const event = name => services.knowledge?.recordResearchEvent?.(name)
   const persona = () => store?.currentPersonaId?.() || 'self'
   const generation = () => services.persona?.scopeGeneration?.()
@@ -22,6 +32,7 @@ export function createLearningPort({ getConfig, store, services = {}, getState =
   function privateCheck(bound, task) {
     const u = bound.get('unknown', task.unknownId)
     if (cfg().privacy?.learnFromPrivate === false && [u?.scopeType, u?.chatType, task.scopeType, task.chatType].includes('private')) throw Error('PRIVATE_POLICY')
+    return u
   }
   function checked(lease, { completed = false } = {}) {
     enabled()
@@ -85,11 +96,11 @@ export function createLearningPort({ getConfig, store, services = {}, getState =
       if (mode === 'cancel') {
         const result = services.knowledge.cancel(taskId)
         const owner = owners.get(ownerKey)
-        if (owner?.personaId === personaId && owner.task.id === taskId) release({ lease: owner.lease })
+        if (owner?.personaId === personaId && owner.task.id === taskId) { researchEvent(owner, 'cancelled'); release({ lease: owner.lease }) }
         return taskReceipt(result)
       }
       if (expectedVersion === undefined || !['pending', ...(mode === 'manual' ? ['suggested'] : [])].includes(task.status) || Number(task.nextRunAt || 0) > clock.now()) return null
-      privateCheck(bound, task)
+      const unknown = privateCheck(bound, task)
       if (bound.list('learning_task', { limit: 1000, where: t => t.createdAt >= clock.now() - 3600000 }).length > Number(cfg().learning.maxTasksPerHour ?? 3) && task.status === 'pending') {
         bound.put('learning_task', task.id, { ...task, nextRunAt: clock.now() + 3600000, version: (task.version || 1) + 1 })
         return null
@@ -97,6 +108,10 @@ export function createLearningPort({ getConfig, store, services = {}, getState =
       const lease = token(), version = (task.version || 1) + 1
       bound.put('learning_task', task.id, { ...task, status: 'running', attempts: (task.attempts || 0) + 1, startedAt: clock.now(), updatedAt: clock.now(), version })
       const run = { task, bound, personaId, generation: generation(), version, mode, ownerKey, lease, evidence: new Map(), sourceRefs: new Map(), collected: new Set(), extracting: false, draft: null, claimRef: null }
+      run.firstDetectedTurnId = unknown?.firstDetectedTurnId || null
+      run.loop = observeLoop(observer, 'begin', { kind: 'research', taskId: task.id, unknownId: task.unknownId, firstDetectedTurnId: unknown?.firstDetectedTurnId || null, moduleId, runtimeGeneration })
+      observeLoop(observer, 'recordStage', run.loop, 'researching', { unknownRefs: [task.unknownId] })
+      researchEvent(run, 'running')
       leases.set(lease, run); owners.set(ownerKey, run)
       return { lease, query: String(task.surface || task.plan?.[0] || '').slice(0, 256) }
     })
@@ -170,7 +185,7 @@ export function createLearningPort({ getConfig, store, services = {}, getState =
       run.bound.put('learning_task', task.id, { ...task, status: 'done', finishedAt: clock.now(), evidenceCount: run.evidence.size, claimId: claim?.id || '', updatedAt: clock.now() })
       return Object.freeze({ ok: true, taskId: task.id, claimId: claim?.id || '', evidenceCount: run.evidence.size })
     })
-    run.result = result; event('done'); if (createdClaim) event('claims')
+    run.result = result; researchEvent(run, 'completed', result); event('done'); if (createdClaim) event('claims')
     return result
   }
   function fail({ lease, error } = {}) {
@@ -181,6 +196,7 @@ export function createLearningPort({ getConfig, store, services = {}, getState =
       const task = run.bound.get('learning_task', run.task.id)
       run.bound.put('learning_task', task.id, { ...task, status: 'failed', error: safe, updatedAt: clock.now(), version: task.version + 1 })
     })
+    researchEvent(run, 'failed', { error: safe })
     event('failed')
     return { ok: false, error: safe }
   }
@@ -191,7 +207,10 @@ export function createLearningPort({ getConfig, store, services = {}, getState =
     if (owners.get(run.ownerKey) === run) owners.delete(run.ownerKey)
     // Stop is synchronous; revoke first, then leave interrupted tasks pending in the captured persona.
     const task = run.bound.get('learning_task', run.task.id)
-    if (task?.status === 'running' && task.version === run.version) run.bound.tx(() => run.bound.put('learning_task', task.id, { ...task, status: 'pending', updatedAt: clock.now(), version: task.version + 1 }))
+    if (task?.status === 'running' && task.version === run.version) {
+      run.bound.tx(() => run.bound.put('learning_task', task.id, { ...task, status: 'pending', updatedAt: clock.now(), version: task.version + 1 }))
+      researchEvent(run, 'interrupted')
+    }
   }
   function retry({ taskId } = {}) {
     assertActive()

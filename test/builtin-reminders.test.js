@@ -44,7 +44,7 @@ async function harness(t, options = {}) {
       api = value
       service = createBuiltinReminders({
         legacyConfig: api.legacyConfig, reminderRepository: api.reminderRepository, scheduler: options.nativeScheduler ? api.scheduler : scheduler,
-        delivery: api.delivery, access: api.access, log: api.log,
+        health: api.health, delivery: api.delivery, access: api.access, log: api.log,
         registerCommand: api.registerCommand, providers: api.providers,
       }, { clock })
       return () => service.dispose()
@@ -303,4 +303,35 @@ test('synchronous host-style final stop suppresses post-await writes after the s
   h.base.close()
   release({ ok: true })
   await work; await stopping
+})
+
+
+test('reminder health observes disabled/no-task idle and captured delivery failures', async t => {
+  const h = await harness(t, { delivery: { async deliver() { return { ok: false, error: 'PRIVATE_ERROR' } } } })
+  const read = () => h.kernel.health('builtin-reminders').items[0]
+  await h.service.tick()
+  assert.equal(read().health, 'degraded', 'registration alone has not acquired host ownership')
+  assert.equal(read().engine.skipped, 1)
+  assert.ok(read().reasons.includes('NO_TASK'))
+  h.config.cognition.reminders.enabled = false
+  await h.service.tick()
+  assert.ok(read().reasons.includes('BUSINESS_DISABLED'))
+  h.config.cognition.reminders.enabled = true
+  h.add()
+  await h.scheduler.advance(60000)
+  await h.service.tick()
+  assert.ok(read().engine.failed >= 1)
+  assert.equal(read().lastError.reasonCode, 'REMINDER_TICK_FAILED')
+  assert.equal(read().lifecycle, 'loaded')
+  assert.doesNotMatch(JSON.stringify(read()), /PRIVATE_ERROR/)
+})
+
+
+test('builtin delivery attribution is captured at the service boundary', async t => {
+  const calls = []
+  const h = await harness(t, { delivery: { async deliver(input) { calls.push(input); return { ok: true } } } })
+  await h.api.delivery.send({ ...target, text: 'hello' })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].moduleId, 'builtin-reminders')
+  assert.equal(calls[0].runtimeGeneration, h.kernel.list().find(row => row.id === 'builtin-reminders').runtimeGeneration)
 })

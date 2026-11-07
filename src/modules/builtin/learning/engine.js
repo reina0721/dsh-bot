@@ -1,5 +1,6 @@
+import { reportEngine } from '../../health.js'
 // Learning policy and orchestration; core owns all records, external content and model calls.
-export function createLearningEngine({ port, getConfig, scheduler } = {}) {
+export function createLearningEngine({ port, getConfig, scheduler, health } = {}) {
   let active = false, timer = null, generation = 0, unsubscribe = null, flight = null, currentLease = null
   const state = { lastError: '', completed: 0 }
   const live = epoch => active && epoch === generation
@@ -38,16 +39,24 @@ export function createLearningEngine({ port, getConfig, scheduler } = {}) {
     const epoch = generation
     // Defer work so even synchronous failures are inside the shared single-flight.
     const work = Promise.resolve().then(async () => {
+      reportEngine(health, 'started')
       const config = getConfig()
-      if (!config.enabled || (automatic && !config.autoResearch)) return []
+      if (!config.enabled || (automatic && !config.autoResearch)) { reportEngine(health, 'skipped', 'BUSINESS_DISABLED'); return [] }
       const tasks = port.pending({ limit: automatic ? 1 : Math.max(1, Math.min(50, Number(max) || 1)) })
       const results = []
       for (const task of tasks) {
         if (!live(epoch)) break
         results.push(await runTask(task, { mode: automatic ? 'auto' : 'manual', epoch }))
       }
+      if (!live(epoch)) return results
+      const failed = results.some(result => result?.ok === false)
+      const completed = results.some(result => result?.ok === true)
+      reportEngine(health, failed ? 'failure' : completed ? 'success' : 'skipped', failed ? 'LEARNING_RUN_FAILED' : completed ? null : 'NO_TASK')
       return results
-    }).catch(() => ({ ok: false, reason: live(epoch) ? 'LEARNING_DISABLED' : 'MODULE_DISABLED' }))
+    }).catch(() => {
+      reportEngine(health, 'failure', 'LEARNING_RUN_FAILED')
+      return { ok: false, reason: live(epoch) ? 'LEARNING_DISABLED' : 'MODULE_DISABLED' }
+    })
     flight = work
     work.finally(() => { if (flight === work) flight = null })
     return work

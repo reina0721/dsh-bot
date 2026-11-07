@@ -121,3 +121,51 @@ test('LLM dual usage: global stays global, persona is isolated and dropped, neit
   assert.equal(scoped.get('llm_usage', '2026-11-06').tokens, 450)
   assert.equal(scoped.get('llm_usage', '2026-11-05').tokens, 150)
 })
+
+test('persona observation kinds: scoped, excluded from copy, removed by persona deletion', async t => {
+  const { createLoopObserver } = await import('../src/observability/loop.js')
+  const { base, persona, scoped } = setup()
+  t.after(() => base.close())
+  const source = persona.activeId()
+  const other = persona.create({ name: 'Other' }).persona
+  persona.activate(source)
+  const observer = createLoopObserver({ base, getPersonaId: scoped.currentPersonaId, clock })
+  const loop = observer.begin({ turnId: 'turn_1' })
+  observer.beginDelivery(loop)
+  assert.equal(copyPersonaData({ base, from: source, to: other.id }).ok, true)
+  for (const kind of ['loop_run', 'delivery_receipt']) {
+    assert.equal(PERSONA_DATA_KINDS.includes(kind), false)
+    assert.equal(base.count(scopedPersonaKind(source, kind)), 1)
+    assert.equal(base.count(scopedPersonaKind(other.id, kind)), 0)
+  }
+  dropPersonaData({ base, personaId: source })
+  for (const kind of ['loop_run', 'delivery_receipt']) assert.equal(base.count(scopedPersonaKind(source, kind)), 0)
+})
+
+test('feedback receipts stay with original persona, never copy observation history or fabricate joins', async t => {
+  const { createLoopObserver } = await import('../src/observability/loop.js')
+  const { createLoopQuery } = await import('../src/observability/loop-query.js')
+  const { createPolicyService } = await import('../src/cognition/policy.js')
+  const { base, persona, scoped } = setup(); t.after(() => base.close())
+  const source = persona.activeId(), other = persona.create({ name: 'Other' }).persona
+  persona.activate(source)
+  const observer = createLoopObserver({ base, getPersonaId: scoped.currentPersonaId, clock })
+  const query = createLoopQuery({ observer, store: scoped, clock })
+  const policy = createPolicyService({ store: scoped, observer, clock, getConfig: () => ({}) })
+  scoped.put('decision', 'd', { action: 'reply', contextKey: 'bucket', status: 'sent' })
+  const loop = observer.begin({ turnId: 'turn_1' })
+  observer.recordStage(loop, 'decided', { decisionId: 'd' })
+  observer.finishDelivery(observer.beginDelivery(loop), { status: 'sent', parts: 1, failedPart: null, errorCode: null })
+  observer.finishLoop(loop)
+  policy.recordOutcome('d', { positiveReaction: true }, { source: 'reaction', dedupeKey: 'reaction_1' })
+  const id = query.runs().items[0].id
+  assert.equal(query.detail({ id }).receipts.length, 2)
+  copyPersonaData({ base, from: source, to: other.id })
+  persona.activate(other.id)
+  assert.equal(query.detail({ id }).code, 'LOOP_NOT_FOUND')
+  assert.equal(query.detail({ decisionId: 'd' }).code, 'LOOP_NOT_FOUND')
+  assert.equal(scoped.count('policy'), 1, 'business copy remains independent')
+  persona.activate(source); dropPersonaData({ base, personaId: source })
+  assert.equal(query.detail({ id }).code, 'LOOP_NOT_FOUND')
+  assert.equal(base.count(scopedPersonaKind(source, 'delivery_receipt')), 0)
+})

@@ -62,6 +62,12 @@ function queryOf(req) {
   }
 }
 
+function loopQueryOf(req) {
+  const params = new URL(req.url, 'http://dsh.local').searchParams
+  if ([...params.keys()].some(key => params.getAll(key).length !== 1)) return { invalid: true }
+  return Object.fromEntries(params)
+}
+
 function toInt(value, fallback, min, max) {
   const n = Number(value)
   if (!Number.isFinite(n)) return fallback
@@ -81,7 +87,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -155,6 +161,25 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     }
   }
 
+  // Same management registration and sandbox rejection as every host API.
+  const loopRead = work => { try { return work() } catch { return { ok: false, code: 'LOOP_READ_UNAVAILABLE' } } }
+  route('GET', '/system/loop/runs', req => loopRead(() => cognition.loopRuns(loopQueryOf(req))))
+  route('GET', '/system/loop/detail', req => loopRead(() => cognition.loopDetail(loopQueryOf(req))))
+  route('GET', '/system/loop/summary', req => loopRead(() => {
+    if (Object.keys(loopQueryOf(req)).length) return { ok: false, code: 'LOOP_QUERY_INVALID' }
+    const result = cognition.loopSummary()
+    if (!result.ok) return result
+    const gatewayState = gateway?.snapshot?.() || {}
+    const health = modules?.health?.() || { summary: {}, items: [] }
+    return { ...result, processLifetime: { ...result.processLifetime, ingress: ingress?.stats?.() || null },
+      readiness: { cognition: cognition.loopReadiness(), gateway: {
+        state: ['stopped', 'connected', 'connecting', 'disconnected', 'paused', 'unconfigured'].includes(gatewayState.state) ? gatewayState.state : 'unknown',
+        loginCheck: ['off', 'pending', 'ok', 'mismatch', 'error'].includes(gatewayState.loginCheck) ? gatewayState.loginCheck : 'unknown',
+      } },
+      modules: { summary: health.summary, total: health.items.length, limited: health.items.length > 200, items: health.items.slice(0, 200).map(row => ({ moduleId: row.moduleId, health: row.health, lifecycle: row.lifecycle, reasonCode: row.reasonCode, runtimeGeneration: row.runtimeGeneration })) },
+      providers: (providerRegistry?.health?.().items || []).map(row => ({ name: row.name, owner: row.owner, state: row.state, ownerModuleId: row.ownerModuleId, ownerRuntimeGeneration: row.ownerRuntimeGeneration, reasonCode: row.reasonCode, fallback: row.fallback })) }
+  }))
+
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
 
@@ -163,8 +188,8 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     if (!provider) throw new Error('媒体功能模块未启用')
     return provider
   }
-  const authorizeStickers = () => {
-    if (mediaFeatures().authorizeStickers() !== true) throw new Error('表情包功能未启用。')
+  const authorizeStickerLibrary = () => {
+    if (mediaFeatures().authorizeStickerLibrary() !== true) throw new Error('表情包功能未启用。')
   }
   {
     route('GET', '/content/bilibili', async (req) => {
@@ -205,6 +230,13 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }
 
   if (modules) {
+    route('GET', '/modules/health', req => modules.health(queryOf(req).id))
+    route('GET', '/modules/actions', req => modules.actions(queryOf(req).id))
+    route('GET', '/modules/operation', req => modules.getOperation(queryOf(req)))
+    route('POST', '/modules/action', async req => {
+      try { return modules.action(await readBody(req, 2048)) }
+      catch (error) { return { ok: false, code: /^MODULE_/.test(error.code || '') ? error.code : 'MODULE_ACTION_INVALID', message: '模块动作未接纳' } }
+    })
     const configAnswer = async (work) => {
       try {
         const { id, schema, values, revision } = await work()
@@ -242,13 +274,13 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     route('POST', '/modules/reload', async (req) => {
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
-      try { return { ok: true, item: await modules.reload(String(body.id)) } }
+      try { return { ok: true, item: await (modules.list().some(item => item.id === body.id) ? modules.performLegacyAction(String(body.id), 'module.reload') : modules.reload(String(body.id))) } }
       catch (error) { if (error.code?.startsWith('MODULE_')) return { ok: false, code: error.code, message: error.message }; throw error }
     })
     route('POST', '/modules/toggle', async (req) => {
       const body = await readBody(req)
       if (!body?.id || typeof body.enabled !== 'boolean') throw new Error('需要 id 与 enabled(boolean)')
-      try { return { ok: true, item: await modules.setEnabled(String(body.id), body.enabled) } }
+      try { return { ok: true, item: await modules.performLegacyAction(String(body.id), body.enabled ? 'module.enable' : 'module.disable') } }
       catch (error) { if (error.code?.startsWith('MODULE_')) return { ok: false, code: error.code, message: error.message }; throw error }
     })
   }
@@ -256,13 +288,23 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   if (media) {
     route('GET', '/media/status', async () => {
       const stickerStatus = stickers ? await stickers.status() : null
-      let featureStatus = { active: false }, available = false
+      let featureStatus = { active: false }
+      let libraryAvailable = false, sendAvailable = false
+      let libraryReason = 'MODULE_DISABLED', sendReason = 'MODULE_DISABLED'
       try {
         const provider = providerRegistry?.get('mediaFeatures')
         featureStatus = provider?.status() || featureStatus
-        available = provider?.authorizeStickers() === true
-      } catch { /* Status remains readable during provider teardown. */ }
-      return { ok: true, ...media.status(), mediaFeatures: featureStatus, stickers: stickerStatus ? { ...stickerStatus, available } : null }
+        libraryAvailable = provider?.authorizeStickerLibrary() === true
+        sendAvailable = provider?.authorizeStickerSend() === true
+        libraryReason = libraryAvailable ? null : featureStatus.libraryReason || (provider ? 'LIBRARY_UNAVAILABLE' : 'MODULE_DISABLED')
+        sendReason = sendAvailable ? null : featureStatus.sendReason || libraryReason || 'DELIVERY_UNAVAILABLE'
+      } catch {
+        // Status stays readable and fails closed during provider teardown.
+        featureStatus = { active: false }
+        libraryAvailable = sendAvailable = false
+        libraryReason = sendReason = 'MODULE_DISABLED'
+      }
+      return { ok: true, ...media.status(), mediaFeatures: featureStatus, stickers: { ...stickerStatus, available: libraryAvailable, libraryAvailable, sendAvailable, libraryReason, sendReason } }
     })
     route('GET', '/media/files', async () => ({ ok: true, ...await media.listFiles() }))
     route('GET', '/media/file/download', async (req) => ({ ok: true, ...await media.readFile(queryOf(req).name) }))
@@ -299,49 +341,54 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   if (stickers) {
     route('GET', '/media/stickers', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const query = queryOf(req)
       const items = await stickers.list({ query: query.query || '', tag: query.tag || '', limit: toInt(query.limit, 100, 1, 500) })
-      authorizeStickers()
+      authorizeStickerLibrary()
       return { ok: true, items }
     })
     route('POST', '/media/stickers/upload', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const maxBytes = Math.max(1024, Number(getConfig()?.media?.stickers?.maxBytes) || 5 * 1024 * 1024)
       const body = await readBody(req, Math.ceil(maxBytes * 4 / 3) + 16384)
       const data = String(body?.data || '').trim()
       if (!body?.name || !body?.mime || !data) throw new Error('缺少 name、mime 或 data')
       if (data.length > Math.ceil(maxBytes * 4 / 3) + 8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data) || data.length % 4 !== 0) throw new Error('data 不是合法 base64 或超过大小限制')
-      authorizeStickers()
+      authorizeStickerLibrary()
       const buffer = Buffer.from(data, 'base64')
       if (buffer.length > maxBytes) throw new Error(`图片超过大小限制 ${maxBytes} bytes`)
-      return { ok: true, item: await stickers.importBuffer(buffer, { name: body.name, mime: body.mime, tags: body.tags }) }
+      const item = await stickers.importBuffer(buffer, { name: body.name, mime: body.mime, tags: body.tags })
+      authorizeStickerLibrary()
+      return { ok: true, item }
     })
     route('POST', '/media/stickers/tag', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
-      authorizeStickers()
+      authorizeStickerLibrary()
       const item = await stickers.updateTags(body.id, body.tags)
+      authorizeStickerLibrary()
       if (!item) throw new Error('表情包不存在')
       return { ok: true, item }
     })
     route('POST', '/media/stickers/delete', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
-      authorizeStickers()
-      return { ok: true, removed: await stickers.remove(body.id) }
+      authorizeStickerLibrary()
+      const removed = await stickers.remove(body.id)
+      authorizeStickerLibrary()
+      return { ok: true, removed }
     })
     routeRaw('GET', '/media/stickers/file', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const id = queryOf(req).id
       if (!id) throw new Error('缺少 id')
       const file = await stickers.fileFor(id)
       if (!file) throw new Error('表情包不存在')
-      authorizeStickers()
+      authorizeStickerLibrary()
       const body = await readFile(file.path)
-      authorizeStickers()
+      authorizeStickerLibrary()
       return { __raw: true, type: file.mime, body }
     })
   }
@@ -573,7 +620,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     route('POST', '/cognition/decision/correct', async (req) => {
       const body = await readBody(req)
       if (!body?.decisionId) throw new Error('缺少 decisionId')
-      return { ok: true, outcome: cognition.correctDecision(body.decisionId, body.observation || {}) }
+      return { ok: true, outcome: cognition.correctDecision(body.decisionId, body.observation || {}, body.requestId) }
     })
     route('GET', '/cognition/policy/stats', async () => ({ ok: true, stats: cognition.policyStats() }))
     route('POST', '/cognition/policy/reset', async () => ({ ok: true, ...cognition.resetPolicy() }))
@@ -585,7 +632,10 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       return { ok: true, belief: cognition.correctBelief(String(body.id), body.patch || {}) }
     })
     route('GET', '/cognition/proactivity', async () => ({ ok: true, stats: cognition.proactivityStats() }))
-    route('POST', '/cognition/proactivity/run', async () => ({ ok: true, result: await cognition.runProactivity() }))
+    route('POST', '/cognition/proactivity/run', async () => {
+      try { return { ok: true, result: await (modules ? modules.performLegacyAction('builtin-proactivity', 'proactivity.runOnce') : cognition.runProactivity()) } }
+      catch (error) { return { ok: true, result: { ok: false, reason: error.code || 'MODULE_ACTION_FAILED' } } }
+    })
     route('POST', '/cognition/skill/use', async (req) => {
       const body = await readBody(req)
       return { ok: true, skill: cognition.skillUse(String(body?.name || ''), body?.success === true ? true : body?.success === false ? false : null) }
@@ -604,7 +654,8 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     })
     route('POST', '/cognition/learning/run', async (req) => {
       const body = await readBody(req)
-      return { ok: true, results: await cognition.runLearning({ max: body?.max || 1 }) }
+      try { return { ok: true, results: await (modules ? modules.performLegacyAction('builtin-learning', 'learning.runPending', body?.max || 1) : cognition.runLearning({ max: body?.max || 1 })) } }
+      catch (error) { return { ok: true, results: { ok: false, reason: error.code || 'MODULE_ACTION_FAILED' } } }
     })
     route('POST', '/cognition/learning/task/retry', async (req) => {
       const body = await readBody(req)

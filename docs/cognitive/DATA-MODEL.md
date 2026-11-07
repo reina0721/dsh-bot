@@ -63,6 +63,8 @@
 | `proactive_intents` | id, target_person_id, chat_type, chat_id, reason, due_at, status, budget_key, created_at | 主动行为 |
 | `audit_log` | id, actor(ui/autonomous/system), action, entity, detail_json, created_at | 管理/删除/重置审计 |
 
+`decisions.status` 是兼容流程字段，实际还可能包含 `dry_run/observed`；它不是送达真相。闭环 v2 的真实投递语义与逻辑记录见第 6 节，待实现后从唯一 delivery receipt 读取 status/parts，不能据旧 decision 回填历史回执。
+
 ## 3. 关键接口
 
 ```js
@@ -93,3 +95,22 @@ createStore({ dir, clock, log }) -> {
 - `PRAGMA user_version`；迁移按顺序原子执行；迁移前 `VACUUM INTO backups/cognition-vN-<ts>.sqlite`。
 - 失败：关闭写入、把错误暴露到 `/cognition/overview`，平台仍可运行；保留备份路径。
 - JSON fallback：同一仓储接口，文件 `cognition-state.json`；明确 `storage=json-fallback`。
+
+## 6. 闭环 v2 逻辑记录（C02 已批准，待实现）
+
+权威 schema/枚举、API 与单写责任见 [ADR-019](../architecture/ADR-019-system-closed-loop.md)；模块健康与 runtimeGeneration 见 [ADR-018](../architecture/ADR-018-module-closed-loop.md)。以下为后续逻辑模型，不代表已有物理表、迁移或 API。
+
+| 逻辑记录 | 关键字段与契约 |
+| --- | --- |
+| `loop` | version/id/personaId/kind/status/stage；turnId/decisionId/unknownId/taskId/firstDetectedTurnId/moduleId/runtimeGeneration 可为 null；startedAt/updatedAt/completedAt/reasonCode。kind 为 social/proactivity/research，status 为 running/completed/failed/interrupted |
+| `receipt` | version/id/loopId/personaId/kind/eventId；turnId/decisionId/taskId/runtimeGeneration/attemptId 可为 null；occurredAt/recordedAt 与按 kind 白名单 data，不接受任意业务 JSON |
+| delivery data | status 为 sent/partial/failed/dry_run/empty，parts 为实际成功条数，failedPart 为 0-based 或 null，errorCode 为固定码；核心统一交付适配器单写，沿用 ADR-006 |
+| no_send data | WAIT/SILENCE/GATED/EMPTY_OUTPUT/CANCELLED/MODULE_DISABLED/STALE_CONTEXT 与固定 gateCode；未进入交付边界不虚构 failed delivery |
+| feedback data | source/sourceEventId/attribution/attributionConfidence/observation/reward/outcomeId/policyUpdated；receipt、outcome、decision 关联与 policy 累计同一同步事务去重提交；unobserved 的 reward/outcomeId 为 null，policyUpdated 为 false，不更新 trials/alpha/beta |
+| research data | status/unknownId/firstDetectedTurnId/evidenceCount/claimId/errorCode；首次检测仅记录真实 turn.id，重复检测不覆盖，旧数据缺失为 null，不推断或回填历史 |
+
+上述记录仅含内部不透明关联 ID、固定码、时间与有界计数/分数，不含正文、prompt/模型输出、查询词、unknown surface/context、URL/证据、平台聊天/用户 ID、路径、凭据或原异常。反馈平台消息关联留在原人格私有业务映射。空值表示未观察/不适用，不等于 0、false 或已失败。
+
+loop 与 receipt 每人格**合计**最多 5000 条，最长 7 天；先到任一上限即按最旧 loop 连同回执整组清理，更新不延长寿命，不能留下悬空引用。此特定保留策略优先于第 4 节其它实体的保留期，不删除原 decision/outcome/task/claim 或回滚 policy；GET 不执行清理且不返回超期数据。
+
+写入捕获原人格及切换代次，跨 await 不写到新人格；查询、去重、删除与限额均隔离，删除人格删除观测历史，复制人格不复制运行观测记录。业务与外部 I/O 无跨系统原子性，回执缺失显示未知；初始化把遗留 running loop 标为 interrupted，保留已有回执，不自动重发/续跑，不承诺 exactly-once。模块 operation registry 则仅存在当前进程，不混入人格认知数据或反馈策略学习。

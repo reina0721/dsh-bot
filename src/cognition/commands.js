@@ -94,13 +94,13 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
-  function registerCommand(name, handler, { ownerOnly = true, allowProtected = false, audience } = {}) {
+  function registerCommand(name, handler, { ownerOnly = true, allowProtected = false, audience, moduleId = null, runtimeGeneration = null } = {}) {
     const normalized = String(name || '').toLowerCase()
     if (!EXTERNAL_COMMAND_RE.test(normalized)) throw new Error('命令名必须匹配 ^[a-z][a-z0-9_-]{0,31}$')
     if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
     if ((COMMANDS.includes(normalized) && allowProtected !== true) || externalCommands.has(normalized)) throw new Error(`命令 /${normalized} 已注册`)
     if (audience !== undefined && !['owner', 'owner-or-operator'].includes(audience)) throw new Error('命令 audience 不合法')
-    const registration = { handler, ownerOnly: ownerOnly !== false, audience }
+    const registration = { handler, ownerOnly: ownerOnly !== false, audience, moduleId, runtimeGeneration }
     externalCommands.set(normalized, registration)
     return () => {
       if (externalCommands.get(normalized) === registration) externalCommands.delete(normalized)
@@ -148,7 +148,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     return '仅点名/唤醒'
   }
 
-  async function send(turn, text) {
+  async function sendReply(turn, text, context = {}) {
     const value = String(text || '').trim()
     if (!value) return { handled: true, reply: '' }
     const sender = delivery?.deliver ? delivery : outbound
@@ -161,6 +161,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         chatId: turn.chatId,
         segments: [{ type: 'text', data: { text: value } }],
         source: 'command',
+        ...context,
       })
       return { handled: true, reply: result?.ok ? value : '', error: result?.error || '' }
     } catch (error) {
@@ -176,7 +177,8 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     } catch (error) { return false }
   }
 
-  async function handleAdmin(turn, parsed) {
+  async function handleAdmin(turn, parsed, context = {}) {
+    const send = (target, text) => sendReply(target, text, context)
     // Gate both replies and side effects before inspecting arguments or services.
     if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
     if (!ADMIN_COMMANDS.includes(parsed.name)) return send(turn, '审批动作无效。')
@@ -317,7 +319,9 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     return `当前会话模型已设为 ${args}。`
   }
 
-  async function handle(turn) {
+  async function handle(turn, { loop = null } = {}) {
+    const context = loop ? { loop } : {}
+    const send = (target, text) => sendReply(target, text, context)
     if (!turn || typeof turn.text !== 'string') return { handled: false }
     // Only the internal approved replay may set this capability.
     turn = { ...turn }
@@ -347,6 +351,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     if (operatorSafe && !canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
 
     if (external) {
+      const send = (target, text) => sendReply(target, text, { ...context, moduleId: external.moduleId, runtimeGeneration: external.runtimeGeneration })
       // 受保护命令的覆盖也必须先通过会话访问闸门，再执行模块副作用。
       if (COMMANDS.includes(parsed.name) && !canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
       try {
@@ -379,7 +384,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         let ok = false
         try {
           if (row.status === 'approved' && ADMIN_COMMANDS.includes(row.action)) {
-            const result = await handleAdmin({ chatType: row.chatType, chatId: row.chatId, senderId: row.senderId, approvalBypass: true }, { name: row.action, args: row.args })
+            const result = await handleAdmin({ chatType: row.chatType, chatId: row.chatId, senderId: row.senderId, approvalBypass: true }, { name: row.action, args: row.args }, context)
             ok = result?.actionOk === true
           }
         } finally { approvals.complete(row.id, { ok }) }
@@ -408,7 +413,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       } catch { return send(turn, '请求处理失败：请检查 ID、待办状态及网关状态与权限。') }
     }
 
-    if (ADMIN_COMMANDS.includes(parsed.name)) return handleAdmin(turn, parsed)
+    if (ADMIN_COMMANDS.includes(parsed.name)) return handleAdmin(turn, parsed, context)
 
     if (parsed.name === 'help') {
       const names = [...externalCommands.entries()]
@@ -467,7 +472,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       const sender = delivery?.deliver ? delivery : outbound
       if (!sender?.deliver) return { handled: true, reply: '', error: 'OUTBOUND_UNAVAILABLE' }
       try {
-        const result = await sender.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command' })
+        const result = await sender.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command', ...context })
         return { handled: true, reply: '', error: result?.ok ? '' : (result?.error || 'SEND_FAILED') }
       } catch (error) { return { handled: true, reply: '', error: String(error?.message || error) } }
     }

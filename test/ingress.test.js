@@ -203,3 +203,23 @@ test('ingress: existing normalized raw field is preserved without copying the en
   assert.strictEqual(record.raw, raw)
   assert.deepEqual(record, { seq: 1, ...normalizeEvent(raw, {}) })
 })
+
+test('ingress: content-free aggregates count admission/rejection/filtering and isolate clock failure', () => {
+  const h = fixture()
+  h.handleRaw(h.raw)
+  h.deps.access.decideRaw = () => ({ allowed: false, reason: 'PRIVATE_REASON' })
+  h.handleRaw(h.raw)
+  const counts = h.stats()
+  assert.equal(counts.received, 2)
+  assert.equal(counts.admitted, 1)
+  assert.equal(counts.rejected, 1)
+  assert.ok(counts.firstAt <= counts.lastAt)
+  assert.doesNotMatch(JSON.stringify(counts), /PRIVATE_|raw-secret|reason|chatId/)
+  counts.rejected = 100
+  assert.equal(h.stats().rejected, 1)
+  const filtered = fixture({ pushed: { accepted: false, reason: 'filter' } })
+  filtered.handleRaw(filtered.raw)
+  assert.equal(filtered.stats().filtered, 1)
+  const broken = createIngressCoordinator({ ...h.deps, access: { decideRaw: () => ({ allowed: true }) }, clock: { now() { throw Error('observer') } } })
+  assert.equal(broken.handleRaw(h.raw).accepted, true)
+})

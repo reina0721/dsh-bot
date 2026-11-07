@@ -2599,7 +2599,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const hasHead = props.title || props.description || props.actions
       return h(
         'section',
-        { className: cx('ob-panel', appearance === 'elevated' ? '' : appearance, props.className) },
+        { id: props.id, className: cx('ob-panel', appearance === 'elevated' ? '' : appearance, props.className) },
         hasHead
           ? h(
               'div',
@@ -4082,7 +4082,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         () => systemFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui' && !String(group.id).startsWith('cog-')),
         [configInfo],
       )
-      const [active, setActive] = useState('')
+      const [active, setActive] = useState(props.navigation?.section || '')
+      useEffect(() => { if (props.navigation?.section) setActive(props.navigation.section) }, [props.navigation])
       useEffect(() => {
         if (!groups.length) return
         if (!groups.some((group) => group.id === active)) setActive(groups[0].id)
@@ -5272,6 +5273,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'emotion', label: '情绪', icon: 'heart' },
       { id: 'purpose', label: '目的', icon: 'target' },
       { id: 'policy', label: '策略', icon: 'target' },
+      { id: 'proactivity', label: '主动行为', icon: 'bolt' },
+      { id: 'loop', label: '闭环', icon: 'link' },
       { id: 'learning', label: '学习', icon: 'book' },
       { id: 'skills', label: '技能', icon: 'chart' },
       { id: 'meta', label: '元认知', icon: 'chart' },
@@ -5392,8 +5395,264 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
     }
 
+    // Navigation destinations and actions are host-owned, never read from external manifests.
+    /** @typedef {{tab:string, section?:string, moduleId?:string, anchor?:string, decisionId?:string, taskId?:string}} NavigationTarget */
+    function navigationTarget(value) {
+      if (!isPlainObject(value) || !TABS.some(tab => tab.id === value.tab)) throw new TypeError('无效导航目标')
+      const target = { tab: value.tab }
+      for (const key of ['section', 'moduleId', 'anchor', 'decisionId', 'taskId']) {
+        if (value[key] == null || value[key] === '') continue
+        if (typeof value[key] !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/.test(value[key])) throw new TypeError('无效导航字段')
+        target[key] = value[key]
+      }
+      return target
+    }
+    const MODULE_DESTINATIONS = Object.freeze({
+      'builtin-media-features': [{ label: 'B站公共内容', target: { tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' } }, { label: '表情包库', target: { tab: 'media', anchor: 'stickers' } }],
+      'builtin-proactivity': [{ label: '主动行为', target: { tab: 'cognition', section: 'proactivity' } }],
+      'builtin-learning': [{ label: '学习', target: { tab: 'cognition', section: 'learning' } }],
+      'builtin-reminders': [{ label: '提醒数据', target: { tab: 'modules', moduleId: 'builtin-reminders', anchor: 'reminders' } }],
+    })
+    const ACTION_LABELS = Object.freeze({ 'module.enable': '启用', 'module.disable': '停用', 'module.restart': '重启', 'module.reload': '重载', 'proactivity.runOnce': '执行一次主动行为', 'learning.runPending': '运行待处理' })
+    const operationTerminal = operation => ['succeeded', 'failed', 'cancelled'].includes(operation?.status)
+    const operationSucceeded = operation => operation?.status === 'succeeded' && operation?.result?.ok === true
+    const observedValue = value => value == null ? '未观察' : typeof value === 'boolean' ? (value ? '是' : '否') : String(value)
+    function destinationButton(props, label, target) {
+      return h(Btn, { small: true, kind: 'ghost', onClick: () => props.goTo?.(target) }, label)
+    }
+    function moduleBacklink(props, moduleId) {
+      return destinationButton(props, '返回模块详情', { tab: 'modules', moduleId })
+    }
+    function useNavigationAnchor(props, prefix, ready = true) {
+      useEffect(() => {
+        if (!ready || !props.navigation?.anchor) return
+        // Run after the destination has committed, including same-tab requests.
+        const timer = setTimeout(() => document.getElementById(prefix + props.navigation.anchor)?.scrollIntoView?.({ block: 'start' }), 0)
+        return () => clearTimeout(timer)
+      }, [props.navigation, prefix, ready])
+    }
+    function metadataRows(data, keys) {
+      return h('dl', { className: 'ob-small' }, keys.map(key => h(Fragment, { key }, h('dt', null, key), h('dd', null, observedValue(data?.[key])))))
+    }
+    function CoreModuleHealth(props) {
+      const api = useCogApi(props, '/modules/health?id=' + encodeURIComponent(props.moduleId))
+      const health = safeArray(api.data?.items).find(row => row.moduleId === props.moduleId)
+      return h(Panel, { title: '核心健康', description: '核心缓存快照；未观察的计数不等于零。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新健康') },
+        api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
+        !health ? h('p', null, api.loading ? '加载健康…' : '健康不可用') : h(Fragment, null,
+          metadataRows(health, ['lifecycle', 'phase', 'health', 'reasonCode', 'runtimeGeneration', 'telemetryGeneration', 'observedAt']),
+          h('p', null, 'reasons：' + (safeArray(health.reasons).join(' · ') || '未观察')),
+          h('h3', null, 'lastError'), health.lastError ? metadataRows(health.lastError, ['reasonCode', 'observedAt', 'runtimeGeneration']) : h('p', null, '未观察'),
+          h('h3', null, 'Provider 注册与实际所有者'),
+          safeArray(health.providers).length ? health.providers.map(row => h('div', { key: row.name }, metadataRows(row, ['name', 'registeredModuleId', 'owner', 'ownerModuleId', 'ownerRuntimeGeneration', 'state', 'phase', 'reasonCode']), h('p', null, 'fallback：' + observedValue(row.fallback?.active) + ' · ' + observedValue(row.fallback?.reasonCode)))) : h('p', null, '不适用（无 Provider）'),
+          h('h3', null, '依赖'), safeArray(health.dependencies).length ? health.dependencies.map(row => h('p', { key: row.moduleId }, row.moduleId + ' · available：' + observedValue(row.available))) : h('p', null, '不适用（无依赖）'),
+          h('h3', null, '调度计数'), metadataRows(health.scheduler, ['active', 'running', 'scheduled', 'fired', 'cancelled', 'completed', 'failed', 'nextDueAt']),
+          h('h3', null, '引擎计数'), metadataRows(health.engine, ['runs', 'succeeded', 'failed', 'skipped', 'inFlight']),
+          h('h3', null, '遥测'), metadataRows(health.telemetry, ['lastStartedAt', 'lastStoppedAt', 'lastSuccessAt', 'lastFailureAt', 'nextRunAt', 'inFlight', 'timerScheduled']),
+        ),
+      )
+    }
+    async function readCoreApi(path) {
+      const result = await get(path)
+      if (result?.ok !== true) throw Error(result?.code || 'API_UNAVAILABLE')
+      return result
+    }
+    async function pollModuleOperation(operation, { onOperation = () => {}, current = () => true, wait = () => new Promise(resolve => setTimeout(resolve, 750)) } = {}) {
+      while (current()) {
+        onOperation(operation)
+        if (operationTerminal(operation)) return operation
+        if (operation.id) await wait()
+        if (!current()) return null
+        const result = await readCoreApi('/modules/operation' + buildQuery(operation.id ? { id: operation.id } : { requestId: operation.requestId }))
+        if (!current()) return null
+        operation = result.operation
+        if (!operation?.id) throw Error('MODULE_OPERATION_UNAVAILABLE')
+      }
+      return null
+    }
+    async function invokeModuleAction(moduleId, actionId, options = {}) {
+      if (!Object.hasOwn(ACTION_LABELS, actionId)) throw Error('MODULE_ACTION_UNAVAILABLE')
+      const catalog = options.catalog || await readCoreApi('/modules/actions?id=' + encodeURIComponent(moduleId))
+      if (catalog.moduleId !== moduleId || !safeArray(catalog.items).some(row => row.actionId === actionId && row.available === true)) throw Error('MODULE_ACTION_UNAVAILABLE')
+      const effects = actionId === 'proactivity.runOnce' ? '可能调用模型并向 QQ 发送消息，消耗预算。' : actionId === 'learning.runPending' ? '执行队列中到期任务，可能进行外部检索、调用模型并写入学习结果，消耗预算。' : '将改变模块生命周期及依赖模块；启用或恢复调度后可能调用模型或发送消息。'
+      if (!window.confirm(ACTION_LABELS[actionId] + '？' + effects)) return null
+      const body = { moduleId, actionId, expectedGeneration: catalog.expectedGeneration, requestId: globalThis.crypto.randomUUID() }
+      for (const key of ['expectedPersonaId', 'expectedPersonaGeneration']) if (catalog[key] != null) body[key] = catalog[key]
+      const pending = { requestId: body.requestId, status: 'queued', phase: 'admission' }
+      options.onOperation?.(pending)
+      let result
+      try { result = await post('/modules/action', body) }
+      catch { return pollModuleOperation(pending, options) }
+      // The shared request helper turns transport/JSON errors into code-less failures.
+      // Admission may have happened: recover by the original requestId, never resubmit.
+      if (result?.ok !== true && !result?.code) return pollModuleOperation(pending, options)
+      if (result?.ok !== true) {
+        options.onOperation?.({ ...pending, status: 'failed', phase: 'done', code: result?.code || 'MODULE_ACTION_FAILED', result: { ok: false } })
+        throw Error(result?.code || 'MODULE_ACTION_FAILED')
+      }
+      if (!result.operation?.id) throw Error('MODULE_OPERATION_UNAVAILABLE')
+      return pollModuleOperation(result.operation, options)
+    }
+    function CoreModuleActions(props) {
+      const api = useCogApi(props, '/modules/actions?id=' + encodeURIComponent(props.moduleId))
+      const [operation, setOperation] = useState(null)
+      const [error, setError] = useState('')
+      const [busy, setBusy] = useState(false)
+      const guard = useRef({ active: true, busy: false })
+      useEffect(() => { guard.current.active = true; return () => { guard.current.active = false } }, [])
+      const run = async (actionId, resume = false) => {
+        if (guard.current.busy) return
+        guard.current.busy = true; setBusy(true); setError('')
+        try {
+          const options = { catalog: api.data, current: () => guard.current.active, onOperation: value => { if (guard.current.active) setOperation(value) } }
+          const result = resume ? await pollModuleOperation(operation, options) : await invokeModuleAction(props.moduleId, actionId, options)
+          if (!guard.current.active || !result) return
+          if (operationSucceeded(result)) props.toast?.('动作完成', 'ok')
+          else { setError(result.code || result.status); props.toast?.(result.code || '动作未成功', 'err') }
+          await api.reload(); await props.onSettled?.()
+        } catch (err) { if (guard.current.active) setError(String(err.message || '动作不可用')) }
+        finally { guard.current.busy = false; if (guard.current.active) setBusy(false) }
+      }
+      const content = h('div', { className: 'ob-stack' },
+        api.error || error ? h(Banner, { tone: 'err', message: error || api.error }) : null,
+        h('div', { className: 'ob-row' }, safeArray(api.data?.items).filter(row => Object.hasOwn(ACTION_LABELS, row.actionId) && (!props.actionIds || props.actionIds.includes(row.actionId))).map(row => h('span', { key: row.actionId },
+          h(Btn, { small: true, disabled: busy || Boolean(operation && !operationTerminal(operation)) || !row.available, onClick: () => run(row.actionId) }, ACTION_LABELS[row.actionId]),
+          !row.available ? h('span', { className: 'ob-small ob-muted' }, ' ' + observedValue(row.reasonCode)) : null,
+        )), h(Btn, { small: true, disabled: busy, onClick: api.reload }, '刷新动作')),
+        operation ? h('div', { role: 'status', 'aria-live': 'polite' },
+          h('p', null, 'operation：' + operation.status + ' · ' + operation.phase + (operation.code ? ' · ' + operation.code : '')),
+          operation.status === 'STOP_PENDING' ? h('p', null, 'STOP_PENDING：仍在排空，尚未完成；继续观察同一操作。') : null,
+          !busy && !operationTerminal(operation) ? h(Btn, { small: true, onClick: () => run(null, true) }, '继续观察操作') : null,
+        ) : null,
+      )
+      return props.compact ? content : h(Panel, { title: '核心动作', description: '动作与可用性来自核心；接纳后轮询至终态，忙碌、跳过或失败不表示成功。' }, content)
+    }
+    function ModuleFeatureLinks(props) {
+      if (!props.item.builtin || props.item.source !== 'builtin') return null
+      return h('section', { 'aria-label': '功能入口', className: 'ob-row' },
+        safeArray(MODULE_DESTINATIONS[props.item.id]).map(link => h(Fragment, { key: link.label }, destinationButton(props, link.label, link.target))),
+        destinationButton(props, '配置', { tab: 'modules', moduleId: props.item.id, anchor: 'config' }),
+        destinationButton(props, '闭环', { tab: 'cognition', section: 'loop' }),
+      )
+    }
+    function ReminderData(props) {
+      const api = useCogApi(props, '/cognition/persona/data')
+      const count = safeArray(api.data?.summary?.groups).find(row => row.id === 'reminders')
+      return h(Panel, { title: '提醒数据', description: '当前人格的数据汇总；在对应 QQ 会话使用 /reminders 查询、/forgetreminder 取消。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新提醒') },
+        api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
+        h('p', null, '提醒记录：' + observedValue(count?.count)),
+      )
+    }
+    function CogProactivity(props) {
+      const api = useCogApi(props, '/cognition/proactivity')
+      return h('div', { className: 'ob-stack' }, moduleBacklink(props, 'builtin-proactivity'),
+        h(Panel, { title: '主动行为', description: '当前调度与引擎状态；手动执行仍遵循人格、暂停、安静时段、预算和出站闸门。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新') },
+          api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
+          metadataRows(api.data?.stats, ['active', 'running', 'lastTickAt', 'sent', 'skipped', 'dailyCount']),
+          h(CoreModuleActions, { ...props, moduleId: 'builtin-proactivity', actionIds: ['proactivity.runOnce'], compact: true, onSettled: api.reload }),
+        ), destinationButton(props, '查看闭环', { tab: 'cognition', section: 'loop' }),
+      )
+    }
+    function loopStatus(value) {
+      return ({ not_applicable: '不适用', not_observed: '未观察', unavailable: '不可用', interrupted: '已中断', running: '进行中', completed: '已完成', failed: '失败', sent: '已发送', partial: '部分发送', dry_run: '演练', empty: '空交付' })[value] || observedValue(value)
+    }
+    function LoopDetail(props) {
+      const data = props.data, item = data?.item
+      if (!item) return h('p', null, '详情不可用')
+      const receipts = safeArray(data.receipts), feedback = safeArray(data.feedback), research = safeObject(data.research)
+      const delivery = receipts.filter(row => row.kind === 'delivery')
+      const researchApplicable = item.kind === 'research' || item.taskId || item.unknownId || safeArray(item.unknownRefs).length
+      return h(Panel, { title: '闭环详情', description: '仅展示核心管理投影；缺少观测不代表执行成功。' },
+        h('p', null, '闭环 ' + item.id + ' · ' + item.kind + ' · ' + loopStatus(item.status) + ' · ' + observedValue(item.reasonCode)),
+        h('h3', null, '阶段'), h('ol', null, safeArray(item.stages).map((row, index) => h('li', { key: index }, row.stage + ' · ' + formatDateTime(row.at)))),
+        h('h3', null, '交付回执'),
+        delivery.length ? delivery.map(row => h('div', { key: row.id },
+          h('p', null, loopStatus(row.status) + ' · ' + (row.data ? loopStatus(row.data.status) : '结果未观察') + ' · attemptedParts：' + observedValue(row.attemptedParts) + ' · sent parts：' + observedValue(row.data?.parts)),
+          row.data ? h('p', null, 'failedPart：' + (['sent', 'dry_run', 'empty'].includes(row.data.status) ? '不适用' : observedValue(row.data.failedPart)) + ' · errorCode：' + observedValue(row.data.errorCode)) : null,
+        )) : h('p', null, item.kind === 'research' ? '不适用' : '未观察（未保留交付回执）'),
+        h('h3', null, '反馈与来源'),
+        feedback.length ? feedback.map(row => h('div', { key: row.id }, metadataRows(row, ['source', 'attribution', 'attributionConfidence', 'reward']),
+          h('p', null, 'policy committed：' + (row.policyUpdated === true ? '已提交' : row.policyUpdated === false ? '未提交' : '未观察')),
+          h('p', null, 'policy before'), metadataRows(row.policyBefore, ['alpha', 'beta', 'trials', 'rewardSum']),
+          h('p', null, 'policy after'), metadataRows(row.policyAfter, ['alpha', 'beta', 'trials', 'rewardSum']),
+        )) : h('p', null, item.kind === 'research' ? '不适用' : '未观察'),
+        receipts.filter(row => row.kind === 'feedback').map(row => h('div', { key: row.id }, '反馈回执 · ' + loopStatus(row.status) + ' · ' + observedValue(row.data?.source) + ' · ' + observedValue(row.data?.attribution) + ' · policy committed：' + observedValue(row.data?.policyUpdated), metadataRows(row.data, ['observation', 'attributionConfidence', 'reward']))),
+        h('h3', null, '研究关联'), !researchApplicable ? h('p', null, '不适用') : h('div', null,
+          metadataRows(research, ['taskCount', 'evidenceCount', 'claimCount', 'linksLimited']),
+          ['unknowns', 'tasks', 'evidence', 'claims'].map(kind => h('div', { key: kind }, h('h4', null, kind), safeArray(research[kind]).length ? research[kind].map(row => h('div', { key: row.id },
+            h('p', null, row.id + (row.status ? ' · ' + row.status : '')),
+            destinationButton(props, kind === 'tasks' ? '查看学习任务' : '查看学习关联', { tab: 'cognition', section: 'learning', ...(row.taskId || kind === 'tasks' ? { taskId: row.taskId || row.id } : {}), anchor: kind === 'claims' ? 'claims' : kind === 'unknowns' ? 'unknowns' : 'tasks' }),
+          )) : h('p', null, '未观察'))),
+          receipts.filter(row => row.kind === 'research').map(row => h('div', { key: row.id }, h('p', null, '研究回执 · ' + loopStatus(row.status)), metadataRows(row.data, ['status', 'evidenceCount', 'errorCode']))),
+        ),
+        item.decisionId ? destinationButton(props, '查看决策', { tab: 'cognition', section: 'policy', decisionId: item.decisionId }) : null,
+        item.moduleId ? moduleBacklink(props, item.moduleId) : null,
+      )
+    }
+    function CogLoop(props) {
+      const [view, setView] = useState(null)
+      const [error, setError] = useState('')
+      const [selected, setSelected] = useState(props.navigation?.decisionId ? { decisionId: props.navigation.decisionId } : null)
+      const [before, setBefore] = useState('')
+      const [loading, setLoading] = useState(false)
+      const request = useRef(0)
+      const selectedKey = JSON.stringify(selected)
+      useEffect(() => { setSelected(props.navigation?.decisionId ? { decisionId: props.navigation.decisionId } : null); setBefore(''); setView(null) }, [props.navigation])
+      const load = useCallback(async () => {
+        const epoch = ++request.current
+        setLoading(true); setError('')
+        try {
+          const summary = await readCoreApi('/system/loop/summary')
+          const [runs, detail] = await Promise.all([
+            readCoreApi('/system/loop/runs?limit=50' + (before ? '&before=' + encodeURIComponent(before) : '')),
+            selected ? readCoreApi('/system/loop/detail' + buildQuery(selected)).catch(err => ({ error: String(err.message) })) : Promise.resolve(null),
+          ])
+          const current = await readCoreApi('/system/loop/summary')
+          if (summary.personaId !== current.personaId || runs.items.some(row => row.personaId !== current.personaId) || (detail?.item && detail.item.personaId !== current.personaId)) throw Error('当前人格已变化，请刷新')
+          if (epoch === request.current) setView({ summary: current, runs, detail: detail?.item ? detail : null, detailError: detail?.error || '' })
+        } catch (err) { if (epoch === request.current) { setView(null); setError(String(err.message || 'LOOP_READ_UNAVAILABLE')) } }
+        finally { if (epoch === request.current) setLoading(false) }
+      }, [before, selectedKey])
+      useEffect(() => { setView(null); load(); return () => { request.current++ } }, [load])
+      const retained = view?.summary?.retained, business = view?.summary?.businessRecords
+      return h('div', { className: 'ob-stack' },
+        h(Panel, { title: '闭环', description: '当前人格；保留期内观测与业务记录分别统计。页面按需刷新，不展示原文、QQ 标识或事件标识。', actions: h(Btn, { small: true, disabled: loading, onClick: load }, '刷新闭环') },
+          error ? h(Banner, { tone: 'err', message: '闭环不可用：' + error }) : null,
+          loading ? h('p', null, '加载闭环…') : null,
+          retained ? h(Fragment, null,
+            metadataRows(retained, ['loops', 'receipts', 'attemptedDeliveries', 'attemptedParts', 'sentParts', 'sentPartsComplete', 'retentionMs', 'maxRecords']),
+            h('h3', null, '运行状态'), metadataRows(retained.loopStates, ['running', 'completed', 'failed', 'interrupted']),
+            h('h3', null, '阶段'), metadataRows(retained.stages, ['detected', 'decided', 'generating', 'delivering', 'observing', 'researching', 'closed']),
+            h('h3', null, '交付状态'), metadataRows(retained.deliveryStates, ['sent', 'partial', 'failed', 'dry_run', 'empty']),
+            h('h3', null, '观测覆盖'), metadataRows(retained.coverage, ['loopsWithDeliveryResult', 'loopsWithoutDeliveryResult', 'loopsWithFeedback', 'deliveryResultUnknown']),
+            h('h3', null, '反馈 / policy committed'), metadataRows(retained.feedback, ['count', 'policyCommitted', 'rewardSum']),
+            h('p', null, '反馈来源'), metadataRows(retained.feedback?.sources, ['incoming', 'reaction', 'manual', 'unknown']),
+            h('p', null, '归因'), metadataRows(retained.feedback?.attribution, ['direct', 'heuristic', 'unobserved']),
+            h('h3', null, '业务记录（独立于保留期）'), metadataRows(business, ['evidenceCount', 'outcomeCount', 'legacyProvenanceUnknown']),
+            h('p', null, '学习任务状态'), metadataRows(business?.taskStates, ['pending', 'suggested', 'running', 'done', 'failed', 'cancelled']),
+            h('p', null, '观测写入失败：' + observedValue(view.summary.processLifetime?.observationFailures)),
+          ) : null,
+        ),
+        view ? h(Panel, { title: '闭环运行' },
+          safeArray(view.runs.items).length ? view.runs.items.map(row => h('div', { key: row.id, className: 'ob-cog-card' },
+            h('p', null, row.id + ' · ' + row.kind + ' · ' + loopStatus(row.status) + ' · ' + row.stage),
+            h(Btn, { small: true, onClick: () => { setView(null); setSelected({ id: row.id }) } }, '查看详情'),
+          )) : h('p', null, '未观察（当前保留期内没有运行）'),
+          view.runs.nextBefore ? h(Btn, { small: true, onClick: () => { setView(null); setBefore(view.runs.nextBefore) } }, '下一页') : null,
+          before ? h(Btn, { small: true, onClick: () => { setView(null); setBefore('') } }, '最新运行') : null,
+        ) : null,
+        view?.detailError ? h('p', { role: 'status' }, view.detailError === 'LOOP_NOT_FOUND' ? '详情未观察（当前人格保留期内无记录）' : '详情不可用：' + view.detailError) : null,
+        view?.detail ? h(LoopDetail, { ...props, data: view.detail }) : null,
+      )
+    }
+
     function CognitionTab(props) {
-      const [section, setSection] = useState(props.configTarget ? 'settings' : 'overview')
+      const [section, setSection] = useState(props.navigation?.section || (props.configTarget ? 'settings' : 'overview'))
+      useEffect(() => {
+        const next = props.navigation?.section || (props.configTarget ? 'settings' : 'overview')
+        if (COG_SECTIONS.some(row => row.id === next)) setSection(next)
+      }, [props.navigation, props.configTarget])
+      useNavigationAnchor(props, 'ob-cog-')
       const overview = useCognitionOverview(props)
       const data = overview.data || {}
       const cfg = safeObject(props.configInfo && props.configInfo.config && props.configInfo.config.cognition)
@@ -5416,6 +5675,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (section === 'emotion') page = h(CogEmotion, props)
       else if (section === 'purpose') page = h(CogPurpose, props)
       else if (section === 'policy') page = h(CogPolicy, props)
+      else if (section === 'proactivity') page = h(CogProactivity, props)
+      else if (section === 'loop') page = h(CogLoop, props)
       else if (section === 'learning') page = h(CogLearning, props)
       else if (section === 'skills') page = h(CogSkills, props)
       else if (section === 'meta') page = h(CogMeta, props)
@@ -6025,6 +6286,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const list = useCogApi(props, '/cognition/decisions?limit=100')
       const stats = safeObject(list.data && list.data.stats)
       const items = safeArray(list.data && list.data.items)
+      useEffect(() => { if (props.navigation?.decisionId) document.getElementById('ob-cog-decision-' + props.navigation.decisionId)?.scrollIntoView?.() }, [props.navigation, list.data])
       const label = { reply: '回复', reply_short: '简短回复', clarify: '澄清', comfort: '关心', tease: '调侃', serious: '严肃', change_topic: '换话题', wait: '等待', silence: '沉默', learn: '学习', recall_tease: '撤回调侃', recall_concern: '撤回关心', recall_probe: '撤回试探', recall_silence: '假装没注意', recall_ignore: '忽略' }
       return h(
         'div',
@@ -6037,12 +6299,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h(StatTile, { label: '平均结果', value: Number(stats.averageReward || 0).toFixed(2), icon: 'chart', tone: 'brand' }),
             h(StatTile, { label: 'Brier', value: dataMetric(stats, 'brier'), hint: '越低越好', icon: 'target', tone: 'brand' }),
           ),
+          props.navigation?.decisionId && !list.loading && !items.some(item => item.id === props.navigation.decisionId) ? h('p', { role: 'status' }, '当前决策列表未包含此目标；仅显示最近 100 条。') : null,
           list.error ? h(Banner, { tone: 'err', message: list.error }) : null,
           list.loading ? h(CogLoading) : items.length ? h('div', { className: 'ob-stack', style: { gap: '8px' } }, items.map((item) =>
-            h('div', { key: item.id, className: 'ob-cog-card' },
+            h('div', { key: item.id, id: 'ob-cog-decision-' + item.id, className: 'ob-cog-card', 'aria-current': props.navigation?.decisionId === item.id ? 'true' : undefined },
               h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: item.action === 'silence' || item.action === 'wait' ? 'muted' : 'brand' }, label[item.action] || item.action), h(CogTag, { tone: 'muted' }, String(item.chatType || '') + (item.chatId ? ':' + item.chatId : '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(item.confidence || 0).toFixed(2))), h(Badge, { tone: item.status === 'sent' ? 'ok' : item.status === 'failed' ? 'err' : 'muted' }, String(item.status || ''))),
               h('p', { className: 'ob-field-help', style: { margin: '2px 0 0' } }, String(item.reason || '')),
-              h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, observation: { positiveReaction: true, attributionConfidence: 0.6 } }); if (result) { props.toast('已记录正向结果', 'ok'); list.reload() } } }, '标记正向'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, observation: { explicitCorrection: true, attributionConfidence: 0.7 } }); if (result) { props.toast('已记录负向结果', 'ok'); list.reload() } } }, '标记负向')),
+              destinationButton(props, '查看闭环', { tab: 'cognition', section: 'loop', decisionId: item.id }),
+              h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, requestId: globalThis.crypto.randomUUID(), observation: { positiveReaction: true, attributionConfidence: 0.6 } }); if (result) { props.toast('已记录正向结果', 'ok'); list.reload() } } }, '标记正向'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, requestId: globalThis.crypto.randomUUID(), observation: { explicitCorrection: true, attributionConfidence: 0.7 } }); if (result) { props.toast('已记录负向结果', 'ok'); list.reload() } } }, '标记负向')),
             ),
           )) : h(CogEmpty, { title: '还没有决策', description: '聚合后的完整轮次会生成决策；沉默也会记录。', icon: 'target' }),
         ),
@@ -6062,23 +6326,29 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const unknowns = useCogApi(props, '/cognition/unknowns?limit=100')
       const tasks = useCogApi(props, '/cognition/learning/tasks?limit=100')
       const claims = useCogApi(props, '/cognition/claims?limit=100')
-      const run = async () => { const result = await cogPost(props, '/cognition/learning/run', { max: 1 }); if (result) { props.toast('已运行学习任务', 'ok'); tasks.reload(); unknowns.reload(); claims.reload() } }
+      const taskItems = safeArray(tasks.data?.items)
+      const visibleTasks = (props.navigation?.taskId ? [...taskItems.filter(task => task.id === props.navigation.taskId), ...taskItems.filter(task => task.id !== props.navigation.taskId)] : taskItems).slice(0, 20)
+      useNavigationAnchor(props, 'ob-cog-', !tasks.loading)
+      useEffect(() => { if (props.navigation?.taskId) document.getElementById('ob-cog-task-' + props.navigation.taskId)?.scrollIntoView?.() }, [props.navigation, tasks.data])
       return h(
         'div',
         { className: 'ob-stack', style: { gap: '14px' } },
-        h(Panel, { title: '未知与学习', description: '未知检测不等于真正学习；外部资料多源验证后才形成带引用的 claim。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: () => { unknowns.reload(); tasks.reload(); claims.reload() } }, '刷新'), h(Btn, { small: true, kind: 'primary', icon: 'play', onClick: run }, '运行待处理')) },
+        moduleBacklink(props, 'builtin-learning'),
+        destinationButton(props, '查看闭环', { tab: 'cognition', section: 'loop' }),
+        props.navigation?.taskId ? h('p', { role: 'status' }, '定位学习任务：' + props.navigation.taskId + (safeArray(tasks.data?.items).some(task => task.id === props.navigation.taskId) ? '' : '（当前列表未包含；仅显示最近任务）')) : null,
+        h(Panel, { title: '未知与学习', description: '未知检测不等于真正学习；外部资料多源验证后才形成带引用的 claim。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: () => { unknowns.reload(); tasks.reload(); claims.reload() } }, '刷新'), h(CoreModuleActions, { ...props, moduleId: 'builtin-learning', actionIds: ['learning.runPending'], compact: true, onSettled: () => { tasks.reload(); unknowns.reload(); claims.reload() } })) },
           h('div', { className: 'ob-stat-grid' },
             h(StatTile, { label: '未知缺口', value: safeArray(unknowns.data && unknowns.data.items).length, icon: 'alert', tone: 'warn' }),
             h(StatTile, { label: '学习任务', value: safeArray(tasks.data && tasks.data.items).length, icon: 'book', tone: 'brand' }),
             h(StatTile, { label: '知识 claims', value: safeArray(claims.data && claims.data.items).length, icon: 'check', tone: 'ok' }),
           ),
-          h(Panel, { title: '未知列表', description: '没有证据时保持未知；不把猜测写成事实。' },
+          h(Panel, { id: 'ob-cog-unknowns', title: '未知列表', description: '没有证据时保持未知；不把猜测写成事实。' },
             safeArray(unknowns.data && unknowns.data.items).length ? h('ul', { className: 'ob-list' }, safeArray(unknowns.data.items).slice(0, 20).map((item) => h('li', { key: item.id, className: 'ob-list-item' }, h('span', { className: 'ob-list-avatar' }, h(Icon, { name: 'alert', size: 15 })), h('span', { className: 'ob-list-body' }, h('span', { className: 'ob-list-title' }, String(item.surface || '')), h('span', { className: 'ob-list-sub' }, String(item.unknownType || '') + ' · ' + String(item.status || '') + ' · 出现 ' + String(item.occurrences || 1))), h(CogTag, { tone: item.status === 'resolved' ? 'ok' : 'warn' }, String(item.status || ''))))) : h(CogEmpty, { title: '暂无未知', description: '低置信/新概念会出现。', icon: 'check' }),
           ),
-          h(Panel, { title: '学习任务', description: '默认只检测未知；自动外部检索需在设置中显式开启。' },
-            safeArray(tasks.data && tasks.data.items).length ? h('div', { className: 'ob-stack', style: { gap: '8px' } }, safeArray(tasks.data.items).slice(0, 20).map((task) => h('div', { key: task.id, className: 'ob-cog-card' }, h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: 'brand' }, String(task.surface || '')), h(CogTag, { tone: 'muted' }, String(task.status || ''))), h('span', { className: 'ob-small ob-muted' }, 'attempts ' + String(task.attempts || 0))), h('p', { className: 'ob-field-help', style: { margin: 0 } }, safeArray(task.plan).join(' ') || ''), h('div', { className: 'ob-row' }, task.status === 'pending' ? h(Btn, { small: true, kind: 'ghost', onClick: run }, '运行') : null, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/learning/task/retry', { taskId: task.id }); if (result) { props.toast('已重试', 'ok'); tasks.reload() } } }, '重试'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/learning/task/cancel', { taskId: task.id }); if (result) { props.toast('已取消', 'ok'); tasks.reload() } } }, '取消'))))) : h(CogEmpty, { title: '暂无学习任务', description: '开启自动研究或手动从未知创建任务。', icon: 'book' }),
+          h(Panel, { id: 'ob-cog-tasks', title: '学习任务', description: '默认只检测未知；自动外部检索需在设置中显式开启。' },
+            safeArray(tasks.data && tasks.data.items).length ? h('div', { className: 'ob-stack', style: { gap: '8px' } }, visibleTasks.map((task) => h('div', { key: task.id, id: 'ob-cog-task-' + task.id, className: 'ob-cog-card', 'aria-current': props.navigation?.taskId === task.id ? 'true' : undefined }, h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: 'brand' }, String(task.surface || '')), h(CogTag, { tone: 'muted' }, String(task.status || ''))), h('span', { className: 'ob-small ob-muted' }, 'attempts ' + String(task.attempts || 0))), h('p', { className: 'ob-field-help', style: { margin: 0 } }, safeArray(task.plan).join(' ') || ''), h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/learning/task/retry', { taskId: task.id }); if (result?.task?.id === task.id && result.task.status === 'pending') { props.toast('已重试', 'ok'); tasks.reload() } else if (result) props.toast(result.task?.reason || '重试未成功', 'err') } }, '重试'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/learning/task/cancel', { taskId: task.id }); if (result?.task?.id === task.id && result.task.status === 'cancelled') { props.toast('已取消', 'ok'); tasks.reload() } else if (result) props.toast(result.task?.reason || '取消未成功', 'err') } }, '取消'))))) : h(CogEmpty, { title: '暂无学习任务', description: '开启自动研究或手动从未知创建任务。', icon: 'book' }),
           ),
-          h(Panel, { title: '知识 claims', description: '带来源、置信度与时效；冲突状态保留 disputed，不强行合并。' },
+          h(Panel, { id: 'ob-cog-claims', title: '知识 claims', description: '带来源、置信度与时效；冲突状态保留 disputed，不强行合并。' },
             safeArray(claims.data && claims.data.items).length ? safeArray(claims.data.items).slice(0, 20).map((claim) => h('div', { key: claim.id, className: 'ob-cog-card' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: claim.status === 'disputed' ? 'warn' : 'ok' }, String(claim.concept || '')), h(CogTag, { tone: 'muted' }, String(claim.status || '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(claim.confidence || 0).toFixed(2) + ' · 来源 ' + String(claim.sourceCount || 0))), h('p', { className: 'ob-small' }, String(claim.claim || '')), safeArray(claim.citations).length ? h('p', { className: 'ob-field-help' }, '引用：' + safeArray(claim.citations).map((citation) => citation.title || citation.url).join(' · ')) : null)) : h(CogEmpty, { title: '暂无 claims', description: '学习任务产生多源证据后才会写入。', icon: 'book' }),
           ),
         ),
@@ -6198,6 +6468,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     function CogSettings(props) {
       const groups = useMemo(() => systemFieldSpecs(props.configInfo && props.configInfo.groups).filter((group) => String(group.id).startsWith('cog-')), [props.configInfo])
       const [active, setActive] = useState(props.configTarget || (groups[0] ? groups[0].id : 'cog-core'))
+      useEffect(() => { if (props.configTarget) setActive(props.configTarget) }, [props.navigation, props.configTarget])
       const current = groups.find((group) => group.id === active) || groups[0]
       if (!groups.length) return h(CogEmpty, { title: '认知设置不可用', description: '服务端未返回 cog-* 字段组；请检查插件版本。' })
       return h(SettingsShell, {
@@ -6857,7 +7128,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           setMediaStatus(statusResult)
           setItems([])
           if (statusResult.ok === false) setError(String(statusResult.message || '媒体数据加载失败'))
-          else if (statusResult.stickers?.available === true) {
+          else if (statusResult.stickers?.libraryAvailable === true) {
             const stickerResult = safeObject(await get('/media/stickers?limit=200'))
             if (stickerResult.ok === false) setError(String(stickerResult.message || '表情包加载失败'))
             else setItems(safeArray(stickerResult.items))
@@ -6897,11 +7168,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const upload = (event) => {
         const file = event.target.files && event.target.files[0]
         event.target.value = ''
-        if (!file || busy || mediaStatus?.stickers?.available !== true) return
+        if (!file || busy || mediaStatus?.stickers?.libraryAvailable !== true) return
         const reader = new FileReader()
         reader.onerror = () => props.toast('读取图片失败', 'err')
         reader.onload = async () => {
-          if (mediaStatus?.stickers?.available !== true) return
+          if (mediaStatus?.stickers?.libraryAvailable !== true) return
           const encoded = String(reader.result || '')
           const comma = encoded.indexOf(',')
           setBusy('upload')
@@ -6984,7 +7255,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const editTags = async (item) => {
-        if (mediaStatus?.stickers?.available !== true) return
+        if (mediaStatus?.stickers?.libraryAvailable !== true) return
         const current = safeArray(item.tags).join(', ')
         const value = typeof window !== 'undefined' && window.prompt ? window.prompt('标签（用逗号分隔）', current) : current
         if (value === null) return
@@ -6995,7 +7266,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const removeSticker = async (item) => {
-        if (mediaStatus?.stickers?.available !== true) return
+        if (mediaStatus?.stickers?.libraryAvailable !== true) return
         if (typeof window !== 'undefined' && window.confirm && !window.confirm('删除表情包“' + String(item.name || '') + '”？')) return
         const result = safeObject(await post('/media/stickers/delete', { id: item.id }))
         if (!result.ok) return props.toast('删除失败：' + String(result.message || '未知错误'), 'err')
@@ -7003,12 +7274,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         refresh()
       }
 
+      useNavigationAnchor(props, 'ob-media-', !(loading && !mediaStatus))
       if (loading && !mediaStatus) return h('div', { className: 'ob-page' }, h('div', { className: 'ob-stat-grid' }, [0, 1, 2, 3, 4].map((index) => h(StatSkeleton, { key: index }))), h(PanelSkeleton, { rows: 4 }))
       const status = safeObject(mediaStatus)
       const images = safeObject(status.images)
       const audio = safeObject(status.audio)
       const stickerStatus = safeObject(status.stickers)
-      const stickersAvailable = stickerStatus.available === true
+      const stickerLibraryAvailable = stickerStatus.libraryAvailable === true
       return h(
         'div',
         { className: 'ob-page' },
@@ -7020,7 +7292,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h(StatTile, { label: '改图', value: images.edit?.configured ? '已配置' : '未配置', icon: 'sparkles', tone: images.edit?.configured ? 'ok' : 'warn', hint: images.edit?.enabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'ASR', value: audio.asrConfigured ? '已配置' : '未配置', icon: 'message', tone: audio.asrConfigured ? 'ok' : 'warn', hint: audio.asrEnabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'TTS', value: audio.ttsConfigured ? '已配置' : '未配置', icon: 'bolt', tone: audio.ttsConfigured ? 'ok' : 'warn', hint: audio.ttsEnabled ? '功能已启用' : '功能未启用' }),
-          h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: !stickersAvailable ? '功能未启用' : '本地表情包库' }),
+          h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: !stickerLibraryAvailable ? '功能未启用' : '本地表情包库' }),
         ),
         h(Panel, { title: '生图/改图', description: '只生成本地 PNG 文件，不会发送到 QQ。改图仅接受媒体根内相对路径。' },
           h('div', { className: 'ob-stack' },
@@ -7060,11 +7332,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               h(Btn, { small: true, kind: 'danger', icon: 'trash', disabled: Boolean(busy) || filesLoading || !status.enabled || !status.files?.enabled, onClick: () => fileAction('delete', item) }, '删除')),
           ))) : !filesError ? h('p', { className: 'ob-note' }, '还没有文件') : null,
         ),
+        moduleBacklink(props, 'builtin-media-features'),
         h(Panel, {
-          title: '表情包库', description: '支持 PNG、JPG、JPEG、GIF、WebP；标签可用于 QQ 命令 /sticker [标签]。',
-          actions: h('div', { className: 'ob-row' }, h('label', { className: cx('ob-btn small secondary', (busy === 'upload' || !stickersAvailable) && 'disabled') }, h(Icon, { name: 'sparkles', size: 14 }), h('span', null, busy === 'upload' ? '上传中…' : '上传图片'), h('input', { className: 'ob-sr-only', type: 'file', accept: '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp', disabled: busy === 'upload' || !stickersAvailable, onChange: upload })), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: loading, onClick: refresh }, '刷新')),
+          id: 'ob-media-stickers', title: '表情包库', description: '支持 PNG、JPG、JPEG、GIF、WebP；标签可用于 QQ 命令 /sticker [标签]。',
+          actions: h('div', { className: 'ob-row' }, h('label', { className: cx('ob-btn small secondary', (busy === 'upload' || !stickerLibraryAvailable) && 'disabled') }, h(Icon, { name: 'sparkles', size: 14 }), h('span', null, busy === 'upload' ? '上传中…' : '上传图片'), h('input', { className: 'ob-sr-only', type: 'file', accept: '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp', disabled: busy === 'upload' || !stickerLibraryAvailable, onChange: upload })), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: loading, onClick: refresh }, '刷新')),
         },
-          !stickersAvailable ? h('p', { className: 'ob-muted' }, '表情包功能未启用，请在模块详情检查状态与设置。') : items.length
+          stickerLibraryAvailable && !stickerStatus.sendAvailable ? h('p', { className: 'ob-note' }, stickerStatus.sendReason === 'IMAGES_DISABLED' ? '库可用；图片开关关闭导致发送禁用' : '库可用；发送服务不可用') : null,
+          !stickerLibraryAvailable ? h('p', { className: 'ob-muted' }, '表情包功能未启用，请在模块详情检查状态与设置。') : items.length
             ? h('div', { className: 'ob-media-grid' }, items.map((item) => h('article', { className: 'ob-media-card', key: item.id },
                 h('img', { className: 'ob-media-image', src: API + '/media/stickers/file?id=' + encodeURIComponent(item.id), alt: String(item.name || '表情包'), loading: 'lazy' }),
                 h('p', { className: 'ob-media-name', title: String(item.name || '') }, String(item.name || '未命名')),
@@ -7079,7 +7353,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     function ContentPage(props) {
       return h(Panel, { title: '公共内容' },
         h('p', null, 'B站公共内容已移入「模块 → 媒体功能」详情。'),
-        h(Btn, { onClick: () => props.go?.('modules') }, '打开模块'),
+        h(Btn, { onClick: () => props.goTo ? props.goTo({ tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' }) : props.go?.('modules') }, '打开模块'),
         h(Banner, { tone: 'warn', message: 'QQ空间未实现：该能力需要 QQ 登录授权。' }),
       )
     }
@@ -7140,6 +7414,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       return h(
         'div',
         { className: 'ob-page' },
+        destinationButton(props, '返回媒体页', { tab: 'media' }),
+        destinationButton(props, '返回内容页', { tab: 'content' }),
         h(Panel, { title: 'B站公共内容', description: '默认关闭；公开搜索、热门、视频信息与评论，不使用 Cookie/WBI 或登录态。' },
           h('div', { className: 'ob-row' },
             h('input', {
@@ -7426,12 +7702,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         return previewBody(summary, ['示例回复：' + (summary.configAvailable ? config.message : '未加载配置')])
       },
       'media-features.preview': function MediaFeaturesPreview({ module, config, summary }) {
+        const libraryEnabled = module.enabled && module.status === 'loaded' && config.stickersEnabled && config.mediaEnabled
         return previewBody(summary, [
           '模块启用：' + previewSwitch(module.enabled),
           'B站公共内容：' + previewSwitch(config.bilibiliEnabled),
           '表情包开关：' + previewSwitch(config.stickersEnabled),
           '媒体总开关：' + previewSwitch(config.mediaEnabled) + '；图片开关：' + previewSwitch(config.imagesEnabled),
-          '表情包有效状态：' + (module.enabled && module.status === 'loaded' && config.stickersEnabled && config.mediaEnabled && config.imagesEnabled ? '开启' : '未生效'),
+          '表情包库有效状态：' + (libraryEnabled ? '开启' : '未生效'),
+          '表情包发送有效状态：' + (libraryEnabled && config.imagesEnabled ? '开启' : '未生效'),
         ])
       },
       'media-features.panel': MediaFeaturesPanel,
@@ -7539,7 +7817,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [configError, setConfigError] = useState('')
       const [uiCatalog, setUiCatalog] = useState(null)
       const [uiError, setUiError] = useState('')
-      const [detailId, setDetailId] = useState('')
+      const [detailId, setDetailId] = useState(props.navigation?.moduleId || '')
+      const [cardOperation, setCardOperation] = useState(null)
+      const actionGuard = useRef({ active: true, busy: false })
+      const consumedNavigation = useRef(null)
+      const [healthRevision, setHealthRevision] = useState(0)
+      useEffect(() => { actionGuard.current.active = true; return () => { actionGuard.current.active = false } }, [])
+      useNavigationAnchor(props, 'ob-module-', !loading && Boolean(detailId))
 
       const uiFor = (item) => {
         const ui = safeArray(uiCatalog?.items).find((row) => row?.moduleId === item.id)
@@ -7637,7 +7921,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           if (modulesResult.status === 'rejected') throw modulesResult.reason
           const result = safeObject(modulesResult.value)
           if (result.ok === false) setError(String(result.message || '模块列表加载失败'))
-          else setItems(safeArray(result.items))
+          else { setItems(safeArray(result.items)); setHealthRevision(value => value + 1) }
           if (uiResult.status === 'fulfilled' && uiResult.value?.ok === true && uiResult.value?.version === 1 && Array.isArray(uiResult.value.items)) setUiCatalog(uiResult.value)
           else setUiError('UI 目录暂不可用，模块操作仍可使用。')
         } catch (error) { setError(String(error.message || '模块列表加载失败')) }
@@ -7645,11 +7929,32 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }, [])
 
       useEffect(() => { refresh() }, [refresh])
+      useEffect(() => {
+        if (!props.navigation || consumedNavigation.current === props.navigation || loading || busy) return
+        const target = props.navigation.moduleId
+        if (target) {
+          const item = items.find(row => row.id === target)
+          if (item) { consumedNavigation.current = props.navigation; openDetail(item) }
+        } else { consumedNavigation.current = props.navigation; setDetailId(''); setEditor(null) }
+      }, [props.navigation, items, uiCatalog, loading, busy])
 
       const action = async (item, kind) => {
+        if (actionGuard.current.busy || (cardOperation && !operationTerminal(cardOperation))) return
+        actionGuard.current.busy = true
         const key = String(item.id) + ':' + kind
         setBusy(key)
         try {
+          if (item.builtin) {
+            const result = await invokeModuleAction(item.id, kind === 'reload' ? 'module.reload' : item.enabled ? 'module.disable' : 'module.enable', { current: () => actionGuard.current.active, onOperation: value => { if (actionGuard.current.active) setCardOperation(value) } })
+            if (result) {
+              const ok = operationSucceeded(result)
+              const message = ok ? '动作完成' : result.code || '动作未成功'
+              if (!ok) setError(message)
+              props.toast?.(message, ok ? 'ok' : 'err')
+              await refresh()
+            }
+            return
+          }
           const result = safeObject(await post(kind === 'reload' ? '/modules/reload' : '/modules/toggle', kind === 'reload' ? { id: item.id } : { id: item.id, enabled: !item.enabled }))
           if (result.ok === false) {
             const message = String(result.message || '模块操作失败')
@@ -7665,8 +7970,20 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           const message = String(error.message || '模块操作失败')
           setError(message)
           props.toast?.(message, 'err')
-        } finally { setBusy('') }
+        } finally { actionGuard.current.busy = false; if (actionGuard.current.active) setBusy('') }
       }
+
+      const cardOperationStatus = cardOperation ? h('div', { role: 'status' },
+        h('p', null, 'operation：' + cardOperation.status + ' · ' + cardOperation.phase + ' · ' + observedValue(cardOperation.code)),
+        cardOperation.status === 'STOP_PENDING' ? h('p', null, 'STOP_PENDING：仍在排空，尚未完成。') : null,
+        !busy && !operationTerminal(cardOperation) ? h(Btn, { onClick: async () => {
+          if (actionGuard.current.busy) return
+          actionGuard.current.busy = true; setBusy('operation')
+          try { await pollModuleOperation(cardOperation, { current: () => actionGuard.current.active, onOperation: value => { if (actionGuard.current.active) setCardOperation(value) } }); await refresh() }
+          catch (err) { setError(String(err.message)) }
+          finally { actionGuard.current.busy = false; setBusy('') }
+        } }, '继续观察操作') : null,
+      ) : null
 
       const badges = (item) => h('div', { className: 'ob-row' },
         h(Badge, { tone: item.builtin ? 'brand' : 'muted' }, item.builtin ? '内置受信任' : uiFor(item)?.sandbox ? '外部隔离 WebUI' : '外部声明式（无执行权限）'),
@@ -7735,7 +8052,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         }
         if (surface.hook === 'module.panel' && surface.renderer === 'builtin-react' && surface.componentKey === 'media-features.panel' && item.id === 'builtin-media-features' && item.builtin && item.source === 'builtin') {
           return item.enabled && item.status === 'loaded'
-            ? h(MediaFeaturesPanel, { key: surface.id, toast: props.toast })
+            ? h(MediaFeaturesPanel, { ...props, key: surface.id })
             : h('p', { key: surface.id, className: 'ob-muted' }, '媒体功能模块未运行。')
         }
         if (surface.hook === 'module.detail' && surface.renderer === 'builtin-react' && surface.componentKey.endsWith('.preview')) {
@@ -7765,12 +8082,17 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           ),
           error ? h(Banner, { tone: 'err', message: error }) : null,
           uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
-          item ? h(Panel, { title: String(item.name || item.id), description: String(item.description || item.id), actions: moduleActions(item) },
+          cardOperationStatus,
+          item ? h(Panel, { title: String(item.name || item.id), description: String(item.description || item.id), actions: item.builtin ? null : moduleActions(item) },
             badges(item),
+            h(CoreModuleHealth, { ...props, key: item.id + ':' + item.generation + ':health:' + healthRevision, moduleId: item.id }),
+            h(CoreModuleActions, { ...props, key: item.id + ':actions', moduleId: item.id, onSettled: refresh }),
+            h(ModuleFeatureLinks, { ...props, item }),
+            item.id === 'builtin-reminders' && item.builtin && item.source === 'builtin' ? h('section', { id: 'ob-module-reminders' }, h(ReminderData, props)) : null,
             item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
             item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
             !ui || !ui.surfaces.length ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
-              : ui.surfaces.map((surface) => renderSurface(item, ui, surface)),
+              : ui.surfaces.map((surface) => item.builtin ? h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : surface.id) }, renderSurface(item, ui, surface)) : renderSurface(item, ui, surface)),
           ) : h(Banner, { tone: 'muted', message: '模块已不在目录中，请返回列表。' }),
         )
       }
@@ -7782,6 +8104,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ),
         error ? h(Banner, { tone: 'err', message: error, actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: refresh }, '重试')] }) : null,
         uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
+        cardOperationStatus,
         items.length
           ? h('div', { className: 'ob-grid two' }, items.map((item) => {
               const permissions = safeArray(item.permissions)
@@ -7950,6 +8273,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [busyCount, setBusyCount] = useState(0)
       const [prefStatus, setPrefStatus] = useState({ saving: false, error: '', savedAt: 0 })
       const [configTarget, setConfigTarget] = useState('')
+      const [navigation, setNavigation] = useState({ tab: 'overview' })
 
       const draftRef = useRef(null)
       const configInfoRef = useRef(null)
@@ -8271,7 +8595,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         [applyGateway, refreshStatus, toast, runWithProgress],
       )
 
-      const go = useCallback((id, group = '') => { setConfigTarget(group); setTab(id) }, [])
+      /** @param {NavigationTarget} target */
+      const goTo = useCallback((target) => {
+        const next = navigationTarget(target)
+        setConfigTarget(next.tab === 'cognition' && next.section === 'settings' ? next.anchor || '' : '')
+        setNavigation(next); setTab(next.tab)
+      }, [])
+      const go = useCallback((id, group = '') => goTo({ tab: id, ...(group ? id === 'cognition' ? { section: 'settings', anchor: group } : { section: group } : {}) }), [goTo])
 
       const gateway = safeObject(status && status.gateway)
       const state = stateLabel(gateway.state)
@@ -8281,6 +8611,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
       const tabProps = {
         configTarget,
+        navigation,
+        goTo,
         status,
         configInfo,
         draft,
@@ -8452,6 +8784,21 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.MediaPage = MediaPage
     exports.MediaFeaturesPanel = MediaFeaturesPanel
     exports.ContentPage = ContentPage
+    exports.navigationTarget = navigationTarget
+    exports.MODULE_DESTINATIONS = MODULE_DESTINATIONS
+    exports.CoreModuleHealth = CoreModuleHealth
+    exports.CoreModuleActions = CoreModuleActions
+    exports.ModuleFeatureLinks = ModuleFeatureLinks
+    exports.ReminderData = ReminderData
+    exports.CogProactivity = CogProactivity
+    exports.CogLearning = CogLearning
+    exports.CogPolicy = CogPolicy
+    exports.CogLoop = CogLoop
+    exports.LoopDetail = LoopDetail
+    exports.invokeModuleAction = invokeModuleAction
+    exports.pollModuleOperation = pollModuleOperation
+    exports.operationSucceeded = operationSucceeded
+    exports.loopStatus = loopStatus
     exports.ModulesPage = ModulesPage
     exports.SandboxModuleFrame = SandboxModuleFrame
     exports.attachSandboxBridge = attachSandboxBridge

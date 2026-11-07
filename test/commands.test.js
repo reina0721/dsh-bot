@@ -97,7 +97,7 @@ function harness(overrides = {}, services = {}) {
   if (services.bilibili) service.registerCommand('bili', input => biliCommand({ ...input, bilibili: services.bilibili, getConfig: () => ({ bilibili: config.content?.bilibili }) }), { allowProtected: true, audience: 'owner-or-operator' })
   if (services.stickers) {
     const authorize = () => config.media?.enabled && config.media?.images?.enabled && config.media?.stickers?.enabled
-    const port = createMediaFeaturesPort({ getConfig: () => config, assertActive() {}, media: services.media, stickers: services.stickers, delivery: services.delivery || outbound, access, authorizeStickers: authorize })
+    const port = createMediaFeaturesPort({ getConfig: () => config, assertActive() {}, media: services.media, stickers: services.stickers, delivery: services.delivery || outbound, access, authorizeStickerSend: authorize })
     service.registerCommand('sticker', input => port.withCommand(input.turn, commandToken => stickerCommand({ ...input, commandToken, port: port.api, authorize })), { allowProtected: true, audience: 'owner' })
   }
   return { service, sent, memory, getConfig: () => config, setConfig, configWrites }
@@ -407,6 +407,7 @@ test('commands：/sticker 发送图片；空库提示上传', async () => {
   const mediaCalls = []
   const media = { async sendMedia(payload) { mediaCalls.push(payload) } }
   const stickers = {
+    async list() {}, async importBuffer() {}, async updateTags() {}, async remove() {}, async status() {},
     async pick({ tag }) { return tag === '空' ? null : { id: 's1', name: 'cat.png' } },
     async fileFor() { return { path: '/media/stickers/s1.png', mime: 'image/png', size: 3 } },
   }
@@ -1361,4 +1362,27 @@ test('commands：注入 delivery 后普通回复与 /say 均只交付一次，�
   const denied = harness({}, { delivery, allowSend: false })
   assert.equal((await denied.service.handle(turn('/say no'))).error, 'ACCESS_DENIED')
   assert.equal(calls.length, 4)
+})
+
+test('commands: replies and /say propagate only explicit loop handles; module replies carry core attribution', async t => {
+  const { loopHarness } = await import('./helpers/loop.js')
+  const { createDeliveryService } = await import('../src/delivery/service.js')
+  const { createOutbound } = await import('../src/cognition/outbound.js')
+  const h = loopHarness(t)
+  const outbound = createOutbound({ observer: h.observer, gateway: { actions: { sendMessage: async () => ({ message_id: 'm' }) } } })
+  const commands = createCommandService({ getConfig: () => ({ access: { ownerQQ: '10001' } }), access: { isOwner: () => true, canSend: () => ({ allowed: true }) }, delivery: createDeliveryService({ outbound }) })
+  commands.registerCommand('custom', () => 'PRIVATE_REPLY', { moduleId: 'builtin-test', runtimeGeneration: 'runtime_1' })
+  for (const command of ['/help', '/say PRIVATE_BODY', '/custom']) {
+    h.advance(1)
+    const loop = h.observer.begin({ turnId: `turn_${h.clock.now()}` })
+    await commands.handle({ chatType: 'private', chatId: '10001', senderId: '10001', text: command }, { loop, raw: 'PRIVATE_CONTEXT' })
+    h.observer.finishLoop(loop)
+    const receipt = h.receipts().find(row => row.recordedAt === h.clock.now())
+    assert.ok(receipt.loopId)
+    assert.ok(receipt.turnId)
+    assert.equal(receipt.data.parts, 1)
+    if (command === '/custom') assert.equal(receipt.moduleId, 'builtin-test')
+    assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE_|10001/)
+  }
+  assert.equal(h.receipts().length, 3)
 })

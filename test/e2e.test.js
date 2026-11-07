@@ -19,6 +19,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { runInNewContext } from 'node:vm'
 
 import { createFakeDsh, waitFor, sleep } from './helpers/fake-dsh.js'
 import { startMockOneBot } from './helpers/mock-onebot.js'
@@ -1433,4 +1434,163 @@ test('builtin reminders catalog, command ownership and disable fallback share re
   await handle.syncReminderOwnership()
   assert.ok(handle.providerRegistry.get('reminders'))
   assert.equal((await command('/reminders')).reply, '当前聊天没有活跃提醒。')
+})
+
+test('e2e: C04 fixed module actions, requestId, stale generations/persona, external boundaries and legacy shapes', async t => {
+  const { fake, handle, dir } = await boot(t)
+  const catalog = await getJson(fake, '/modules/actions?id=builtin-typing')
+  assert.equal(catalog.items.find(x => x.actionId === 'module.restart').available, true)
+  assert.equal(catalog.items.find(x => x.actionId === 'module.reload').available, false)
+  const input = { moduleId: catalog.moduleId, actionId: 'module.restart', expectedGeneration: catalog.expectedGeneration, requestId: 'e2e-restart', expectedPersonaId: catalog.expectedPersonaId, expectedPersonaGeneration: catalog.expectedPersonaGeneration }
+  for (const patch of [{ actionId: 'stop' }, { url: 'https://example.org' }, { payload: {} }]) {
+    const rejected = await fake.call(API + '/modules/action', { ...input, ...patch }, { method: 'POST' })
+    assert.equal(rejected.json.code, 'MODULE_ACTION_INVALID')
+  }
+  assert.equal((await fake.call(API + '/modules/action', { ...input, expectedGeneration: 'stale' }, { method: 'POST' })).json.code, 'MODULE_RUNTIME_CONFLICT')
+  assert.equal((await fake.call(API + '/modules/action', { ...input, expectedPersonaGeneration: catalog.expectedPersonaGeneration + 1 }, { method: 'POST' })).json.code, 'MODULE_PERSONA_CONFLICT')
+  const accepted = await postJson(fake, '/modules/action', input)
+  const result = await waitFor(async () => {
+    const response = await getJson(fake, '/modules/operation?requestId=e2e-restart')
+    return response.operation.completedAt ? response.operation : null
+  }, { label: 'manual restart completed' })
+  assert.equal(result.status, 'succeeded')
+  assert.notEqual(result.resultRuntimeGeneration, catalog.expectedGeneration)
+  assert.equal((await postJson(fake, '/modules/action', input)).operation.id, accepted.operation.id)
+  assert.equal((await getJson(fake, '/modules/operation?id=' + accepted.operation.id)).operation.id, accepted.operation.id)
+  assert.equal((await fake.call(API + '/modules/action', { ...input, actionId: 'module.disable' }, { method: 'POST' })).json.code, 'MODULE_REQUEST_CONFLICT')
+  assert.equal((await fake.call(API + '/modules/operation?id=missing', undefined, { method: 'GET' })).json.code, 'MODULE_OPERATION_NOT_FOUND')
+  assert.equal((await fake.call(API + '/modules/actions?id=missing', undefined, { method: 'GET' })).json.code, 'MODULE_NOT_FOUND')
+  const external = join(dir, 'modules', 'external-actions')
+  await mkdir(external, { recursive: true })
+  await writeFile(join(external, 'module.json'), JSON.stringify({ id: 'external-actions', entry: 'index.mjs' }))
+  await writeFile(join(external, 'index.mjs'), 'export function setup() {}')
+  await postJson(fake, '/modules/reload', { id: 'external-actions' })
+  const ext = await getJson(fake, '/modules/actions?id=external-actions')
+  assert.equal(ext.items.filter(x => x.available).map(x => x.actionId).join(','), 'module.disable,module.reload')
+  for (const actionId of ['module.restart', 'proactivity.runOnce', 'learning.runPending']) {
+    assert.equal((await fake.call(API + '/modules/action', { moduleId: ext.moduleId, expectedGeneration: ext.expectedGeneration, actionId, requestId: actionId.replace('.', '-') }, { method: 'POST' })).json.code, 'MODULE_ACTION_UNAVAILABLE')
+  }
+  assert.equal((await postJson(fake, '/modules/toggle', { id: ext.moduleId, enabled: false })).item.status, 'disabled')
+  assert.equal((await postJson(fake, '/modules/toggle', { id: ext.moduleId, enabled: true })).item.status, 'loaded')
+  assert.ok(Object.hasOwn(await postJson(fake, '/cognition/proactivity/run', {}), 'result'))
+  assert.ok(Object.hasOwn(await postJson(fake, '/cognition/learning/run', {}), 'results'))
+  assert.equal((await getJson(fake, '/modules/actions?id=builtin-proactivity')).items.find(x => x.actionId === 'proactivity.runOnce').available, false)
+  await patchConfig(fake, { cognition: { enabled: true, learning: { enabled: true } } })
+  const learning = await getJson(fake, '/modules/actions?id=builtin-learning')
+  const run = { moduleId: learning.moduleId, expectedGeneration: learning.expectedGeneration, actionId: 'learning.runPending', requestId: 'learning-empty' }
+  await postJson(fake, '/modules/action', run)
+  const empty = await waitFor(async () => {
+    const value = (await getJson(fake, '/modules/operation?requestId=learning-empty')).operation
+    return value.completedAt ? value : null
+  }, { label: 'learning no-task result' })
+  assert.equal(empty.status, 'failed'); assert.equal(empty.result.code, 'NO_TASK')
+  assert.deepEqual((await postJson(fake, '/cognition/learning/run', { max: 2 })).results, [])
+  assert.equal(handle.modules.getOperation({ requestId: 'e2e-restart' }).operation.status, 'succeeded')
+})
+
+test('e2e: C06 management loop reads expose bounded empty/current-persona views, readiness and sandbox boundary', async t => {
+  const { fake } = await boot(t)
+  const summary = await getJson(fake, '/system/loop/summary')
+  assert.equal(summary.readiness.cognition.ready, true)
+  assert.equal(typeof summary.readiness.cognition.paused, 'boolean')
+  assert.ok(summary.processLifetime.ingress.rejectedReasons)
+  assert.ok(summary.processLifetime.ingress.filteredReasons)
+  assert.ok(summary.providers.some(row => row.name === 'learning'))
+  assert.equal(summary.retained.maxRecords, 5000)
+  assert.equal(summary.retained.retentionMs, 7 * 86400000)
+  const runs = await getJson(fake, '/system/loop/runs?limit=200')
+  assert.equal(runs.items.length, 0); assert.equal(runs.nextBefore, null)
+  assert.equal((await fake.call(API + '/system/loop/detail?id=absent', undefined, { method: 'GET' })).json.code, 'LOOP_NOT_FOUND')
+  for (const path of ['/system/loop/runs?personaId=other', '/system/loop/runs?kind=prompt', '/system/loop/detail?id=a&decisionId=b', '/system/loop/summary?personaId=other']) {
+    assert.equal((await fake.call(API + path, undefined, { method: 'GET' })).json.code, 'LOOP_QUERY_INVALID')
+  }
+  const sandbox = await fake.call(API + '/system/loop/summary', undefined, { method: 'GET', headers: { origin: 'null', 'sec-fetch-dest': 'iframe' } })
+  assert.equal(sandbox.status, 403)
+  assert.equal(sandbox.headers['access-control-allow-origin'], undefined)
+  assert.doesNotMatch(JSON.stringify(summary), /wsUrl|prompt|senderId|chatId|dataDir|dbFile/)
+})
+
+test('e2e: C06 real delivery -> manual feedback is transactional, request-deduped and persona-private', async t => {
+  const { fake, handle } = await boot(t)
+  await patchConfig(fake, { cognition: { enabled: true, dryRun: false } })
+  t.mock.method(handle.gateway.actions, 'sendMessage', async () => ({ message_id: 'delivery_private' }))
+  t.mock.method(handle.cognition.services.llm, 'complete', async () => ({ ok: true, text: 'PRIVATE_RESPONSE' }))
+  t.mock.method(handle.cognition.services.llm, 'completeJson', async () => ({ ok: false }))
+  const result = await handle.cognition.services.pipeline.handleTurn({ id: 'turn_c06', chatType: 'private', chatId: '10001', senderId: '10001', text: '你好', addressed: true, messages: [], messageIds: [] })
+  assert.equal(result.ok, true)
+  const decisionId = result.decision.id
+  const body = { decisionId, observation: { explicitCorrection: true }, requestId: 'manual_c06' }
+  const first = await postJson(fake, '/cognition/decision/correct', body)
+  const duplicate = await postJson(fake, '/cognition/decision/correct', body)
+  assert.equal(duplicate.outcome.id, first.outcome.id)
+  const detail = await getJson(fake, '/system/loop/detail?decisionId=' + decisionId)
+  assert.equal(detail.receipts.find(row => row.kind === 'delivery').data.parts, 1)
+  assert.equal(detail.receipts.filter(row => row.kind === 'feedback').length, 1)
+  assert.equal(detail.feedback[0].source, 'manual'); assert.equal(detail.feedback[0].policyAfter.trials, 1)
+  assert.doesNotMatch(JSON.stringify(detail), /PRIVATE_RESPONSE|delivery_private|10001|prompt|chatId/)
+  const { persona } = await postJson(fake, '/cognition/persona/create', { name: 'Other' })
+  await postJson(fake, '/cognition/persona/switch', { personaId: persona.id })
+  const cross = await fake.call(API + '/system/loop/detail?decisionId=' + decisionId, undefined, { method: 'GET' })
+  const absent = await fake.call(API + '/system/loop/detail?decisionId=absent', undefined, { method: 'GET' })
+  assert.deepEqual(cross.json, absent.json)
+})
+
+test('e2e: C07 client -> real health/actions/operation/loop APIs, current persona and exactly two DSH registrations (no browser)', async t => {
+  const { fake, handle, dir } = await boot(t)
+  let entry
+  const confirmations = [], calls = [], navigations = []
+  const React = {
+    createElement: (type, props, ...children) => ({ type, props, children }),
+    createContext: () => ({}), Component: class {}, Fragment: 'fragment',
+    useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
+    useRef: initial => ({ current: initial }), useEffect() {}, useLayoutEffect() {},
+    useCallback: fn => fn, useMemo: fn => fn(), useContext: () => ({}),
+  }
+  runInNewContext(await readFile(new URL('../client.js', import.meta.url), 'utf8'), {
+    window: { __ModuleLoader__: { load(value) { entry = value } }, confirm(text) { confirmations.push(text); return true } },
+    crypto: globalThis.crypto, setTimeout, clearTimeout, console, URL,
+    fetch: async (path, init) => {
+      calls.push(path)
+      const response = await fake.call(path, init.body ? JSON.parse(init.body) : undefined, { method: init.method })
+      return { ok: response.status === 200, json: async () => response.json }
+    },
+  })
+  const panel = entry.factory(name => { assert.equal(name, 'react'); return React })
+  const registrations = [], slots = { inject(name, register) { register() }, register(def) { registrations.push(def.name) } }
+  panel.apply({ get: name => name === 'slots' ? slots : undefined, effect() {} })
+  assert.deepEqual(registrations, ['main', 'sidebar.panellist'])
+  const initial = (await getJson(fake, '/modules/health?id=builtin-typing')).items[0]
+  const operation = await panel.invokeModuleAction('builtin-typing', 'module.restart', { wait: () => new Promise(resolve => setImmediate(resolve)) })
+  assert.equal(panel.operationSucceeded(operation), true)
+  const health = (await getJson(fake, '/modules/health?id=builtin-typing')).items[0]
+  assert.equal(health.lifecycle, 'loaded'); assert.notEqual(health.runtimeGeneration, initial.runtimeGeneration)
+  assert.ok(calls.some(path => path.includes('/modules/operation?id=')))
+  assert.match(confirmations[0], /模型或发送消息/)
+  const external = join(dir, 'modules', 'c07-external')
+  await mkdir(external, { recursive: true })
+  await writeFile(join(external, 'module.json'), JSON.stringify({ id: 'c07-external', entry: 'index.mjs', webui: { version: 1, surfaces: [{ id: 'actions', hook: 'module.actions', renderer: 'status' }] } }))
+  await writeFile(join(external, 'index.mjs'), 'export function setup() {}')
+  await postJson(fake, '/modules/reload', { id: 'c07-external' })
+  await assert.rejects(panel.invokeModuleAction('c07-external', 'proactivity.runOnce'), /MODULE_ACTION_UNAVAILABLE/)
+  const content = panel.ContentPage({ goTo: target => navigations.push(target) })
+  const nodes = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.children)]
+  nodes(content).find(node => node.children?.includes('打开模块')).props.onClick()
+  assert.equal(navigations[0].moduleId, 'builtin-media-features'); assert.equal(navigations[0].anchor, 'panel')
+  await patchConfig(fake, { cognition: { enabled: true, dryRun: false } })
+  t.mock.method(handle.gateway.actions, 'sendMessage', async () => ({ message_id: 'PRIVATE_C07_QQ_ID' }))
+  t.mock.method(handle.cognition.services.llm, 'complete', async () => ({ ok: true, text: 'PRIVATE_C07_CONTENT' }))
+  t.mock.method(handle.cognition.services.llm, 'completeJson', async () => ({ ok: false }))
+  const result = await handle.cognition.services.pipeline.handleTurn({ id: 'turn_c07', chatType: 'private', chatId: '10001', senderId: '10001', text: '你好', addressed: true, messages: [], messageIds: [] })
+  assert.equal(result.ok, true)
+  await postJson(fake, '/cognition/decision/correct', { decisionId: result.decision.id, observation: { positiveReaction: true }, requestId: 'manual_c07' })
+  const detail = await getJson(fake, '/system/loop/detail?decisionId=' + result.decision.id)
+  const rendered = JSON.stringify(panel.LoopDetail({ data: detail, goTo: target => navigations.push(target) }))
+  assert.match(rendered, /sent parts：1/); assert.match(rendered, /policy committed：已提交/)
+  assert.doesNotMatch(rendered, /PRIVATE_C07_CONTENT|PRIVATE_C07_QQ_ID|sourceEventId|10001/)
+  const summary = await getJson(fake, '/system/loop/summary')
+  assert.equal(summary.retained.feedback.policyCommitted, 1)
+  const { persona } = await postJson(fake, '/cognition/persona/create', { name: 'C07 Other' })
+  await postJson(fake, '/cognition/persona/switch', { personaId: persona.id })
+  assert.equal((await getJson(fake, '/system/loop/summary')).retained.loops, 0)
+  assert.equal((await fake.call(API + '/system/loop/detail?decisionId=' + result.decision.id, undefined, { method: 'GET' })).json.code, 'LOOP_NOT_FOUND')
 })

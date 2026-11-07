@@ -4,7 +4,7 @@ import { reminderCommand } from '../../reminders/commands.js'
 export function createBuiltinReminders(api, { clock = { now: Date.now } } = {}) {
   const getConfig = () => api.legacyConfig.section('cognition.reminders')
   const reminders = createReminderEngine({
-    repository: api.reminderRepository, getConfig, scheduler: api.scheduler, clock, logger: api.log,
+    repository: api.reminderRepository, getConfig, scheduler: api.scheduler, health: api.health, clock, logger: api.log,
     // The command service enforces ownerOnly before entering these private operations.
     owner() {},
     deliver: payload => api.delivery.send(payload),

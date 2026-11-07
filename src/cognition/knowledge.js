@@ -127,6 +127,7 @@ export function createKnowledgeService({ store, getConfig, clock } = {}) {
       const id = uid('unknown')
       const unknown = {
         id,
+        firstDetectedTurnId: typeof turn?.id === 'string' && turn.id ? turn.id : null,
         unknownType: UNKNOWN_TYPES.includes(candidate.type) ? candidate.type : 'knowledge',
         surface,
         context: truncate(turn?.text || '', 1000),

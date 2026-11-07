@@ -630,7 +630,7 @@ test('M2-b：表情回应把机器人消息标记为正向 outcome', async () =>
     assert.equal(sent.length, 1)
     cog.observe({
       seq: 2, kind: 'notice', time: Math.floor(Date.now() / 1000),
-      notice: { type: 'group_msg_emoji_like', subType: 'emoji_like', userId: '10001', groupId: 'g1', messageId: '777' },
+      notice: { type: 'group_msg_emoji_like', subType: 'emoji_like', userId: '10001', messageId: '777' },
     }, { accepted: true })
     await flush(20)
     assert.equal(cog.snapshot().pipeline.reactions, 1)
@@ -839,4 +839,24 @@ test('M7-v: cognition wires an empty manual registry into owner commands; links 
   cognition = create()
   assert.equal(cognition.services.identities.counts().total, 1)
   assert.match((await cognition.services.commands.handle({ ...ownerTurn, text: '/identity' })).reply, /telegram:alice → p_manual · label/)
+})
+
+test('C06: expired pending and persona switches never create negative or cross-persona feedback', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-c06-pending-'))
+  const cog = makeCog({ dir, scheduler: createFakeScheduler(), gateway: { actions: { sendMessage: async () => ({ message_id: 'm_c06' }) } } })
+  t.after(() => { cog.dispose(); rmSync(dir, { recursive: true, force: true }) })
+  const pipeline = cog.services.pipeline
+  const turn = id => ({ id, chatType: 'private', chatId: '10001', senderId: '10001', text: '你好', addressed: true, messages: [], messageIds: [] })
+  await pipeline.handleTurn(turn('turn_first'))
+  pipeline._pending.get('private:10001').sentAt = Date.now() - 11 * 60 * 1000
+  assert.equal(pipeline.observeIncoming(turn('turn_expired')), null)
+  assert.equal(cog.services.personaStore.count('outcome'), 0)
+  assert.equal(cog.services.personaStore.count('policy'), 0)
+  await pipeline.handleTurn(turn('turn_second'))
+  const source = cog.activePersonaId(), other = cog.createPersona({ name: 'Other' }).persona.id
+  cog.switchPersona(other); cog.switchPersona(source)
+  assert.equal(pipeline.handleReaction({ notice: { userId: '10001', messageId: 'm_c06' } }).ok, false)
+  assert.equal(pipeline.observeIncoming(turn('turn_returned')), null)
+  assert.equal(cog.services.personaStore.count('outcome'), 0)
+  assert.equal(cog.services.personaStore.count('policy'), 0)
 })

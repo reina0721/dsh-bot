@@ -1,5 +1,35 @@
 # 变更记录
 
+## Unreleased（未发布）
+
+- C08：完成 C01–C07 最终离线验收文档，记录提交链、贴纸库/发送矩阵、健康/实际所有权、动作/restart、loop/receipt/反馈/研究与 UI 目的地及两项 DSH 注册；同步架构/模块/手册/排障/实现状态。补 unhealthy 只读观察不自动恢复、人工 restart 后旧代次隔离与沙箱管理 API 拒绝集成测试，复用现有白名单、人格、贴纸和 UI 回归。
+- 双格式包检查强制包含健康/动作/观测源码、ADR-018/019 与验收文档，校验包内 web 客户端闭环入口及恰好两项注册，拒绝私有模块状态/路径。证据与限制见 [C08 最终验收](docs/architecture/CLOSED-LOOP-ACCEPTANCE.md)。无新生产功能/依赖/版本或权限变化；没有浏览器二进制，未做 live/浏览器验收，无推送/部署/标签/发布。
+
+- C07：模块详情接入核心 health/actions/operation，显示 lifecycle/health/reasons/lastError、Provider 注册/实际 owner/fallback、依赖与调度/引擎遥测；动作携带 expectedGeneration/人格凭证并确认模型/发送影响，轮询同一操作至终态，展示 STOP_PENDING/错误，busy/skip/NO_TASK/fail 不报成功，丢失接纳响应按原 requestId 查询。
+- 新增核心 typed goTo 与 go 兼容导航，已挂载组件响应同页目标；B站唯一模块 panel、表情包库/主动/学习/提醒数据/配置入口和返回模块链接。认知增加「主动行为」「闭环」，闭环摘要/运行分页/详情显示阶段、交付 parts、反馈来源/观测/策略提交与研究关联，限当前人格、无正文或 QQ/事件 ID；学习移除逐任务“运行”，保留队列运行与任务重试/取消。预览/配置编辑器及外部 UI 隔离保持，无新增 DSH 注册。
+- 扩展 panel/module-webui/E2E 离线测试并更新手册/排障/模块文档；提醒仅现有汇总，学习目标受最近列表限制；operation 观察不跨页面持久保存，闭环按需刷新。无浏览器或真实 QQ/模型验收；不改版本/依赖/后端契约，不推送/部署/打标签/发布。
+
+- C06：新增 `/system/loop/summary`、`/system/loop/runs?limit=&before=&kind=&state=`、`/system/loop/detail?id=` 或 `?decisionId=` 管理只读 API（`/onebot-qq/api` 前缀）。默认 50/最多 200，按 createdAt/id 稳定分页，cursor 绑定当前人格/代次/过滤；跨人格、过期与不存在同 not-found。summary 分离进程计数、保留观测与当前业务记录，覆盖入口拒绝/过滤、readiness、模块/provider、阶段/回执、attempted/sent parts、反馈/策略与研究状态；无目标/正文/URL 标签，沿用 sandbox 拒绝与管理边界。
+- Feedback 增加 incoming/reaction/manual/unknown 来源、持久事件去重、bounded sentiment/归因和 Beta before/after/trials；manual 必须携带 requestId。只凭有效 parent/实际发送 receipt 学习，outcome/decision/policy/feedback receipt 同步事务全成全败；缺少原子能力拒绝，JSON 只在事务提交发布快照。unobserved/窗口到期不产生负或中性 trial；历史来源/提交状态未知保留 unknown/null。保留原 reward/Beta 算法、rate ledger 和既有自动路径，不新增 auto-feedback。
+- 新 unknown 记录真实 firstDetectedTurnId，重复/旧数据不覆盖或回填；研究每次实际 claim 单独 loop，取消/retry/中断保留各 attempt，通过真实 unknown/task/evidence/claim 引用只返回 ID/计数/状态，内容留在 learning 面。扩展事务/去重/人格/隐私/保留/首次轮次/取消重试/E2E 回归并更新 ADR-019；C06 当时未含 C07 UI，无版本/依赖变更、推送/部署/发布。
+
+- C05：新增无正文 LoopRun/DeliveryReceipt 人格观测，显式 handle 贯穿 admitted turn、决策/生成/交付/观察、命令与主动 port；入站/受控 action 增加聚合计数/时间/拒绝计数，访问仍先于存储。executor 单独拥有 multipart 回执，DeliveryService 无 wrapper 回执，直接 outbound 仅建独立 attempt，模块发送记录核心 module/runtime 归因。
+- 保留 ADR-006 的 partial+ok、真实 parts、从零开始的 failedPart、dry_run 与异常传播，无重试/补发。wait/silence/learn-only/compose skip 等未发送路径不建 receipt；异常/重启的未完成观测标 interrupted、结果未知，不推断历史。observer 失败不影响业务发送返回或异常。
+- 新 kind 无 SQL migration、不随人格复制、随人格删除；16 阶段/16 回执引用/4 unknown 引用/8 KiB，按人格 loop+receipt 合计最多 5000、最长 7 天，启动/写入增量清理，无后台 timer。补充系统闭环与各边界回归、ADR-019 实现状态；不含 C06/C07 反馈/研究关联、API/UI，不改版本/依赖/传输，不推送/部署/发布，未作真实 QQ/模型在线验收。
+
+- C04：固定 allowlist 的 module.enable/disable/restart/reload、proactivity.runOnce、learning.runPending；新增 `/modules/actions?id=`、`POST /modules/action`、`/modules/operation?id=` 或 `?requestId=`。严格字段、代次/可选人格凭证、全局 requestId 去重/冲突、每模块/依赖闭包互斥；128 条进程内记录，terminal 保留 1 小时，active 永不驱逐，满额拒绝，无自动重试。
+- 内置 restart 复用缓存导入和唯一 setup 路径，逆序停止/排空、正序恢复原运行闭包，保留 enabled/config/storage/grants；新 generation 隔离旧引用。提醒分离新接纳与已捕获仓库排空，宿主参与交接冻结；主动 token/学习 lease 先撤销。10 秒 STOP_PENDING 仅观察同一 drain，保留 runtime/owner/闭包，不取消清理、不提前启动替换或 fallback。停止不确定时保留 failed owner，禁止双调度器；失败不报恢复成功。
+- 既有 toggle/reload/run HTTP 共用动作 helper 并保留响应形状；外部仅 toggle/reload，manifest 不得声明 actions。补充 action/module/provider/reminder/token/lease/E2E 回归和 ADR-018 实现状态；无 C05 系统闭环、C07 UI、版本/依赖/数据迁移。操作幂等仅限当前进程保留期；永久 drain 可阻塞生命周期队列，失败 owner 可能需宿主运维处理；真实 QQ/网络/模型/浏览器未验证。
+
+- C03：新增 generation-bound 模块健康缓存与只读 `/modules/health`（含 `?id=`，统一返回 `items/summary/collectedAt/revision`），runtimeGeneration 独立于 UI generation；旧报告与迟到调度结果不能污染新实例，停用后保留带 telemetryGeneration 的快照。
+- 保留 lifecycle 原语义；健康区分未观察、正常/合法空闲、降级、业务故障与停止。原因码来自固定白名单，最多 8 条；错误仅投影固定码/宿主时间/代次。未接入或不适用遥测为 null，不猜测为零；调度与已接入的引擎/命令/事件/配置/输入状态/回复规划回调分别记录有界计数。
+- Provider 注册与实际所有权分离；提醒宿主发布交接/排空/失败及 core fallback，另三个 provider 仅报告模块激活，无核心回退。健康 GET 只复制内存元数据，不运行模块/provider 探针、不读文件/配置、不排队等待 stop、不触发恢复。现有提醒尽力停止失败保留 failed owner，不能视为已证实排空；本阶段不改变其兼容回退行为。
+- C03 不含 restart/actions、operation registry、系统闭环或 UI；计数为当前 runtime 中已接入工作入口的聚合，不覆盖媒体远程操作、学习来源/模型内部每个步骤，也不追溯历史。未验证真实 QQ/模型/网络故障与浏览器。
+
+- C01：拆分表情包库与发送授权，修复关闭 `media.images.enabled` 时列表、上传、标签、删除及文件预览被误禁用的问题；模块、媒体或表情包开关关闭仍关闭库，发送继续要求图片开关及媒体/delivery 服务可用。
+- `/media/status.stickers.available` 保留为库可用性别名，新增库/发送可用性及拒绝原因；媒体页按库状态开放管理并说明图片关闭导致发送禁用，模块草稿预览区分库和发送，配置帮助同步修正。
+- 补充 16 种开关组合、库管理/预览、服务缺失、异步复查、一次性/过期令牌与 access/rate/leak/dryRun 回归。配置键、数据、依赖及版本不变。
+
 ## 0.11.12（2026-11-08，媒体/主动/学习内置模块）
 
 - 新增默认启用的 `builtin-media-features`、`builtin-proactivity`、`builtin-learning`；三个模块各自独占行为/timer/命令，核心保留资源、状态、LLM/预算、delivery 与安全边界。

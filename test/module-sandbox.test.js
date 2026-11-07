@@ -170,7 +170,7 @@ test('opaque browser contexts and subresource/frame navigation cannot invoke hos
   const allowed = await h.fake.call('/onebot-qq/api/modules/ui/grant', { id: 'external', enabled: true }, { headers: { origin: 'http://dsh-fake.local', 'sec-fetch-dest': 'empty' } })
   assert.equal(allowed.json.ok, true)
   // Existing core sticker previews are same-origin image requests, not opaque UI.
-  createRoutes({ ctx: h.fake.ctx, providerRegistry: { get: name => name === 'mediaFeatures' ? { authorizeStickers: () => true } : null }, stickers: { fileFor: async () => ({ mime: 'image/png', path: join(h.dir, 'webui', 'index.html') }) } })
+  createRoutes({ ctx: h.fake.ctx, providerRegistry: { get: name => name === 'mediaFeatures' ? { authorizeStickerLibrary: () => true } : null }, stickers: { fileFor: async () => ({ mime: 'image/png', path: join(h.dir, 'webui', 'index.html') }) } })
   const imagePath = '/onebot-qq/api/media/stickers/file?id=example'
   const image = await h.fake.call(imagePath, undefined, { method: 'GET', headers: { 'sec-fetch-dest': 'image', 'sec-fetch-site': 'same-origin' } })
   assert.equal(image.status, 200); assert.equal(image.headers['content-type'], 'image/png')
