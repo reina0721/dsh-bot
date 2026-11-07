@@ -1,3 +1,5 @@
+import { biliCommand, stickerCommand } from '../src/modules/builtin/media-features/commands.js'
+import { createMediaFeaturesPort } from '../src/modules/media-features-port.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -91,6 +93,13 @@ function harness(overrides = {}, services = {}) {
     bilibili: services.bilibili,
     logger: null,
   })
+  // Feature parity fixtures explicitly install module handlers; core has no fallback.
+  if (services.bilibili) service.registerCommand('bili', input => biliCommand({ ...input, bilibili: services.bilibili, getConfig: () => ({ bilibili: config.content?.bilibili }) }), { allowProtected: true, audience: 'owner-or-operator' })
+  if (services.stickers) {
+    const authorize = () => config.media?.enabled && config.media?.images?.enabled && config.media?.stickers?.enabled
+    const port = createMediaFeaturesPort({ getConfig: () => config, assertActive() {}, media: services.media, stickers: services.stickers, delivery: services.delivery || outbound, access, authorizeStickers: authorize })
+    service.registerCommand('sticker', input => port.withCommand(input.turn, commandToken => stickerCommand({ ...input, commandToken, port: port.api, authorize })), { allowProtected: true, audience: 'owner' })
+  }
   return { service, sent, memory, getConfig: () => config, setConfig, configWrites }
 }
 

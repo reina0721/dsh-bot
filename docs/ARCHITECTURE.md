@@ -6,6 +6,22 @@ WebUI Phase 1–2、Phase 3A/3B、Phase 4 已实现 [ADR-014](architecture/ADR-0
 
 核心 ModulesPage 并行读取模块列表和 UI 目录，按来源/信任/generation/uiRevision/status 与 config/surface 契约核对。卡片或详情按钮进入独立核心详情，返回恢复列表；标题、来源/信任、启用/运行状态与错误始终由核心显示。module.card/detail 的 status surface 仅渲染说明与状态纯文本；可用 module-file 的 module.config/schema surface 在详情复用通用配置编辑器（sample 及声明有效 config schema 的外部模块），停用或未 loaded 时只读。actions/panel 与不可用组合为禁用占位，未知/无效/过期描述安全回退为核心状态信息。reply-delivery/typing/reminders 的 legacy-core（available:true、schemaVersion:1）在 module.config/schema surface 按全局字段表的有界 module 字符串归属渲染 FieldRow，使用全局 draft/getByPath、saveUiPatch 与 prefStatus；停用/未 loaded 时只读，不调用 `/modules/config`。系统设置过滤 module 字段并移除空分组：cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，cog-reminders 不再显示。存储键 cognition.reply.*、cognition.typing.enabled、cognition.reminders.*、默认值、规范化与运行行为不变，无数据迁移或新增后端配置端点。现有 DSH sidebar.panellist/main 两个注册保持，四个内置 module.detail 使用冻结 BUILTIN_MODULE_UI 的纯 React 只读预览，仅接收有界模块元数据、各自配置草稿字段与只读摘要；先经 uiFor 校验，未知 key 安全回退，外部 builtin-react 拒绝。module.config/schema 与保存链路保持。无模块级 DSH 注册、配置存储迁移、动态代码导入、sandbox 执行、iframe、外部沙箱或新增依赖。
 
+学习编排归默认启用的第七个内置模块 `builtin-learning`，独占 learning provider、新 unknown → 自动任务计划/入队、pending/run、来源迭代和 timer（约 30 秒首次/完成后 60 秒，每 tick 一个 due pending）。核心删除自动入队/runner/timer，仅保留检测/知识读取、来源、数据、提炼、LLM/预算和同步事务；停用无 fallback，旧 lease 迟到不能发布，未知检测和已有知识仍可读，重新启用不追溯入队。runLearning/cancel/retry 只委托当前 provider，缺失返回 MODULE_DISABLED。
+
+16 个 cognition.learning 原字段标记 module:'builtin-learning'，模块详情 legacy-core 与纯 learning.preview，保留全局保存和 enabled:true、autoResearch:false；手动运行无需 autoResearch，但要求模块/cognition/learning 开启且未暂停。没有可选模块 panel/新 DSH slot，原认知任务入口保留且经 provider。窄 learning-port 只发人格/代次/runtime/任务版本绑定的 lease 和有界 refs，核心不传页面/URL/凭据/store；保留私聊政策、旧 IDs/命名空间/数据、retry/taskTtl/maxQueries 的既有语义。详见 [ADR-017](architecture/ADR-017-builtin-learning.md)。
+
+## 媒体功能提取（one-shot 模块 1，当前边界）
+
+默认启用 `builtin-media-features` 成为第五个内置模块，独占 `mediaFeatures` provider、Bilibili 业务解释和 `/bili`、贴纸资格策略和 `/sticker`；模块在 setup 注册并自行启动，停用无 core 功能回退。host provider 订阅仅对 `reminders` 做所有权协调，媒体启停不重启提醒。原 Bilibili 服务移至 `src/modules/builtin/media-features/`；核心通过 `src/modules/media-features-port.js` 固定四个 Bilibili transport 操作、origin/headers/timeout/2 MiB 流式响应上限并拒绝重定向。模块不能传任意 URL/headers/Cookie。
+
+贴纸 storage/index/files 与媒体 transport/provider/credentials/文件检查继续由核心持有。核心在命令受众、deniedCommands/access 检查后发放单次、绑定聊天/生命周期的 commandToken；模块仅 pick ID，再提交 send，文件解析和一次 delivery/outbound 发送均在 core，不外传路径或字节。HTTP 全部 Bilibili/贴纸入口咨询当前 provider，缺失或策略关闭即拒绝；`/media/status` 仍可用。详情显示纯预览、原六字段设置和 Bilibili 操作面板；核心媒体页保留经 provider 授权的贴纸管理。配置和贴纸数据不迁移，无新 DSH slot。完整切换、端口与在途操作限制见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。以下 Phase 记录描述各历史阶段。
+
+## 主动行为提取（one-shot 模块 2，当前边界）
+
+第六个内置模块 `builtin-proactivity` 默认启用，但原业务 enabled 默认关闭。引擎位于 `src/modules/builtin/proactivity/engine.js`，独占策略、提示词、排序、退避、计数与单 timer（5 分钟首次/完成后 10 分钟）；核心不再构造/启动主动服务，删除 `src/cognition/proactivity.js`。固定 proactivity provider 只允许此 ID；停用无回退，认知统计/手动运行和原 HTTP 路由通过 facade，缺失返回安全空统计/MODULE_DISABLED。提醒所有权订阅保持隔离。
+
+核心 `src/modules/proactivity-port.js` 向固定模块 runtime 提供 snapshot/begin/candidates/context/complete/send/release；run token 捕获人格和切换代次，候选仅有效私聊/扁平维度/最多 1000，最多四条 160 字符记忆和三项风格。核心保留 cognition 状态、人格仓库、LLM 路由/预算（固定 proactive、220 tokens、0.8）和 delivery/outbound access/rate/leak/dryRun；每 token 一次发送，decision/proactive_intent 原地保存。memory/LLM 等待前后和发送前校验，迟到结果不发送；已接纳发送使用捕获的内部 decisionPolicy 写回原人格回执。七个旧字段归属模块详情 legacy-core，纯 preview，无 panel/新 DSH slot。/quiet、/active 保持配置行为但不能启用停用模块。详见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
+
 ## 1. 目标
 
 为 DSH 构造一个 QQ 接入插件：通过 **OneBot v11** 协议连接 **NapCat / SnowLuma / Lagrange /
@@ -295,7 +311,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 - `src/delivery/service.js`：认知命令、模块 `api.sendText`、proactivity、Agent `qq_send_text` 在生产中共享 `services.delivery`；单条 DeliveryPlan → `executeDeliveryPlan` → `outbound.deliver`。segments 优先于 text，无分条/引用/@/等待；保留 outbound 结果字段，透传执行器的状态与实际条数，单条真实成功 `parts:1`，失败/dry-run `parts:0`。详见 [ADR-004](architecture/ADR-004-unified-egress.md) 与 [ADR-006](architecture/ADR-006-delivery-result-status.md)。
 - `src/cognition/outbound.js`：`deliver({ chatType, chatId, segments, decisionId, source, dryRun })` 保持自动文本发送的安全闸门；
   顺序为访问控制 → 频率上限 → leak guard → dryRun → 发送 → `policy.markSent/markFailed`；只发一次，不自动重试。
-- pipeline 回复仍经原 planner/executor/outbound；Phase 5 的四类入口由 cognition 创建服务并注入，runtime 转给 tools、host 转给 kernel。未注入的旧调用方保留 outbound 兼容路径，proactivity 仅在两者都缺失时保留 legacy 路径。DeliveryService 自身没有 gateway 回退，outbound 不可用时安全失败，拒绝后不绕过或重试。
+- pipeline 回复仍经原 planner/executor/outbound；Phase 5 的四类入口由 cognition 创建服务并注入，runtime 转给 tools、host 转给 kernel。未注入的旧调用方保留 outbound 兼容路径，proactivity 提取后仅经核心 delivery/outbound 端口，缺失即安全失败，无 legacy gateway 回退。DeliveryService 自身没有 gateway 回退，outbound 不可用时安全失败，拒绝后不绕过或重试。
 - 面板人工 `POST /send` 保留 direct gateway 路径；媒体/文件命令与提醒服务不在本阶段迁移范围内。planner/分条、限频/重试/部分成功/leak guard 语义不变。
 - 默认 `access.mode='open'`，升级后行为不变；`allowlist` 才启用主人 + 白名单规则。
 
@@ -453,11 +469,11 @@ REST 新增 `GET /media/files` → `{ok:true,items:[{path,name,size,at}],totalBy
 
 ### 3.20 B站公共内容（M5-b / M7-m）
 
-- `src/content/bilibili.js` 调用 `api.bilibili.com` 的公开搜索、热门、视频详情与评论端点；规范化标题、作者、播放量、时长、完整 BV 号、数字 aid 与固定域名 url/shareUrl；标题移除搜索高亮 HTML，无效 BV 结果不生成链接。
+- `src/modules/builtin/media-features/bilibili.js` 经核心窄 transport 调用 `api.bilibili.com` 的公开搜索、热门、视频详情与评论端点；规范化标题、作者、播放量、时长、完整 BV 号、数字 aid 与固定域名 url/shareUrl；标题移除搜索高亮 HTML，无效 BV 结果不生成链接。
 - `comments(bvid, {limit=10})` 每次先查 view 取得有效 aid，缺失即报错；再以 type=1、oid=aid、sort=2、ps=1–20、pn=1 请求 `/x/v2/reply`。合并 top_replies/replies，置顶优先，按 rpid 去重并保留 API 顺序；规范化 author/content/like/at（ctime Unix 秒），去标签/控制字符、正文限 500 Unicode 字符，可附带一层楼中楼样本。无缓存或翻页。
 - `share(bvid)` 受原有 enabled 开关控制，离线返回 `{url,bvid}`，不查询标题或确认视频存在；完整 BV 格式校验防止路径/查询拼接。
 - `content.bilibili.enabled=false`，所以默认配置零网络；单次请求超时默认 15000ms（1000–60000ms），搜索/热门默认最多返回 5 条。请求只带 User-Agent/Referer，不携带 Cookie、不做 WBI 签名。HTTP、非零 code、登录要求或风控都返回明确错误，绝不伪造结果。
-- 主人命令 `/bili hot|关键词|BV号`、`/bili comments BV号`、`/bili share BV号`；REST 为 `GET /content/bilibili?q=`、`GET /content/bilibili/hot`、`GET /content/bilibili/comments?bvid=&limit=`、`GET /content/bilibili/share?bvid=`；顶层「内容」页提供搜索、热门、结果卡、BV 评论查询及分享链接。新增查询不注册 Agent 工具。
+- 主人命令 `/bili hot|关键词|BV号`、`/bili comments BV号`、`/bili share BV号`；REST 为 `GET /content/bilibili?q=`、`GET /content/bilibili/hot`、`GET /content/bilibili/comments?bvid=&limit=`、`GET /content/bilibili/share?bvid=`；「模块 → 媒体功能」详情提供搜索、热门、结果卡、BV 评论查询及分享链接，原内容页保留入口指引。新增查询不注册 Agent 工具。
 - B站接口与 §3.19 媒体 provider 独立；内容查询不会触发生图/改图或自动发送图片。
 - 精确边界：仅公开评论与离线分享，不提供 B站字幕、登录态、WBI 或发布评论能力。QQ空间需要 QQ 登录授权且涉及平台授权/ToS，本里程碑明确未实现。没有通用动作总线；真实 B站与 QQ 行为仍待受控真机验证。
 

@@ -11,11 +11,33 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
+## 内置媒体功能（one-shot 模块 1）
+
+当前目录共七个内置模块：learning、proactivity、media-features、reminders、reply-delivery、typing 默认启用，sample 默认关闭。`builtin-media-features` 是 Bilibili 功能服务、`/bili`、表情包策略和 `/sticker` 的唯一所有者；停用不恢复核心实现。其 `mediaFeatures` 槽位仅允许此模块注册，模块 setup 自行 start，start/stop 幂等；宿主提醒订阅只处理 `reminders`，媒体启停不改变提醒所有权。
+
+`media:features` 仅内置声明，端口仅向该模块 ID 暴露。`api.mediaFeatures` 提供固定 Bilibili search/popular/view/replies transport、贴纸 pick/send、固定配置投影和媒体/图片/贴纸开关布尔状态。无 URL/headers/Cookie、路径、字节、凭据或任意 HTTP/路由权限。`/sticker` 的 commandToken 由核心在主人/denied/access 检查后签发，固定聊天、单次使用且 handler 结束或 runtime 停止后失效；文件解析、校验和 delivery/outbound 发送留核心。`audience` 仅内置命令可声明，`/bili` 为 owner-or-operator，`/sticker` 为 owner。
+
+详情包含纯 `media-features.preview`、legacy-core 配置和 `media-features.panel` 的 Bilibili 操作界面。`content.bilibili.enabled/timeoutMs/maxResults`、`media.stickers.enabled/maxCount/maxBytes` 六字段归属此模块，键/默认值/全局保存不变；父媒体/图片开关仍在核心设置。原「内容」页指引进入模块，表情包管理暂留媒体页且每个 HTTP 操作都必须获当前 provider 授权。停用后两个命令静默、Bilibili 和贴纸 API 关闭，`/media/status` 仍报告可用性与原数据计数。无迁移、新 DSH slot 或核心功能回退。完整边界和限制见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。
+
+## 内置主动行为（one-shot 模块 2）
+
+`builtin-proactivity` 默认启用，独占固定 `proactivity` provider、策略、提示词和单一递归 timer（首次 5 分钟，完成后 10 分钟）。业务开关 `cognition.proactivity.enabled` 默认关闭。停用后无 timer、手动运行或核心 fallback；核心 `proactivityStats()` / `runProactivity()` 与原 HTTP 路由仅为当前 provider 的 facade，缺失返回安全空统计/`MODULE_DISABLED`。宿主提醒订阅不受影响。
+
+仅申请 providers:register、scheduler、config:read、proactivity:service；最后一项只允许固定内置 ID。`api.proactivity` 的 snapshot/begin/candidates/context/complete/send/release 提供当前人格的不透明 run token、最多 1000 个有效私聊候选（扁平维度）、显示名/最多四条各 160 字符记忆/三项风格。模型调用固定 proactive/220 tokens/0.8，核心保留路由与预算；发送固定目标/文本/source，创建规范 decision/proactive_intent，经过原 delivery/outbound 闸门且每 token 最多一次，无通用存储、LLM、delivery、URL/凭据或跨人格访问。
+
+memory/LLM 等待前后和发送前检查人格/切换代次/runtime；停止使 token 失效，迟到回复不发送，已接纳发送可完成并写回原人格。私聊、安静本地小时、滚动 24 小时 decision 计数（包括 dry/failed）、熟悉度/排序/退避和 single-flight 保持。七个原 cognition.proactivity 字段在模块详情 legacy-core 编辑，preview 纯只读，停用/未 loaded 配置只读；键/默认值/数据不迁移，/quiet 与 /active 保持核心配置行为但不能启用停用模块。无 panel 或新 DSH slot。完整切换与限制见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
+
+## 内置学习编排（one-shot 模块 3）
+
+`builtin-learning` 默认启用，唯一拥有固定 learning provider、未知自动规划/入队、来源迭代、任务执行和后台 timer（首次约 30 秒，完成后 60 秒，每 tick 最多一个 due pending）。停用同步取消订阅/timer/lease；无核心自动入队、runner 或 fallback，迟到结果不能发布 claim/解决 unknown。unknown 检测、已有知识与任务读取保持，重新启用不追溯建任务。手动运行不要求 autoResearch，但要求模块/cognition/learning 开启且未暂停；suggested 不自动执行。
+
+只申请 providers:register、scheduler、config:read、learning:service，最后一项仅 builtin-learning 可用。宿主 learning-port 提供 onUnknownDetected/enqueueAuto/pending/claim/sources/collectFromSource/extractClaim/complete/fail/release/retry，引用均绑定人格/代次/runtime/任务版本，每 lease 一次 attempt。核心保留数据、来源/页面/URL、LLM/预算和同步事务写入；无通用存储或任意网络/模型调用。取消通过 claim 的 cancel 模式作原仓库转换，retry 保留原语义，facade 缺 provider 返回 MODULE_DISABLED。详情有纯 learning.preview 和 16 字段 legacy-core 设置，无可选 panel/新 DSH slot；原认知页手动运行入口经 provider。完整边界及限制见 [ADR-017](architecture/ADR-017-builtin-learning.md)。
+
 ## WebUI Phase 5 当前状态
 
 现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，外部允许 status/schema 与显式授权的 sandbox renderer，内置额外允许 builtin-react。拒绝未知字段/能力、重复 ID/hook、非法 componentKey、越权 sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不重扫模块目录、不读配置值；隔离 UI 读取会校验公开资源；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
 
-核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。module.panel/detail 的 sandbox 经授权后仅在详情 iframe 中执行；actions、未支持的 hook/renderer 组合与不可用配置保留禁用占位；builtin-react 仅在 module.detail 查找编译期组件。
+核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。module.panel/detail 的 sandbox 经授权后仅在详情 iframe 中执行；actions、未支持的 hook/renderer 组合与不可用配置保留禁用占位；builtin-react 在 module.detail 查找编译期预览组件，媒体功能另有固定 module.panel。
 
 reply-delivery、typing、reminders 使用 `legacy-core`（available:true），sample 使用 `module-file`（available:true）；均为 schemaVersion:1 并包含 module.config/schema surface。前三者从现有 `configInfo.groups` 按字段 `module` 归属读取表单，值来自全局 draft，以 `saveUiPatch({[path]:value})` 即时保存并显示既有保存状态，不访问 `/modules/config`。归属元数据只允许最多 64 字符的模块 ID 字符串，不包含配置值或新存储位置。
 
@@ -30,12 +52,14 @@ Phase 3A 精确归属：
 系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；Phase 4 已开放外部声明式配置；Phase 5 实现显式授权的 iframe 与最小消息桥，外部同源 React 继续禁止。
 
 
-Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 module.config/schema，无重复 hook。服务端冻结 `BUILTIN_COMPONENT_KEYS` 与客户端冻结 `BUILTIN_MODULE_UI` 编译期注册表一致：
+历史 Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 module.config/schema，无重复 hook。服务端冻结 `BUILTIN_COMPONENT_KEYS` 与客户端冻结 `BUILTIN_MODULE_UI` 编译期注册表一致：
 
 | componentKey | 只读预览 |
 |---|---|
 | reply-delivery.preview | 分条开关、单条字数/最多条数、引用/@、分条等待 |
 | typing.preview | 模块启用、typing 开关及 enabled + loaded + typing.enabled 有效状态 |
+| learning.preview | 模块/学习/自动检索/未知检测开关与每小时上限；不请求或运行任务 |
+| proactivity.preview | 模块/主动开关、安静时段、私聊/群聊额度、熟悉度与退避；不运行 tick 或请求数据 |
 | reminders.preview | 模块/提醒开关、活跃上限、最短/最长间隔、tick；不创建或列出提醒 |
 | sample.preview | 当前配置草稿的示例消息，最多 200 字符，纯文本 |
 
@@ -101,9 +125,9 @@ iframe 固定 `sandbox="allow-scripts" referrerpolicy="no-referrer"`，无 allow
 
 **威胁模型与限制**：假设外部 HTML/脚本不可信，依靠浏览器 sandbox/CSP 和窄消息桥隔离宿主 DOM、Cookie、配置与 API；不允许外部同源 React，不新增 DSH 注册。后端仍是操作员安装的同进程 Node.js，不能防御恶意后端、管理员修改状态文件、并发恶意文件系统替换、浏览器漏洞或 iframe CPU/内存耗尽。公开目录只放适合展示的非秘密资源，不提供网络、持久化存储、worker、表单或下载能力。自身 frame 导航不是完整的网络隔离；不把这些约束描述成操作系统或网络沙箱。严格 CSP 下的 opaque-origin 外链脚本/ES module、字体等可能被浏览器阻止，建议内联经典脚本或自包含 bundle，不为兼容而放宽 connect-src 或 sandbox。Node 单测覆盖服务端头与客户端契约，**真实浏览器 sandbox/CSP/资源加载尚未验证**；本阶段无浏览器自动化、推送、部署、版本、tag 或发布。
 
-## 最终边界（Phase 14）
+## 历史边界（Phase 14，媒体功能后续见 ADR-015）
 
-架构程序以四个现有内置模块收束：reply delivery、typing、reminders 默认启用，sample 默认关闭。外部模块不能获得 provider/服务所有权、交付规划、turn 生命周期、输入状态写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖或内部 delivery/access 端口；来源由加载器赋值，清单 source/builtin 无法授权。部分权限声明在导入前拒绝，其余在注册/调用时拒绝或不暴露属性；单独声明不会赋予能力，普通外部 API 保持。11 项权限的双组拒绝矩阵、提醒人格隔离/安全错误和单所有者交接证据见 [最终验收](architecture/MODULE-ACCEPTANCE.md)。
+Phase 14 架构程序以四个既有内置模块收束：reply delivery、typing、reminders 默认启用，sample 默认关闭。外部模块不能获得 provider/服务所有权、交付规划、turn 生命周期、输入状态写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖或内部 delivery/access 端口；来源由加载器赋值，清单 source/builtin 无法授权。部分权限声明在导入前拒绝，其余在注册/调用时拒绝或不暴露属性；单独声明不会赋予能力，普通外部 API 保持。11 项权限的双组拒绝矩阵、提醒人格隔离/安全错误和单所有者交接证据见 [最终验收](architecture/MODULE-ACCEPTANCE.md)。
 
 媒体传输、存储、provider/HTTP 与文件约束明确保留核心，本程序不提取 builtin-media 服务，无数据迁移。未来可选 builtin-media 仅限功能策略/命令，并须先建立宿主持有的窄 media port；外部模块不获得媒体资源、原始服务或路由注册入口，详见 [ADR-013](architecture/ADR-013-media-boundary.md)。本阶段只做离线测试/文档/包检查，无生产行为、配置/UI/依赖或版本变化，无 live/浏览器验收；推送、部署和发布另行授权。
 
@@ -142,7 +166,7 @@ iframe 固定 `sandbox="allow-scripts" referrerpolicy="no-referrer"`，无 allow
 
 另外随包提供默认启用的 `builtin-reply-delivery`（回复交付，1.0.0），仅申请 `delivery:plan`，没有模块配置 schema、`api.config` 或面板「配置」按钮。它通过核心传入的 `replyCfg` 读取现有 `cognition.reply.*`，保留分条、首条引用、群聊 @、条间等待与末条合并余文。
 
-默认启用的 `builtin-typing`（私聊输入状态，1.0.0）仅申请 `turn:lifecycle`、`status:write`，没有模块配置 schema、`api.config` 或面板「配置」按钮。行为仍由默认关闭的 `cognition.typing.enabled` 控制，沿用原全局设置 UI/路径/规范化。新安装 `/modules` 有四个内置模块：提醒、私聊输入状态和回复交付 loaded，示例 disabled；模块启用不等于 typing 开启。
+默认启用的 `builtin-typing`（私聊输入状态，1.0.0）仅申请 `turn:lifecycle`、`status:write`，没有模块配置 schema、`api.config` 或面板「配置」按钮。行为仍由默认关闭的 `cognition.typing.enabled` 控制，沿用原全局设置 UI/路径/规范化。Phase 13 时 `/modules` 有四个内置模块：提醒、私聊输入状态和回复交付 loaded，示例 disabled；模块启用不等于 typing 开启。
 
 `<数据目录>/modules/state.json` 的原子持久化格式：
 
@@ -165,7 +189,7 @@ export async function setup(api) {
 
 ## 权限与 API
 
-所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。`scheduler`、`persona:store`、`reminders:service` 和 `config:read` 采用按来源和权限条件暴露属性的方式，未授权时整个属性不存在。
+所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。`scheduler`、`persona:store`、`reminders:service`、`proactivity:service` 和 `config:read` 采用按来源和权限条件暴露属性的方式，未授权时整个属性不存在。
 
 | 权限 | API | 行为 |
 |---|---|---|
@@ -184,8 +208,10 @@ export async function setup(api) {
 | `scheduler` | `api.scheduler.setTimeout(fn, delayMs)` / `clearTimeout(id)` | 仅向声明权限的内置模块暴露；一次性、当前 runtime 范围内的定时器，返回 `{id,dispose}` |
 | `persona:store` | `api.personaStore` | 仅内置模块；同步 `get/put/remove/list/count`，当前人格与模块命名空间隔离；外部清单声明即拒绝 |
 | `reminders:service` | `api.reminderRepository` | 仅内置模块；同步访问当前人格核心 reminder 行；外部清单声明即拒绝 |
-| `config:read` | `api.legacyConfig.section('cognition.reminders')` | 仅内置模块；固定路径、当前规范化配置的深拷贝；外部清单声明即拒绝 |
-| `providers:register` | `api.providers.register(name, provider)` | 仅内置且运行中的模块；固定白名单目前只有 reminders，返回生命周期 disposer；外部或缺权限调用抛错 |
+| `config:read` | `api.legacyConfig.section(path)` | builtin-learning 只读 cognition.learning 16 字段，builtin-proactivity 只读 cognition.proactivity 七字段，其余内置只读 cognition.reminders 五字段；外部清单拒绝 |
+| `learning:service` | `api.learning` | 仅 builtin-learning；有界任务/来源/证据/claim 引用和一次 attempt lease，见 ADR-017 |
+| `proactivity:service` | `api.proactivity` | 仅 builtin-proactivity；固定人格 run token、私聊投影、固定模型调用和一次交付 |
+| `providers:register` | `api.providers.register(name, provider)` | 仅内置且运行中的模块；固定白名单 reminders、mediaFeatures、proactivity，返回生命周期 disposer；外部或缺权限调用抛错 |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
@@ -194,7 +220,7 @@ export async function setup(api) {
 
 ## Provider 与提醒所有权（Phase 13）
 
-`api.providers.register('reminders', provider)` 要求 `providers:register` 权限和加载器确认的 builtin 来源。provider 是带 start/stop 函数的对象，可选 status 函数。名称白名单只有 reminders，同名/同 moduleId 重复拒绝，无覆盖栈；内核填写身份，外部不能注册。注册只登记对象；幂等 disposer 绑定注册身份，停止、失败、依赖清理和 dispose 自动注销。模块拿不到注册表或其它 provider。
+`api.providers.register('reminders', provider)` 要求 `providers:register` 权限和加载器确认的 builtin 来源。provider 是带 start/stop 函数的对象，可选 status 函数。名称白名单为 reminders、mediaFeatures、proactivity，后两者固定模块 ID；同名/同 moduleId 重复拒绝，无覆盖栈；内核填写身份，外部不能注册。注册只登记对象；幂等 disposer 绑定注册身份，停止、失败、依赖清理和 dispose 自动注销。模块拿不到注册表或其它 provider。
 
 内部注册表新增 `subscribe(listener)` → disposer。每次成功添加/移除通知冻结的 `{name,moduleId}`，不含 source/provider/错误详情；同步异常与异步拒绝逐监听器隔离，未知 remove/重复 disposer 不通知。
 
@@ -362,7 +388,7 @@ put 是创建/完整替换入口，update 刻意只提供取消和投递结果�
 
 每次同步调用访问**调用当时的当前人格**；人格切换后同一主端口访问新人格。Phase 13 增加 capture()：仅内部捕获调用时的作用域，返回相同固定 reminder 方法与 isCurrent()，不暴露人格标识，也不能指定其它人格；tick 的等待后写回原人格，检测切换后停止处理剩余候选。两种 API 均绑定 setup runtime；停用、setup/事件失败、依赖禁用/重载及 dispose 撤销旧方法，cleanup 中也不能调用。提交数据和已返回快照保留。
 
-`api.legacyConfig.section(path)` 只接受单个严格等于 `cognition.reminders` 的字符串，每次调用重新获取当前配置并复用核心 normalizeConfig，只返回 enabled/maxActive/minIntervalSeconds/maxIntervalSeconds/tickMs 五个字段的深拷贝。拒绝父路径、子路径、其它路径和额外参数；未知字段、秘密和其它配置不会出现在结果。缺少配置使用现有默认值；没有写入、onChange 或订阅，已返回快照不会自动更新；不影响独立的 api.config 声明式模块配置。
+`api.legacyConfig.section(path)` 对提醒内置只接受单个严格等于 `cognition.reminders` 的字符串（builtin-learning 仅接受 cognition.learning 16 字段，见 ADR-017；builtin-proactivity 仅接受 cognition.proactivity 七字段，见 ADR-016），每次调用重新获取当前配置并复用核心 normalizeConfig，只返回 enabled/maxActive/minIntervalSeconds/maxIntervalSeconds/tickMs 五个字段的深拷贝。拒绝父路径、子路径、其它路径和额外参数；未知字段、秘密和其它配置不会出现在结果。缺少配置使用现有默认值；没有写入、onChange 或订阅，已返回快照不会自动更新；不影响独立的 api.config 声明式模块配置。
 
 数据继续留在核心人格作用域的 reminder kind，使用现有 SQLite/JSON、备份及人格复制/删除/统计语义，无迁移、无 module_store 副本。Phase 13 的 builtin-reminders 已使用此端口接管调度与命令，核心保留兼容回退；仓库读写前后快照比较防止取消、删除或替换被旧发送结果覆盖。本阶段无配置字段/UI/REST/依赖或版本变化。详见 [ADR-011](architecture/ADR-011-reminder-repository.md)。
 

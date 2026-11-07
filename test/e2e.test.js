@@ -236,7 +236,8 @@ test('面板名称：人格优先、QQ 昵称回退、安全 index 注入与卸�
 })
 
 test('媒体表情包 API：上传、列表与按 ID 读取图片', async (t) => {
-  const { fake } = await boot(t, { rowConfig: {} })
+  const { fake, handle } = await boot(t, { rowConfig: { media: { enabled: true, images: { enabled: true } } } })
+  await handle.ready
   const bytes = Buffer.from('e2e-png-bytes')
   const uploaded = await postJson(fake, '/media/stickers/upload', {
     name: 'e2e.png', mime: 'image/png', data: bytes.toString('base64'),
@@ -411,8 +412,8 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
 
   // 新安装也有默认关闭的包内示例；来源、动作与响应不暴露路径。
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.summary, { builtin: 4, external: 0 })
-  assert.equal(modules.items.length, 4)
+  assert.deepEqual(modules.summary, { builtin: 7, external: 0 })
+  assert.equal(modules.items.length, 7)
   const typing = modules.items.find((item) => item.id === 'builtin-typing')
   assert.equal(typing.status, 'loaded'); assert.equal(typing.enabled, true)
   assert.equal(typing.hasConfig, false)
@@ -426,14 +427,14 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   const uiCatalog = await getJson(fake, '/modules/ui')
   assert.equal(uiCatalog.version, 1)
   assert.match(uiCatalog.catalogRevision, /^[a-f0-9]{64}$/)
-  assert.equal(uiCatalog.items.length, 4)
+  assert.equal(uiCatalog.items.length, 7)
   for (const item of uiCatalog.items) {
     const module = modules.items.find((row) => row.id === item.moduleId)
     assert.equal(item.generation, module.generation)
     assert.equal(item.uiRevision, module.uiRevision)
     assert.equal(item.status, module.status)
     assert.equal(item.trust, 'builtin')
-    assert.equal(item.surfaces.length, 2)
+    assert.equal(item.surfaces.length, item.moduleId === 'builtin-media-features' ? 3 : 2)
     assert.equal(item.surfaces[0].renderer, 'builtin-react')
     assert.equal(item.surfaces[0].componentKey, item.moduleId.slice('builtin-'.length) + '.preview')
     assert.equal(item.surfaces[1].renderer, 'schema')
@@ -1022,9 +1023,9 @@ test('B站 API：默认关闭零网络，公开评论 limit/错误及离线分�
     const url = new URL(input)
     calls.push({ url, init })
     assert.equal(url.origin, 'https://api.bilibili.com')
-    if (url.pathname === '/x/web-interface/view') return { ok: true, json: async () => ({ code: 0, data: { bvid: 'BV1xx411c7mD', aid: 98765 } }) }
+    if (url.pathname === '/x/web-interface/view') return Response.json({ code: 0, data: { bvid: 'BV1xx411c7mD', aid: 98765 } })
     assert.equal(url.pathname, '/x/v2/reply')
-    return { ok: true, json: async () => ({ code: replyCode, data: { replies: [{ rpid: 1, member: { uname: 'API作者' }, content: { message: 'API正文' }, like: 3, ctime: 1700000000 }] } }) }
+    return Response.json({ code: replyCode, data: { replies: [{ rpid: 1, member: { uname: 'API作者' }, content: { message: 'API正文' }, like: 3, ctime: 1700000000 }] } })
   }
   t.after(() => { globalThis.fetch = originalFetch })
   const { fake } = await boot(t, { rowConfig: { enabled: false } })
@@ -1141,7 +1142,7 @@ test('e2e: external module reload/toggle, cross-source blocked and manifest ceil
   assert.equal((await postJson(fake, '/modules/toggle', { id: 'builtin-sample', enabled: true })).item.status, 'loaded')
   let catalog = await getJson(fake, '/modules')
   assert.equal(catalog.items.find((item) => item.id === manifest.id).status, 'loaded')
-  assert.deepEqual(catalog.summary, { builtin: 4, external: 1 })
+  assert.deepEqual(catalog.summary, { builtin: 7, external: 1 })
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: false })).item.status, 'disabled')
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: true })).item.status, 'loaded')
   await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ ...manifest, enabled: false }))
@@ -1412,7 +1413,7 @@ test('builtin reminders catalog, command ownership and disable fallback share re
   const { fake, handle } = await boot(t)
   await handle.ready
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.summary, { builtin: 4, external: 0 })
+  assert.deepEqual(modules.summary, { builtin: 7, external: 0 })
   const item = modules.items.find(row => row.id === 'builtin-reminders')
   assert.equal(item.status, 'loaded'); assert.equal(item.enabled, true); assert.equal(item.hasConfig, false)
   await patchConfig(fake, { access: { ownerQQ: '10001' }, cognition: { dryRun: true, reminders: { enabled: true } } })

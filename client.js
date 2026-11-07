@@ -6851,15 +6851,18 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const refresh = useCallback(async () => {
         setLoading(true)
         setError('')
-        const results = await Promise.all([get('/media/status'), get('/media/stickers?limit=200'), refreshFiles()])
-        const statusResult = safeObject(results[0])
-        const stickerResult = safeObject(results[1])
-        if (statusResult.ok === false || stickerResult.ok === false) {
-          setError(String(statusResult.message || stickerResult.message || '媒体数据加载失败'))
-        } else {
+        try {
+          const [statusResponse] = await Promise.all([get('/media/status'), refreshFiles()])
+          const statusResult = safeObject(statusResponse)
           setMediaStatus(statusResult)
-          setItems(safeArray(stickerResult.items))
-        }
+          setItems([])
+          if (statusResult.ok === false) setError(String(statusResult.message || '媒体数据加载失败'))
+          else if (statusResult.stickers?.available === true) {
+            const stickerResult = safeObject(await get('/media/stickers?limit=200'))
+            if (stickerResult.ok === false) setError(String(stickerResult.message || '表情包加载失败'))
+            else setItems(safeArray(stickerResult.items))
+          }
+        } catch { setError('媒体数据加载失败') }
         setLoading(false)
       }, [refreshFiles])
 
@@ -6894,10 +6897,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const upload = (event) => {
         const file = event.target.files && event.target.files[0]
         event.target.value = ''
-        if (!file) return
+        if (!file || busy || mediaStatus?.stickers?.available !== true) return
         const reader = new FileReader()
         reader.onerror = () => props.toast('读取图片失败', 'err')
         reader.onload = async () => {
+          if (mediaStatus?.stickers?.available !== true) return
           const encoded = String(reader.result || '')
           const comma = encoded.indexOf(',')
           setBusy('upload')
@@ -6980,6 +6984,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const editTags = async (item) => {
+        if (mediaStatus?.stickers?.available !== true) return
         const current = safeArray(item.tags).join(', ')
         const value = typeof window !== 'undefined' && window.prompt ? window.prompt('标签（用逗号分隔）', current) : current
         if (value === null) return
@@ -6990,6 +6995,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const removeSticker = async (item) => {
+        if (mediaStatus?.stickers?.available !== true) return
         if (typeof window !== 'undefined' && window.confirm && !window.confirm('删除表情包“' + String(item.name || '') + '”？')) return
         const result = safeObject(await post('/media/stickers/delete', { id: item.id }))
         if (!result.ok) return props.toast('删除失败：' + String(result.message || '未知错误'), 'err')
@@ -7002,6 +7008,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const images = safeObject(status.images)
       const audio = safeObject(status.audio)
       const stickerStatus = safeObject(status.stickers)
+      const stickersAvailable = stickerStatus.available === true
       return h(
         'div',
         { className: 'ob-page' },
@@ -7013,7 +7020,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h(StatTile, { label: '改图', value: images.edit?.configured ? '已配置' : '未配置', icon: 'sparkles', tone: images.edit?.configured ? 'ok' : 'warn', hint: images.edit?.enabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'ASR', value: audio.asrConfigured ? '已配置' : '未配置', icon: 'message', tone: audio.asrConfigured ? 'ok' : 'warn', hint: audio.asrEnabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'TTS', value: audio.ttsConfigured ? '已配置' : '未配置', icon: 'bolt', tone: audio.ttsConfigured ? 'ok' : 'warn', hint: audio.ttsEnabled ? '功能已启用' : '功能未启用' }),
-          h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: stickerStatus.enabled === false ? '功能未启用' : '本地表情包库' }),
+          h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: !stickersAvailable ? '功能未启用' : '本地表情包库' }),
         ),
         h(Panel, { title: '生图/改图', description: '只生成本地 PNG 文件，不会发送到 QQ。改图仅接受媒体根内相对路径。' },
           h('div', { className: 'ob-stack' },
@@ -7055,9 +7062,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ),
         h(Panel, {
           title: '表情包库', description: '支持 PNG、JPG、JPEG、GIF、WebP；标签可用于 QQ 命令 /sticker [标签]。',
-          actions: h('div', { className: 'ob-row' }, h('label', { className: cx('ob-btn small secondary', busy === 'upload' && 'disabled') }, h(Icon, { name: 'sparkles', size: 14 }), h('span', null, busy === 'upload' ? '上传中…' : '上传图片'), h('input', { className: 'ob-sr-only', type: 'file', accept: '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp', disabled: busy === 'upload', onChange: upload })), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: loading, onClick: refresh }, '刷新')),
+          actions: h('div', { className: 'ob-row' }, h('label', { className: cx('ob-btn small secondary', (busy === 'upload' || !stickersAvailable) && 'disabled') }, h(Icon, { name: 'sparkles', size: 14 }), h('span', null, busy === 'upload' ? '上传中…' : '上传图片'), h('input', { className: 'ob-sr-only', type: 'file', accept: '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp', disabled: busy === 'upload' || !stickersAvailable, onChange: upload })), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: loading, onClick: refresh }, '刷新')),
         },
-          items.length
+          !stickersAvailable ? h('p', { className: 'ob-muted' }, '表情包功能未启用，请在模块详情检查状态与设置。') : items.length
             ? h('div', { className: 'ob-media-grid' }, items.map((item) => h('article', { className: 'ob-media-card', key: item.id },
                 h('img', { className: 'ob-media-image', src: API + '/media/stickers/file?id=' + encodeURIComponent(item.id), alt: String(item.name || '表情包'), loading: 'lazy' }),
                 h('p', { className: 'ob-media-name', title: String(item.name || '') }, String(item.name || '未命名')),
@@ -7070,6 +7077,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     }
 
     function ContentPage(props) {
+      return h(Panel, { title: '公共内容' },
+        h('p', null, 'B站公共内容已移入「模块 → 媒体功能」详情。'),
+        h(Btn, { onClick: () => props.go?.('modules') }, '打开模块'),
+        h(Banner, { tone: 'warn', message: 'QQ空间未实现：该能力需要 QQ 登录授权。' }),
+      )
+    }
+
+    function MediaFeaturesPanel(props) {
       const [query, setQuery] = useState('')
       const [items, setItems] = useState([])
       const [loading, setLoading] = useState(false)
@@ -7125,7 +7140,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       return h(
         'div',
         { className: 'ob-page' },
-        h(Banner, { tone: 'warn', message: 'QQ空间未实现：该能力需要 QQ 登录授权，并涉及平台授权与服务条款边界。' }),
         h(Panel, { title: 'B站公共内容', description: '默认关闭；公开搜索、热门、视频信息与评论，不使用 Cookie/WBI 或登录态。' },
           h('div', { className: 'ob-row' },
             h('input', {
@@ -7361,6 +7375,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       lines.map((line, index) => h('p', { key: index, className: 'ob-small' }, line)),
     )
     const BUILTIN_MODULE_UI = Object.freeze({
+      'learning.preview': function LearningPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '学习开关：' + previewSwitch(config.enabled),
+          '自动外部检索：' + previewSwitch(config.autoResearch),
+          '未知检测：' + previewSwitch(config.detectUnknowns),
+          '每小时任务上限：' + previewValue(config.maxTasksPerHour),
+          '自动任务首次约 30 秒检查，完成后 60 秒；手动运行遵循认知开关与暂停状态。',
+        ])
+      },
       'reply-delivery.preview': function ReplyDeliveryPreview({ module, config, summary }) {
         return previewBody(summary, [
           '模块启用：' + previewSwitch(module.enabled),
@@ -7378,6 +7402,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           '输入状态有效状态：' + (module.enabled && module.status === 'loaded' && config.enabled === true ? '开启（仅私聊，依赖网关支持）' : '未生效'),
         ])
       },
+      'proactivity.preview': function ProactivityPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '主动行为开关：' + previewSwitch(config.enabled) + '（仅私聊）',
+          '安静时段（本地小时）：' + previewValue(config.quietStart) + '–' + previewValue(config.quietEnd),
+          '滚动 24 小时私聊上限：' + previewValue(config.maxPrivatePerDay),
+          '群聊每日上限（保留配置，暂不发送）：' + previewValue(config.maxGroupPerDay),
+          '最低熟悉度：' + previewValue(config.minFamiliarity) + '；无回应退避：' + previewValue(config.backoffHours, ' 小时'),
+        ])
+      },
       'reminders.preview': function RemindersPreview({ module, config, summary }) {
         return previewBody(summary, [
           '模块启用：' + previewSwitch(module.enabled),
@@ -7391,6 +7425,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       'sample.preview': function SamplePreview({ config, summary }) {
         return previewBody(summary, ['示例回复：' + (summary.configAvailable ? config.message : '未加载配置')])
       },
+      'media-features.preview': function MediaFeaturesPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          'B站公共内容：' + previewSwitch(config.bilibiliEnabled),
+          '表情包开关：' + previewSwitch(config.stickersEnabled),
+          '媒体总开关：' + previewSwitch(config.mediaEnabled) + '；图片开关：' + previewSwitch(config.imagesEnabled),
+          '表情包有效状态：' + (module.enabled && module.status === 'loaded' && config.stickersEnabled && config.mediaEnabled && config.imagesEnabled ? '开启' : '未生效'),
+        ])
+      },
+      'media-features.panel': MediaFeaturesPanel,
     })
 
     function builtinPreviewProps(item, key, draft, editor) {
@@ -7404,10 +7448,22 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       } else if (key === 'typing.preview') {
         config.enabled = previewBool(draft?.cognition?.typing?.enabled)
         configAvailable = config.enabled !== null
+      } else if (key === 'learning.preview') {
+        const raw = safeObject(draft?.cognition?.learning)
+        Object.assign(config, { enabled: previewBool(raw.enabled), autoResearch: previewBool(raw.autoResearch), detectUnknowns: previewBool(raw.detectUnknowns), maxTasksPerHour: previewNumber(raw.maxTasksPerHour, 0, 30) })
+        configAvailable = isPlainObject(draft?.cognition?.learning)
+      } else if (key === 'proactivity.preview') {
+        const raw = safeObject(draft?.cognition?.proactivity)
+        const finite = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : null
+        Object.assign(config, { enabled: previewBool(raw.enabled), quietStart: previewNumber(raw.quietStart, 0, 23), quietEnd: previewNumber(raw.quietEnd, 0, 23), maxPrivatePerDay: previewNumber(raw.maxPrivatePerDay, 0, 10), maxGroupPerDay: previewNumber(raw.maxGroupPerDay, 0, 10), minFamiliarity: finite(raw.minFamiliarity, 0, 1), backoffHours: previewNumber(raw.backoffHours, 1, 720) })
+        configAvailable = isPlainObject(draft?.cognition?.proactivity)
       } else if (key === 'reminders.preview') {
         const raw = safeObject(draft?.cognition?.reminders)
         Object.assign(config, { enabled: previewBool(raw.enabled), maxActive: previewNumber(raw.maxActive, 1, 1000), minIntervalSeconds: previewNumber(raw.minIntervalSeconds, 60, 2592000), maxIntervalSeconds: previewNumber(raw.maxIntervalSeconds, 60, 2592000), tickMs: previewNumber(raw.tickMs, 1000, 3600000) })
         configAvailable = isPlainObject(draft?.cognition?.reminders)
+      } else if (key === 'media-features.preview') {
+        Object.assign(config, { bilibiliEnabled: previewBool(draft?.content?.bilibili?.enabled), stickersEnabled: previewBool(draft?.media?.stickers?.enabled), mediaEnabled: previewBool(draft?.media?.enabled), imagesEnabled: previewBool(draft?.media?.images?.enabled) })
+        configAvailable = config.bilibiliEnabled !== null && config.stickersEnabled !== null
       } else if (key === 'sample.preview') {
         configAvailable = editor?.id === item.id && typeof editor.values?.message === 'string'
         config.message = configAvailable ? previewText(editor.values.message, 200) : ''
@@ -7677,7 +7733,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h(Btn, { small: true, kind: granted ? 'danger' : 'secondary', disabled: Boolean(busy) || !permitted || (!granted && !ui.sandbox.available), onClick: () => grantSandbox(item, !granted) }, granted ? '撤销' : '启用隔离 WebUI'),
           )
         }
-        if (surface.hook === 'module.detail' && surface.renderer === 'builtin-react') {
+        if (surface.hook === 'module.panel' && surface.renderer === 'builtin-react' && surface.componentKey === 'media-features.panel' && item.id === 'builtin-media-features' && item.builtin && item.source === 'builtin') {
+          return item.enabled && item.status === 'loaded'
+            ? h(MediaFeaturesPanel, { key: surface.id, toast: props.toast })
+            : h('p', { key: surface.id, className: 'ob-muted' }, '媒体功能模块未运行。')
+        }
+        if (surface.hook === 'module.detail' && surface.renderer === 'builtin-react' && surface.componentKey.endsWith('.preview')) {
           const Component = Object.prototype.hasOwnProperty.call(BUILTIN_MODULE_UI, surface.componentKey) ? BUILTIN_MODULE_UI[surface.componentKey] : null
           return h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
             Component ? h(Component, builtinPreviewProps(item, surface.componentKey, props.draft, editor))
@@ -8389,6 +8450,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.Connect = Connect
     exports.Messages = Messages
     exports.MediaPage = MediaPage
+    exports.MediaFeaturesPanel = MediaFeaturesPanel
     exports.ContentPage = ContentPage
     exports.ModulesPage = ModulesPage
     exports.SandboxModuleFrame = SandboxModuleFrame

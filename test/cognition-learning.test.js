@@ -10,7 +10,7 @@ import { createClock } from '../src/cognition/util.js'
 import { createBeliefService } from '../src/cognition/beliefs.js'
 import { createSkillService } from '../src/cognition/skills.js'
 import { createKnowledgeService } from '../src/cognition/knowledge.js'
-import { isQuietHour } from '../src/cognition/proactivity.js'
+import { isQuietHour } from '../src/modules/builtin/proactivity/engine.js'
 
 function withStore(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-learn-'))
@@ -55,31 +55,15 @@ test('skills：成功增长、失败下降、压力降低有效值、迁移有�
   assert.ok(skills.get('humor').effectiveMastery < after)
 }))
 
-test('knowledge：没有证据保持 unknown；fake 来源产生带引用 claim', async () => withStore(async (store) => {
-  const sources = {
-    register() {},
-    list: () => [{
-      id: 'fake',
-      label: 'fake',
-      reliability: 0.9,
-      async search() { return [{ title: '测试条目', url: 'https://a.example/x', snippet: '这是测试条目的定义。' }, { title: '另一条', url: 'https://b.example/y', snippet: '另一个独立来源的解释。' }] },
-      async fetch(url) { return { url, title: '测试条目', text: '这是测试条目的定义。另一个独立来源的解释。' } },
-    }],
-    get: () => null,
-  }
-  const knowledge = createKnowledgeService({ store, getConfig, clock: createClock(), sources })
-  const unknown = {
-    id: 'u1', surface: '测试梗', scopeType: 'group', scopeId: 'g1', status: 'open',
-  }
-  store.put('unknown', 'u1', unknown)
-  const task = knowledge.createTask(unknown, { auto: true })
-  assert.ok(task)
-  const result = await knowledge.runTask(task)
-  assert.equal(result.ok, true)
-  assert.ok(result.claim)
-  assert.ok(result.claim.citations.length >= 1)
-  assert.equal(store.get('unknown', 'u1').status, 'resolved')
-  assert.ok(knowledge.listClaims().length >= 1)
+test('knowledge：核心只检测/读取未知；autoResearch 开启也不自动建任务或运行', async () => withStore(async (store) => {
+  const config = structuredClone(CONFIG); config.cognition.learning.autoResearch = true
+  const knowledge = createKnowledgeService({ store, getConfig: () => config, clock: createClock() })
+  knowledge.detectFromTurn({ turn: { text: '测试梗' }, analysis: { unknownCandidates: [{ surface: '测试梗' }], confidence: 0.7 } })
+  assert.equal(knowledge.listUnknowns().length, 1)
+  assert.equal(knowledge.listTasks().length, 0)
+  assert.equal(knowledge.runTask, undefined); assert.equal(knowledge.runPending, undefined)
+  store.put('knowledge_claim', 'old', { id: 'old', claim: '已有知识' })
+  assert.equal(knowledge.listClaims()[0].claim, '已有知识')
 }))
 
 test('proactivity：安静时段跨午夜正确', () => {

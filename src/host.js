@@ -26,7 +26,6 @@ import { createTurnHooks } from './cognition/turn-hooks.js'
 import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
-import { createBilibiliService } from './content/bilibili.js'
 import { createBackupService } from './ops/backup.js'
 import { createUpgradeService } from './ops/upgrade.js'
 import { createModuleKernel } from './modules/kernel.js'
@@ -84,11 +83,11 @@ export function apply(ctx, rowConfig) {
   }
   const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
-  const bilibili = createBilibiliService({ getConfig, logger })
   const deliveryRegistry = createDeliveryRegistry()
   const providerRegistry = createProviderRegistry({ logger: logger.child('providers') })
   const turnHooks = createTurnHooks({ logger: logger.child('turn-hooks') })
   const cognition = createCognition({
+    providerRegistry,
     turnHooks,
     deliveryRegistry,
     ctx,
@@ -100,10 +99,9 @@ export function apply(ctx, rowConfig) {
     access,
     setConfig,
     media,
-    stickers,
-    bilibili,
   })
   const modules = createModuleKernel({
+    media, stickers,
     providerRegistry,
     access,
     turnHooks,
@@ -271,6 +269,7 @@ export function apply(ctx, rowConfig) {
   }
 
   const routes = createRoutes({
+    providerRegistry,
     ctx,
     getConfig,
     setConfig,
@@ -282,7 +281,6 @@ export function apply(ctx, rowConfig) {
     models,
     media,
     stickers,
-    bilibili,
     access,
     modules,
     backup,
@@ -345,7 +343,8 @@ export function apply(ctx, rowConfig) {
     ownership = ownership.then(work, work)
     return ownership
   }
-  const unsubscribeProviders = providerRegistry.subscribe(() => {
+  const unsubscribeProviders = providerRegistry.subscribe(({ name }) => {
+    if (name !== 'reminders') return
     providerRevision++
     failedProvider = null
     if (modulesSettled && !disposed) syncReminderOwnership().catch(() => log.warn('提醒所有权协调失败'))
@@ -418,7 +417,6 @@ export function apply(ctx, rowConfig) {
     models,
     media,
     stickers,
-    bilibili,
     modules,
     providerRegistry,
     modulesReady,

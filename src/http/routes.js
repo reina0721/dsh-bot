@@ -81,7 +81,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -158,18 +158,26 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
 
-  if (bilibili) {
+  const mediaFeatures = () => {
+    const provider = providerRegistry?.get('mediaFeatures')
+    if (!provider) throw new Error('媒体功能模块未启用')
+    return provider
+  }
+  const authorizeStickers = () => {
+    if (mediaFeatures().authorizeStickers() !== true) throw new Error('表情包功能未启用。')
+  }
+  {
     route('GET', '/content/bilibili', async (req) => {
       const keyword = String(queryOf(req).q || '').trim()
       if (!keyword) throw new Error('缺少 q')
-      return bilibili.search(keyword)
+      return mediaFeatures().bilibili.search(keyword)
     })
-    route('GET', '/content/bilibili/hot', async () => bilibili.hot())
+    route('GET', '/content/bilibili/hot', async () => mediaFeatures().bilibili.hot())
     route('GET', '/content/bilibili/comments', async (req) => {
       const query = queryOf(req)
-      return bilibili.comments(query.bvid, { limit: query.limit ?? 10 })
+      return mediaFeatures().bilibili.comments(query.bvid, { limit: query.limit ?? 10 })
     })
-    route('GET', '/content/bilibili/share', async (req) => ({ ok: true, ...await bilibili.share(queryOf(req).bvid) }))
+    route('GET', '/content/bilibili/share', async (req) => ({ ok: true, ...await mediaFeatures().bilibili.share(queryOf(req).bvid) }))
   }
 
   if (upgrade) {
@@ -246,7 +254,16 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }
 
   if (media) {
-    route('GET', '/media/status', async () => ({ ok: true, ...media.status(), stickers: stickers ? await stickers.status() : null }))
+    route('GET', '/media/status', async () => {
+      const stickerStatus = stickers ? await stickers.status() : null
+      let featureStatus = { active: false }, available = false
+      try {
+        const provider = providerRegistry?.get('mediaFeatures')
+        featureStatus = provider?.status() || featureStatus
+        available = provider?.authorizeStickers() === true
+      } catch { /* Status remains readable during provider teardown. */ }
+      return { ok: true, ...media.status(), mediaFeatures: featureStatus, stickers: stickerStatus ? { ...stickerStatus, available } : null }
+    })
     route('GET', '/media/files', async () => ({ ok: true, ...await media.listFiles() }))
     route('GET', '/media/file/download', async (req) => ({ ok: true, ...await media.readFile(queryOf(req).name) }))
     route('POST', '/media/file/delete', async (req) => {
@@ -282,37 +299,50 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   if (stickers) {
     route('GET', '/media/stickers', async (req) => {
+      authorizeStickers()
       const query = queryOf(req)
-      return { ok: true, items: await stickers.list({ query: query.query || '', tag: query.tag || '', limit: toInt(query.limit, 100, 1, 500) }) }
+      const items = await stickers.list({ query: query.query || '', tag: query.tag || '', limit: toInt(query.limit, 100, 1, 500) })
+      authorizeStickers()
+      return { ok: true, items }
     })
     route('POST', '/media/stickers/upload', async (req) => {
+      authorizeStickers()
       const maxBytes = Math.max(1024, Number(getConfig()?.media?.stickers?.maxBytes) || 5 * 1024 * 1024)
       const body = await readBody(req, Math.ceil(maxBytes * 4 / 3) + 16384)
       const data = String(body?.data || '').trim()
       if (!body?.name || !body?.mime || !data) throw new Error('缺少 name、mime 或 data')
       if (data.length > Math.ceil(maxBytes * 4 / 3) + 8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data) || data.length % 4 !== 0) throw new Error('data 不是合法 base64 或超过大小限制')
+      authorizeStickers()
       const buffer = Buffer.from(data, 'base64')
       if (buffer.length > maxBytes) throw new Error(`图片超过大小限制 ${maxBytes} bytes`)
       return { ok: true, item: await stickers.importBuffer(buffer, { name: body.name, mime: body.mime, tags: body.tags }) }
     })
     route('POST', '/media/stickers/tag', async (req) => {
+      authorizeStickers()
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
+      authorizeStickers()
       const item = await stickers.updateTags(body.id, body.tags)
       if (!item) throw new Error('表情包不存在')
       return { ok: true, item }
     })
     route('POST', '/media/stickers/delete', async (req) => {
+      authorizeStickers()
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
+      authorizeStickers()
       return { ok: true, removed: await stickers.remove(body.id) }
     })
     routeRaw('GET', '/media/stickers/file', async (req) => {
+      authorizeStickers()
       const id = queryOf(req).id
       if (!id) throw new Error('缺少 id')
       const file = await stickers.fileFor(id)
       if (!file) throw new Error('表情包不存在')
-      return { __raw: true, type: file.mime, body: await readFile(file.path) }
+      authorizeStickers()
+      const body = await readFile(file.path)
+      authorizeStickers()
+      return { __raw: true, type: file.mime, body }
     })
   }
 

@@ -5,7 +5,7 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** Single-part automatic intents share the executor and outbound guards. */
 export function createDeliveryService({ outbound, sleep = defaultSleep } = {}) {
-  async function deliver({ chatType, chatId, segments, text = '', source = 'pipeline', decisionId = '', dryRun = null } = {}) {
+  async function deliver({ chatType, chatId, segments, text = '', source = 'pipeline', decisionId = '', dryRun = null, decisionPolicy } = {}) {
     if (!['private', 'group'].includes(chatType) || !String(chatId ?? '').trim()) return { ok: false, status: 'failed', error: 'INVALID_TARGET', parts: 0 }
     const body = segments !== undefined ? segments
       : typeof text === 'string' && text.trim() ? [{ type: 'text', data: { text } }] : []
@@ -20,7 +20,7 @@ export function createDeliveryService({ outbound, sleep = defaultSleep } = {}) {
     const result = await executeDeliveryPlan({
       plan, sleep, dryRun,
       deliver: async (intent) => {
-        outboundResult = await outbound.deliver(intent)
+        outboundResult = await outbound.deliver({ ...intent, ...(decisionPolicy ? { decisionPolicy } : {}) })
         return outboundResult
       },
     })

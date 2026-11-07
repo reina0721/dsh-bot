@@ -444,7 +444,7 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     return { ok: true, path, size: input.size }
   }
 
-  async function sendMedia({ chatType, chatId, kind, filePath, relativePath, name } = {}) {
+  async function sendMedia({ chatType, chatId, kind, filePath, relativePath, name, deliver } = {}) {
     const c = config()
     if (!c.enabled) throw new Error('媒体功能未启用')
     if (!['image', 'record', 'file'].includes(kind)) throw new Error('kind 必须是 image、record 或 file')
@@ -457,9 +457,11 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
       if (typeof action !== 'function') throw new Error('网关不支持文件上传')
       return action(chatId, realFile, safeName(name || basename(fullPath)))
     }
-    if (typeof gateway?.actions?.sendMessage !== 'function') throw new Error('网关不支持发送消息')
+    if (!deliver && typeof gateway?.actions?.sendMessage !== 'function') throw new Error('网关不支持发送消息')
     const buffer = await readFile(realFile)
-    return gateway.actions.sendMessage({ chatType, chatId, message: [{ type: kind, data: { file: `base64://${buffer.toString('base64')}` } }] })
+    const segments = [{ type: kind, data: { file: `base64://${buffer.toString('base64')}` } }]
+    if (deliver) return deliver({ chatType, chatId, segments, source: 'command' })
+    return gateway.actions.sendMessage({ chatType, chatId, message: segments })
   }
 
   function status() {

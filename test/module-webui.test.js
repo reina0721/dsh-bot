@@ -15,7 +15,7 @@ const validate = (raw, source = 'external', schema = null) => validateWebuiDescr
 
 test('WebUI builtin-react: frozen compile-time allowlist and strict source/key matrix', () => {
   assert.ok(Object.isFrozen(BUILTIN_COMPONENT_KEYS))
-  assert.deepEqual(BUILTIN_COMPONENT_KEYS, ['reply-delivery.preview', 'typing.preview', 'reminders.preview', 'sample.preview'])
+  assert.deepEqual(BUILTIN_COMPONENT_KEYS, ['learning.preview', 'reply-delivery.preview', 'typing.preview', 'proactivity.preview', 'reminders.preview', 'sample.preview', 'media-features.preview', 'media-features.panel'])
   const react = (componentKey) => descriptor({ surfaces: [surface('module.detail', { renderer: 'builtin-react', componentKey })] })
   for (const key of BUILTIN_COMPONENT_KEYS) {
     assert.equal(validate(react(key), 'builtin').surfaces[0].componentKey, key)
@@ -154,12 +154,12 @@ test('WebUI built-in registry catalog includes disabled sample; no import/config
   await h.kernel.start()
   const catalog = h.kernel.uiCatalog()
   assert.equal(catalog.version, 1)
-  assert.equal(catalog.items.length, 4)
+  assert.equal(catalog.items.length, 7)
   for (const item of catalog.items) {
     assert.equal(item.status, 'disabled')
     assert.equal(item.source, 'builtin'); assert.equal(item.trust, 'builtin')
     assert.equal(typeof item.generation, 'string'); assert.match(item.uiRevision, /^[a-f0-9]{64}$/)
-    assert.deepEqual(item.surfaces.map((row) => row.hook), ['module.detail', 'module.config'])
+    assert.deepEqual(item.surfaces.map((row) => row.hook), item.moduleId === 'builtin-media-features' ? ['module.detail', 'module.config', 'module.panel'] : ['module.detail', 'module.config'])
     assert.equal(item.surfaces[0].renderer, 'builtin-react')
     assert.equal(item.surfaces[0].componentKey, item.moduleId.slice('builtin-'.length) + '.preview')
     assert.equal(item.surfaces[1].renderer, 'schema')

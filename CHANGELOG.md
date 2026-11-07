@@ -1,5 +1,23 @@
 # 变更记录
 
+## 未发布（one-shot 模块 3，2026-11-07）
+
+- 默认启用 builtin-learning，独占固定 learning provider、自动 unknown→task 规划/入队、pending/run、来源迭代与 timer；核心删除自动入队/学习 runner/timer，无 fallback。默认 enabled:true/autoResearch:false 保持，手动运行/取消/重试经过当前 provider，停用返回 MODULE_DISABLED；知识读取与未知检测保留，无追溯建任务。
+- 内置固定 learning:service 窄端口、一次 attempt 的人格/代次/runtime/版本 lease；核心保留来源/页面、LLM/预算、同步事务与数据，证据去重/complete 幂等，私聊/开关/取消/停止阻止迟到发布。首次约 30 秒、完成后 60 秒，每 tick 最多一个到期 pending，suggested 不自动运行。
+- 16 个原配置归模块详情 legacy-core 与纯 learning.preview；原认知页操作经 provider，无可选模块 panel 或 DSH 新入口。保留 ID/数据/配置和既有未完整执行字段语义，补充 ADR-017、生命周期/port/UI/归档检查。无版本/依赖变化、推送、部署、tag 或发布；未验证真实来源/模型/QQ/浏览器。
+
+## 未发布（one-shot 模块 2，2026-11-07）
+
+- 默认启用 builtin-proactivity，独占主动策略/提示词/排序/退避与单递归 timer；新增仅固定模块可注册的 proactivity 槽位和 proactivity:service 窄端口。删除 core 主动引擎与 timer；统计/手动运行及原 HTTP 通过 facade，停用返回 MODULE_DISABLED，无 fallback，提醒所有权不变。
+- run token 捕获人格/切换代次/runtime，投影有效私聊候选、有限记忆/风格；固定核心 proactive/220 tokens/0.8 调用与一次 delivery/outbound 发送，保留预算和 access/rate/leak/dryRun。修正旧私聊 scope/关系维度混用；迟到 memory/LLM 不发送，已接纳发送以原人格写规范 decision/proactive_intent 回执，无 raw error/通用存储/凭据/provider 选择。
+- 七个原配置字段归属模块详情 legacy-core 与纯预览，键/默认关闭/数据及 /quiet、/active 保持，无 panel/新 DSH slot。补充 engine/port/provider/生命周期/出站/UI/包验证和 ADR-016。无学习策略、依赖、版本变化，无推送、部署、标签或发布；真实 QQ/模型 provider/浏览器未验。
+
+## 未发布（one-shot 模块 1，2026-11-07）
+
+- 默认启用 builtin-media-features，独占 Bilibili 解释/命令和贴纸策略/命令；新增固定 mediaFeatures 槽位和内置专用 media:features 窄端口，提醒订阅隔离。删除核心 Bilibili 服务与两个功能命令实现，模块停用后命令静默、相关 HTTP fail closed，无核心回退。
+- 核心固定 Bilibili 四操作的 origin/端点/headers/超时/2 MiB 流式响应上限并拒绝重定向；贴纸用一次性、绑定授权聊天和生命周期的 commandToken，核心解析/校验文件并经 delivery/outbound 发送一次，不暴露路径、字节或凭据。媒体 transport/provider/存储继续留核心。
+- 六个原配置字段移入模块详情，沿用键/默认值/保存；新增纯预览及 Bilibili 操作 panel，原内容页保留入口指引。贴纸控件留核心媒体页并通过 provider 授权，status 在禁用后仍可读。补充行为对等、受众/访问、令牌/生命周期、路由关闭、UI/包验证及 ADR-015。无数据迁移、版本/依赖变化、新 DSH slot、推送、部署、标签或发布；未做真实 provider/QQ/浏览器验收。
+
 ## 0.11.11（2026-11-07，模块 WebUI v1）
 
 - 模块 WebUI Phase 5：外部仅可通过 ui:sandbox 权限、sandbox 描述和显式绑定授权运行不透明源 iframe；state.json 追加 uiGrants，绑定 id/UI revision/entry/公开资源 SHA-256，停用保留授权、撤销保留配置。独立 generation 资源路由实施公开路径/扩展名/MIME/realpath/符号链接/大小检查与强制 CSP、no-store/nosniff，变更或无授权关闭。详情增加确认授权/撤销与禁用说明，iframe 固定 allow-scripts/no-referrer；v1 nonce 桥仅 ready/有界 resize/纯文本 notify，验证 source/生命周期/字段并清理。宿主 API 拒绝 opaque origin 与 frame/子资源请求。补充安全测试、作者示例与威胁模型；真实浏览器 sandbox/CSP 未验证，不支持外部同源 React/宿主配置或 API/DSH slots。无依赖、版本、推送、部署、tag 或发布。
