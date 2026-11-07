@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-08T01:45:00Z",
-  "scope": "dsh-bot 0.11.12 live web profile — three builtin feature modules, API/slot verification",
+  "at": "2026-11-08T05:10:00Z",
+  "scope": "dsh-bot 0.11.14 live web profile — system/module closed loops v2, API/slot verification",
   "live": {
     "ok": true,
-    "version": "0.11.12",
+    "version": "0.11.14",
     "apiVersion": 1,
     "state": "connected",
     "uptimeMsAtCheck": 44272370
@@ -37,15 +37,15 @@
     "files": 5
   },
   "notCovered": [
-    "real QQ /bili,/sticker and snapshots",
-    "real proactive LLM send",
-    "real learning research/provider",
-    "real browser module detail/config UI",
+    "real QQ actions/commands",
+    "real browser health/actions/loop UI",
+    "real Bilibili/sticker",
+    "real proactive send",
+    "real learning provider research",
     "external sandbox iframe/CSP",
-    "approval queue",
-    "media provider"
+    "approval queue"
   ],
-  "installedFrom": "local dist/dsh-bot.tgz (0.11.12); GitHub release v0.11.12 published",
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.14); GitHub release v0.11.14 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
     "observed": true,
@@ -138,50 +138,54 @@
       {
         "id": "builtin-learning",
         "enabled": true,
-        "status": "loaded",
-        "configBinding": "legacy-core"
+        "status": "loaded"
       },
       {
         "id": "builtin-media-features",
         "enabled": true,
-        "status": "loaded",
-        "configBinding": "legacy-core"
+        "status": "loaded"
       },
       {
         "id": "builtin-proactivity",
         "enabled": true,
-        "status": "loaded",
-        "configBinding": "legacy-core"
+        "status": "loaded"
       },
       {
         "id": "builtin-reminders",
         "enabled": true,
-        "status": "loaded",
-        "configBinding": "legacy-core"
+        "status": "loaded"
       },
       {
         "id": "builtin-reply-delivery",
         "enabled": true,
-        "status": "loaded",
-        "configBinding": "legacy-core"
+        "status": "loaded"
       },
       {
         "id": "builtin-sample",
         "enabled": false,
-        "status": "disabled",
-        "configBinding": "module-file"
+        "status": "disabled"
       },
       {
         "id": "builtin-typing",
         "enabled": true,
-        "status": "loaded",
-        "configBinding": "legacy-core"
+        "status": "loaded"
       }
     ],
-    "uiCatalog": {
-      "version": 1,
-      "items": 7
+    "health": {
+      "ok": true,
+      "summary": {
+        "unknown": 6,
+        "healthy": 0,
+        "degraded": 0,
+        "unhealthy": 0,
+        "stopped": 1
+      },
+      "note": "health API live; newly loaded modules report unknown until their first instrumented run; sample stopped. Runtime/UI generations and provider owner fields verified."
     },
-    "note": "GET /modules and /modules/ui verified; seven builtin modules, sample disabled; onebot-qq sidebar slot active after restoring row enabled state; config feature switches remain as configured. No real QQ commands, model/provider calls, browser or sandbox verification."
+    "loop": {
+      "summaryOk": true
+    },
+    "sidebar": "sidebar.panellist/onebot-qq active after restoring row enabled",
+    "note": "GET /modules, /modules/health, /system/loop/summary verified; no real QQ commands, model/provider, browser or sandbox validation."
   }
 }
