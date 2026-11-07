@@ -1,4 +1,5 @@
 // Host-only bridge: tokens capture a persona and this runtime's assertActive closure.
+import { observeLoop } from '../observability/loop.js'
 import { normalizeConfig } from '../core/config.js'
 import { createPersonaScopedStore } from '../cognition/persona-scope.js'
 import { createMemoryService } from '../cognition/memory.js'
@@ -10,7 +11,7 @@ const dimension = value => Number.isFinite(Number(value)) ? Number(value) : 0
 const safeReasons = new Set(['ACCESS_DENIED', 'RATE_LIMITED', 'LEAK_BLOCKED', 'GATEWAY_UNAVAILABLE', 'OUTBOUND_UNAVAILABLE', 'BUDGET_EXHAUSTED', 'LLM_ROUTE_UNAVAILABLE'])
 const failure = reason => ({ ok: false, reason })
 
-export function createProactivityPort({ getConfig, store, services = {}, delivery, outbound, getState = () => ({}), assertActive = () => {}, clock = { now: () => getState().now ?? Date.now() }, memoryFactory = createMemoryService } = {}) {
+export function createProactivityPort({ getConfig, store, services = {}, delivery, outbound, getState = () => ({}), assertActive = () => {}, clock = { now: () => getState().now ?? Date.now() }, memoryFactory = createMemoryService, observer = services.loopObserver, moduleId = null, runtimeGeneration = null } = {}) {
   const runs = new WeakMap()
   let current = null
   const state = () => {
@@ -38,7 +39,7 @@ export function createProactivityPort({ getConfig, store, services = {}, deliver
     const personaId = store.currentPersonaId()
     const bound = createPersonaScopedStore({ base: store.base, getPersonaId: () => personaId })
     const token = Object.freeze({})
-    runs.set(token, { personaId, scopeGeneration: services.persona?.scopeGeneration?.(), bound, candidates: new Map(), selected: null, completed: false, consumed: false, released: false, text: '' })
+    runs.set(token, { loop: observeLoop(observer, 'begin', { kind: 'proactivity', moduleId, runtimeGeneration }), personaId, scopeGeneration: services.persona?.scopeGeneration?.(), bound, candidates: new Map(), selected: null, completed: false, consumed: false, released: false, text: '' })
     current = token
     return token
   }
@@ -81,6 +82,7 @@ export function createProactivityPort({ getConfig, store, services = {}, deliver
   async function complete(token, { system, user } = {}) {
     const run = checked(token)
     if (!run.selected || run.completed || typeof system !== 'string' || typeof user !== 'string' || system.length > 4000 || user.length > 8000) return failure('INVALID_REQUEST')
+    observeLoop(observer, 'recordStage', run.loop, 'generating')
     run.completed = true
     let result
     try {
@@ -93,41 +95,55 @@ export function createProactivityPort({ getConfig, store, services = {}, deliver
   }
   async function send(token) {
     const run = checked(token)
-    if (run.consumed || !run.text || !run.selected) return failure('INVALID_RUN')
-    run.consumed = true // Consume synchronously, before delivery or any await, including failures.
-    const rel = run.selected
-    const now = clock.now()
-    const decision = {
-      id: uid('decision'), turnId: '', chatType: 'private', chatId: rel.scopeId, personId: rel.personId,
-      action: 'proactive', contextKey: 'proactive:private', candidates: [],
-      features: { familiarity: rel.familiarity, affinity: rel.affinity, initiative: rel.initiative },
-      expectedUtility: 0.5, confidence: 0.5, reason: '主动发起：关系允许且无近期互动',
-      status: 'pending', createdAt: now, updatedAt: now, atHour: Math.floor(now / 3600000),
-    }
-    checked(token)
-    run.bound.put('decision', decision.id, decision)
-    // Outbound rate checks stay core-owned; only decision receipts use the captured store.
-    const decisionPolicy = createPolicyService({ store: run.bound, getConfig, clock })
-    let result
     try {
-      const sender = delivery?.deliver ? delivery : outbound
-      result = await sender?.deliver({ chatType: 'private', chatId: rel.scopeId, segments: [{ type: 'text', data: { text: run.text } }], decisionId: decision.id, source: 'proactivity', dryRun: getConfig?.()?.cognition?.dryRun ? true : null, decisionPolicy })
-    } catch { result = null }
-    // An admitted send can finish after stop/switch, always in the captured persona.
-    if (!result?.ok) {
-      const reason = safeReasons.has(result?.error) ? result.error : 'SEND_FAILED'
-      decisionPolicy.markFailed(decision.id, reason)
-      return { ok: false, reason, blocked: result?.blocked === true, decisionId: decision.id }
+      if (run.consumed || !run.text || !run.selected) return failure('INVALID_RUN')
+      run.consumed = true // Consume synchronously, before delivery or any await, including failures.
+      const rel = run.selected
+      const now = clock.now()
+      const decision = {
+        id: uid('decision'), turnId: '', chatType: 'private', chatId: rel.scopeId, personId: rel.personId,
+        action: 'proactive', contextKey: 'proactive:private', candidates: [],
+        features: { familiarity: rel.familiarity, affinity: rel.affinity, initiative: rel.initiative },
+        expectedUtility: 0.5, confidence: 0.5, reason: '主动发起：关系允许且无近期互动',
+        status: 'pending', createdAt: now, updatedAt: now, atHour: Math.floor(now / 3600000),
+      }
+      checked(token)
+      run.bound.put('decision', decision.id, decision)
+      observeLoop(observer, 'recordStage', run.loop, 'decided', { decisionId: decision.id })
+      // Outbound rate checks stay core-owned; only decision receipts use the captured store.
+      const decisionPolicy = createPolicyService({ store: run.bound, getConfig, clock })
+      let result
+      observeLoop(observer, 'recordStage', run.loop, 'delivering')
+      try {
+        const sender = delivery?.deliver ? delivery : outbound
+        result = await sender?.deliver({ chatType: 'private', chatId: rel.scopeId, segments: [{ type: 'text', data: { text: run.text } }], decisionId: decision.id, source: 'proactivity', dryRun: getConfig?.()?.cognition?.dryRun ? true : null, decisionPolicy, loop: run.loop, moduleId, runtimeGeneration })
+      } catch { result = null }
+      // An admitted send can finish after stop/switch, always in the captured persona.
+      if (!result?.ok) {
+        const reason = safeReasons.has(result?.error) ? result.error : 'SEND_FAILED'
+        decisionPolicy.markFailed(decision.id, reason)
+        observeLoop(observer, 'finishLoop', run.loop, { status: 'failed', reasonCode: 'SEND_FAILED' })
+        return { ok: false, reason, blocked: result?.blocked === true, decisionId: decision.id }
+      }
+      const messageId = String(result.messageId || '').slice(0, 128)
+      const dryRun = result.dryRun === true
+      decisionPolicy.markSent(decision.id, { messageId, dryRun })
+      run.bound.put('proactive_intent', uid('proactive'), { personId: rel.personId, chatId: rel.scopeId, decisionId: decision.id, text: run.text, messageId, dryRun, at: clock.now() })
+      observeLoop(observer, 'finishLoop', run.loop)
+      return { ok: true, decisionId: decision.id, dryRun }
+    } catch (error) {
+      observeLoop(observer, 'finishLoop', run.loop, { status: 'failed', reasonCode: 'EXECUTION_THROW' })
+      throw error
     }
-    const messageId = String(result.messageId || '').slice(0, 128)
-    const dryRun = result.dryRun === true
-    decisionPolicy.markSent(decision.id, { messageId, dryRun })
-    run.bound.put('proactive_intent', uid('proactive'), { personId: rel.personId, chatId: rel.scopeId, decisionId: decision.id, text: run.text, messageId, dryRun, at: clock.now() })
-    return { ok: true, decisionId: decision.id, dryRun }
   }
   function release(token) {
     const run = token && runs.get(token)
-    if (run) { run.released = true; runs.delete(token) }
+    if (run) {
+      // Revocation must not close an already admitted send before its real result.
+      if (!run.consumed) observeLoop(observer, 'finishLoop', run.loop, { reasonCode: 'CANCELLED' })
+      run.released = true
+      runs.delete(token)
+    }
     if (current === token) current = null
   }
   return Object.freeze({ snapshot, begin, candidates, context, complete, send, release })

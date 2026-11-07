@@ -1,6 +1,6 @@
 # ADR-019：系统闭环 v2 关联、回执与反馈契约
 
-- 状态：已批准，待实现（C02 仅文档，不代表已有 API/UI）
+- 状态：已批准，C05 执行观测已实现；C06/C07 反馈/研究关联及 API/UI 待实现
 - 日期：2026-11-07
 - 基线：分支 `feat/closed-loop-v2`，C01 `5e0c6c4`
 - 前置：[ADR-006](ADR-006-delivery-result-status.md)、[ADR-016](ADR-016-builtin-proactivity.md)、[ADR-017](ADR-017-builtin-learning.md)、[ADR-018](ADR-018-module-closed-loop.md)
@@ -164,3 +164,18 @@ cursor 是绑定当前人格与查询条件的不透明分页标识；拒绝任�
 ## 后续实现验收约束
 
 后续阶段应覆盖单一 delivery 写入/去重、ADR-006 全状态与实际 parts、异常未知窗口、各 no-send 路径、observed decision 的既有发送事实、反馈来源与事务回滚/去重、unobserved 不更新 policy、首次研究轮次不覆盖/不回填、7 天/5000 联合上限、人格切换/删除及重启 interrupted。C02 只冻结这些契约，不新增实现、测试或历史回执。
+
+## C05 实现状态（2026-11-07）
+
+C05 已实现无正文执行观测，不代表 C06/C07 的反馈/研究关联、查询 API 或管理 UI 已实现。
+
+- 核心 `src/observability/loop.js` 是唯一观测仓库，显式传递不透明人格绑定 handle，无全局 current trace；新增 `loop_run` / `delivery_receipt` 人格 kind，复用现有 records，无 SQL migration。物理存储保留 `kind` 为仓库类型，逻辑 kind 分别为 `loopKind` / `receiptKind`。
+- LoopRun 使用上文 Loop v1 字段并增加 `stages:[{stage,at}]`、`receiptRefs`、`unknownRefs`；分别最多 16/16/4 项，内部引用最多 96 个 ASCII 字符，单记录最多 8 KiB。unknown 只记实际检测 ID，不实现研究或 firstDetectedTurnId 的传播/历史回填。原因与错误只取固定代码，入参按白名单拒绝额外字段，发送结果先投影后进入 observer。
+- DeliveryReceipt 使用 delivery Receipt v1 字段，增加 `status:running|completed|interrupted`、`completedAt`、`reasonCode` 和 `moduleId` 归因；`data:null` 表示尚无完整结果。无 parent 的既有直接 outbound/模块发送只建 attempt，`loopId:null`，不虚构社交轮次。attemptId/eventId 在接纳时生成，原 handle 只允许一次终结；多层调用显式传递 owner/attempt，不能生成分条或 wrapper 回执。
+- executor 唯一拥有 multipart 最终回执，outbound 的原 gate/part 返回仍贡献真实执行结果；DeliveryService 的正常与 preflight 拒绝都交给同一 executor 观测，不再创建外层回执。严格保留 ADR-006 的 partial+ok、实际 parts、从零开始的 failedPart、首条/后续 dry_run、fallback 和不重试；transport/业务回调异常终结为 `interrupted/data:null/EXECUTION_THROW` 并继续传播原异常。outbound 原来捕获的网关错误仍按原 SEND_FAILED 返回。
+- 社交 admitted turn、决策/生成/交付/观察阶段与主动 port 接纳 run 接入；命令回复、模块 sendText/delivery 带核心 module/runtime 归因。入站与受控 action 仅增加进程内聚合计数/首末时间和拒绝计数，访问检查仍先于原始事件持久化，拒绝不生成 loop。
+- 本阶段 wait/silence/learn-only、群聊 gate、compose skip/空生成只结束 loop，**不生成任何 receipt**；上文 no_send Receipt 留待后续阶段。命令媒体直送、Agent 工具内部/模型内部步骤、recall/poke 的完整动作阶段未搬迁执行；走现有 outbound/executor 的发送仍有独立 attempt，不推断缺失关联。未增加第二套 pipeline、反馈学习、研究 attempt 或 API/UI。
+- 保留按人格执行 ADR 的更严格 **loop+receipt 合计 5000** 上限（同时满足每种最多 5000），最长 7 天，loop 按 startedAt、attempt 按首次 createdAt 原始寿命，不因更新延长；正常结果的 occurredAt/recordedAt 为实际完成/写入时间，未知结果不补造发送事件。启动一次扫描、之后维护增量索引并在写入时清理，无后台 timer；按 loop 整组淘汰，无悬空回执，已淘汰 handle 不再追加或重建历史。观测 kind 不参与人格数据复制，删除人格清除两种记录；已接纳发送可在切换后完成原人格记录，删除后不重建。
+- 启动在接纳业务前为所有已持久化人格初始化，遗留 running loop 与 attempt 标 interrupted，保留真实完成回执；不 resume/resend、不从 decision.status 补造回执。落盘失败、崩溃和过期淘汰仍可能留下未知观测；observer 的失败被隔离，不改变发送返回/异常或触发网络重发。没有跨进程 exactly-once 保证。
+
+C05 验证包括新的 `test/system-loop.test.js` 及 ingress/delivery/outbound/pipeline/persona/commands/module/proactivity 回归；执行全套 npm tests、文档/对等/本地打包/包检查和 diff whitespace 检查。真实 QQ、模型与网络故障窗口未作在线验收，版本与发布状态不变。

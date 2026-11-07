@@ -112,7 +112,7 @@ export function migrateLegacyPersonaData({ base, targetId = 'self', clock = { no
 
 export function dropPersonaData({ base, personaId }) {
   let removed = 0
-  for (const kind of [...PERSONA_DATA_KINDS, 'llm_usage_persona', MODULE_STORE_KIND]) {
+  for (const kind of [...PERSONA_DATA_KINDS, 'llm_usage_persona', MODULE_STORE_KIND, 'loop_run', 'delivery_receipt']) {
     const targetKind = scopedPersonaKind(personaId, kind)
     try {
       removed += base.removeWhere(targetKind, () => true)

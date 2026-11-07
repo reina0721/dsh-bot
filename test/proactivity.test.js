@@ -120,3 +120,53 @@ test('admitted send finishes once in captured persona after stop/switch with can
   assert.equal(h.base.count('persona_other:decision'), 0); assert.equal(h.base.count('persona_other:proactive_intent'), 0)
   assert.equal(h.calls.length, 1); assert.equal((await h.engine.tick()).reason, 'MODULE_DISABLED')
 })
+
+test('proactivity port: accepted run owns one persona-bound loop and delivery receipt; no-send has none', async t => {
+  const h = harness(t, { observe: true })
+  assert.equal((await h.engine.tick()).ok, true)
+  const [loop] = h.store.list('loop_run'), [receipt] = h.store.list('delivery_receipt')
+  assert.equal(loop.loopKind, 'proactivity')
+  assert.equal(loop.status, 'completed')
+  assert.equal(receipt.loopId, loop.id)
+  assert.equal(receipt.decisionId, h.store.list('decision')[0].id)
+  assert.equal(receipt.moduleId, 'builtin-proactivity')
+  assert.equal(receipt.runtimeGeneration, 'runtime_1')
+  assert.equal(receipt.data.parts, 1)
+  assert.doesNotMatch(JSON.stringify([loop, receipt]), /hello|friend|10001|summary|prompt/)
+  const empty = harness(t, { observe: true, llm: async () => ({ ok: true, text: '' }) })
+  assert.equal((await empty.engine.tick()).ok, false)
+  assert.equal(empty.store.list('loop_run')[0].status, 'completed')
+  assert.equal(empty.store.list('delivery_receipt').length, 0)
+})
+
+test('proactivity observation: stop during admitted send waits for real receipt in original persona', async t => {
+  const gate = deferred(), entered = deferred()
+  const h = harness(t, { observe: true, sendMessage: async () => { entered.resolve(); await gate.promise; return { message_id: 'm' } } })
+  const flight = h.engine.tick()
+  await entered.promise
+  const stop = h.engine.stop()
+  assert.equal(h.store.list('loop_run')[0].status, 'running')
+  h.switchPersona('other')
+  gate.resolve()
+  assert.equal((await flight).ok, true)
+  await stop
+  const loops = h.base.list('persona_self:loop_run'), receipts = h.base.list('persona_self:delivery_receipt')
+  assert.equal(loops[0].status, 'completed')
+  assert.equal(loops[0].reasonCode, null)
+  assert.equal(receipts[0].data.status, 'sent')
+  assert.equal(h.store.list('delivery_receipt').length, 0)
+})
+
+test('proactivity observation: post-send business write failure keeps real receipt and fails loop without resend', async t => {
+  const h = harness(t, { observe: true })
+  const put = h.base.put
+  h.base.put = (kind, ...args) => {
+    if (kind.endsWith(':proactive_intent')) throw Error('business write')
+    return put(kind, ...args)
+  }
+  assert.equal((await h.engine.tick()).ok, false)
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.store.list('delivery_receipt')[0].data.parts, 1)
+  assert.equal(h.store.list('loop_run')[0].status, 'failed')
+  assert.equal(h.store.list('loop_run')[0].reasonCode, 'EXECUTION_THROW')
+})

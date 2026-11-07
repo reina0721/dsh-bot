@@ -2,6 +2,10 @@
 
 ## Unreleased（未发布）
 
+- C05：新增无正文 LoopRun/DeliveryReceipt 人格观测，显式 handle 贯穿 admitted turn、决策/生成/交付/观察、命令与主动 port；入站/受控 action 增加聚合计数/时间/拒绝计数，访问仍先于存储。executor 单独拥有 multipart 回执，DeliveryService 无 wrapper 回执，直接 outbound 仅建独立 attempt，模块发送记录核心 module/runtime 归因。
+- 保留 ADR-006 的 partial+ok、真实 parts、从零开始的 failedPart、dry_run 与异常传播，无重试/补发。wait/silence/learn-only/compose skip 等未发送路径不建 receipt；异常/重启的未完成观测标 interrupted、结果未知，不推断历史。observer 失败不影响业务发送返回或异常。
+- 新 kind 无 SQL migration、不随人格复制、随人格删除；16 阶段/16 回执引用/4 unknown 引用/8 KiB，按人格 loop+receipt 合计最多 5000、最长 7 天，启动/写入增量清理，无后台 timer。补充系统闭环与各边界回归、ADR-019 实现状态；不含 C06/C07 反馈/研究关联、API/UI，不改版本/依赖/传输，不推送/部署/发布，未作真实 QQ/模型在线验收。
+
 - C04：固定 allowlist 的 module.enable/disable/restart/reload、proactivity.runOnce、learning.runPending；新增 `/modules/actions?id=`、`POST /modules/action`、`/modules/operation?id=` 或 `?requestId=`。严格字段、代次/可选人格凭证、全局 requestId 去重/冲突、每模块/依赖闭包互斥；128 条进程内记录，terminal 保留 1 小时，active 永不驱逐，满额拒绝，无自动重试。
 - 内置 restart 复用缓存导入和唯一 setup 路径，逆序停止/排空、正序恢复原运行闭包，保留 enabled/config/storage/grants；新 generation 隔离旧引用。提醒分离新接纳与已捕获仓库排空，宿主参与交接冻结；主动 token/学习 lease 先撤销。10 秒 STOP_PENDING 仅观察同一 drain，保留 runtime/owner/闭包，不取消清理、不提前启动替换或 fallback。停止不确定时保留 failed owner，禁止双调度器；失败不报恢复成功。
 - 既有 toggle/reload/run HTTP 共用动作 helper 并保留响应形状；外部仅 toggle/reload，manifest 不得声明 actions。补充 action/module/provider/reminder/token/lease/E2E 回归和 ADR-018 实现状态；无 C05 系统闭环、C07 UI、版本/依赖/数据迁移。操作幂等仅限当前进程保留期；永久 drain 可阻塞生命周期队列，失败 owner 可能需宿主运维处理；真实 QQ/网络/模型/浏览器未验证。

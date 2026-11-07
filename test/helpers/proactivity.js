@@ -1,3 +1,4 @@
+import { createLoopObserver } from '../../src/observability/loop.js'
 import { createStore } from '../../src/cognition/store.js'
 import { createPersonaScopedStore } from '../../src/cognition/persona-scope.js'
 import { createProactivityPort } from '../../src/modules/proactivity-port.js'
@@ -8,7 +9,7 @@ import { createPolicyService } from '../../src/cognition/policy.js'
 import { normalizeConfig } from '../../src/core/config.js'
 
 export const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
-export function harness(t, { memoryFactory, llm, sendMessage } = {}) {
+export function harness(t, { memoryFactory, llm, sendMessage, observe = false } = {}) {
   let personaId = 'self', scopeGeneration = 0, active = true, now = new Date(2026, 10, 7, 12).getTime()
   const clock = { now: () => now }
   const base = createStore({ clock })
@@ -21,11 +22,13 @@ export function harness(t, { memoryFactory, llm, sendMessage } = {}) {
     emotion: { get: () => ({}) },
     llm: { async complete(request) { modelCalls.push(request); return llm ? llm(request) : { ok: true, text: 'hello' } } },
   }
+  const observer = observe ? createLoopObserver({ base, getPersonaId: () => personaId, clock }) : null
+  services.loopObserver = observer
   const policy = createPolicyService({ store, clock, getConfig: () => config })
   const access = { canSend: () => ({ allowed: true }) }
-  const outbound = createOutbound({ getConfig: () => config, clock, policy, access, gateway: { actions: { async sendMessage(intent) { calls.push(intent); return sendMessage ? sendMessage(intent) : { message_id: 'one' } } } } })
+  const outbound = createOutbound({ observer, getConfig: () => config, clock, policy, access, gateway: { actions: { async sendMessage(intent) { calls.push(intent); return sendMessage ? sendMessage(intent) : { message_id: 'one' } } } } })
   const delivery = createDeliveryService({ outbound })
-  const port = createProactivityPort({ store, services, clock, delivery, getConfig: () => config, memoryFactory,
+  const port = createProactivityPort({ store, services, clock, delivery, getConfig: () => config, memoryFactory, moduleId: 'builtin-proactivity', runtimeGeneration: 'runtime_1',
     getState: () => ({ ready: true }), assertActive() { if (!active) throw Error('MODULE_DISABLED') },
   })
   const timers = new Map(), delays = []

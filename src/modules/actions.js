@@ -27,6 +27,8 @@ export function normalizeActionResult(actionId, value) {
 }
 
 export function createModuleActions({ getModule, getPersona = () => ({}), eligibility, affected, execute, now = Date.now, timers = globalThis } = {}) {
+  const counts = { admitted: 0, rejected: 0, completed: 0, failed: 0, firstAt: null, lastAt: null }
+  const stamp = () => { try { counts.lastAt = now(); counts.firstAt ??= counts.lastAt } catch {} }
   const operations = new Map(), requests = new Map(), reservations = new Map(), completions = new Map()
   function prune() {
     for (const [id, operation] of operations) if (terminal.has(operation.status) && now() - operation.completedAt >= 3600000) {
@@ -87,6 +89,7 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
     const operation = { id: randomUUID(), ...input, status: 'queued', phase: 'queued', code: null,
       createdAt: now(), updatedAt: now(), completedAt: null, result: null, resultRuntimeGeneration: null }
     Object.defineProperty(operation, 'signature', { value: signature })
+    counts.admitted += 1; stamp()
     operations.set(operation.id, operation); requests.set(input.requestId, operation.id)
     for (const id of closure) reservations.set(id, operation.id)
     let timer = null
@@ -124,6 +127,7 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
       throw moduleActionError(code)
     }).finally(() => {
       if (timer !== null) timers.clearTimeout(timer)
+      counts[operation.status === 'succeeded' ? 'completed' : 'failed'] += 1; stamp()
       operation.phase = 'done'; operation.completedAt = now(); operation.updatedAt = now()
       for (const id of closure) if (reservations.get(id) === operation.id) reservations.delete(id)
       completions.delete(operation.id)
@@ -131,6 +135,9 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
     completions.set(operation.id, completion)
     completion.catch(() => {})
     return { ok: true, operation: snapshot(operation) }
+  }
+  function submit(value, max) {
+    try { return submitInternal(value, max) } catch (error) { counts.rejected += 1; stamp(); throw error }
   }
   function snapshot(operation) { return copy(operation) }
   async function performLegacy(moduleId, actionId, max = 1) {
@@ -144,8 +151,8 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
       }
     }
     if (!actionId.startsWith('module.') && record && eligibility(record, actionId)) return { ok: false, reason: 'MODULE_DISABLED' }
-    const accepted = submitInternal({ moduleId, actionId, expectedGeneration: record?.runtimeGeneration || record?.generation || null, requestId: randomUUID() }, Math.max(1, Math.min(50, Math.floor(Number(max) || 1))))
+    const accepted = submit({ moduleId, actionId, expectedGeneration: record?.runtimeGeneration || record?.generation || null, requestId: randomUUID() }, Math.max(1, Math.min(50, Math.floor(Number(max) || 1))))
     return completions.get(accepted.operation.id)
   }
-  return Object.freeze({ catalog, submit: value => submitInternal(value), getOperation, performLegacy, isReserved: id => reservations.has(id) })
+  return Object.freeze({ catalog, submit: value => submit(value), stats: () => ({ ...counts }), getOperation, performLegacy, isReserved: id => reservations.has(id) })
 }

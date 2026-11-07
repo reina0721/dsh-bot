@@ -1363,3 +1363,26 @@ test('commands：注入 delivery 后普通回复与 /say 均只交付一次，�
   assert.equal((await denied.service.handle(turn('/say no'))).error, 'ACCESS_DENIED')
   assert.equal(calls.length, 4)
 })
+
+test('commands: replies and /say propagate only explicit loop handles; module replies carry core attribution', async t => {
+  const { loopHarness } = await import('./helpers/loop.js')
+  const { createDeliveryService } = await import('../src/delivery/service.js')
+  const { createOutbound } = await import('../src/cognition/outbound.js')
+  const h = loopHarness(t)
+  const outbound = createOutbound({ observer: h.observer, gateway: { actions: { sendMessage: async () => ({ message_id: 'm' }) } } })
+  const commands = createCommandService({ getConfig: () => ({ access: { ownerQQ: '10001' } }), access: { isOwner: () => true, canSend: () => ({ allowed: true }) }, delivery: createDeliveryService({ outbound }) })
+  commands.registerCommand('custom', () => 'PRIVATE_REPLY', { moduleId: 'builtin-test', runtimeGeneration: 'runtime_1' })
+  for (const command of ['/help', '/say PRIVATE_BODY', '/custom']) {
+    h.advance(1)
+    const loop = h.observer.begin({ turnId: `turn_${h.clock.now()}` })
+    await commands.handle({ chatType: 'private', chatId: '10001', senderId: '10001', text: command }, { loop, raw: 'PRIVATE_CONTEXT' })
+    h.observer.finishLoop(loop)
+    const receipt = h.receipts().find(row => row.recordedAt === h.clock.now())
+    assert.ok(receipt.loopId)
+    assert.ok(receipt.turnId)
+    assert.equal(receipt.data.parts, 1)
+    if (command === '/custom') assert.equal(receipt.moduleId, 'builtin-test')
+    assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE_|10001/)
+  }
+  assert.equal(h.receipts().length, 3)
+})

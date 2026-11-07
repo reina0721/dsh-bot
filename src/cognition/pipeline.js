@@ -3,6 +3,7 @@
 // 每一步都有 trace；LLM 不可用/失败时进入 degraded，不伪造回复。
 // dryRun 会完整决策但不发送，供验证/演练。
 
+import { observeLoop } from '../observability/loop.js'
 import { clamp, deepClone, round, truncate, uid, scopeAllows } from './util.js'
 import { analyzeTurn, composeReply } from './analysis.js'
 import { defaultScope, memoryText, relevanceScore } from './memory.js'
@@ -15,7 +16,7 @@ export function createPipeline({
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
   beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null, purpose = null,
-  media = null, deliveryRegistry = null, turnHooks = null,
+  media = null, deliveryRegistry = null, turnHooks = null, observer = outbound?.loopObserver,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -126,7 +127,12 @@ export function createPipeline({
     }
   }
 
-  function skipGroup(turn, personRecord, emotionState, scope, reason) {
+  function finishWithoutDelivery(loop, result, reasonCode, status = 'completed') {
+    observeLoop(observer, 'finishLoop', loop, { status, reasonCode })
+    return result
+  }
+
+  function skipGroup(turn, personRecord, emotionState, scope, reason, loop) {
     memory.encodeTurn(turn, { personId: personRecord?.person?.id || '', emotion: emotionState, scope, source: 'ambient' })
     stats.groupSkipped += 1
     stats.groupSkippedByReason[reason] = (stats.groupSkippedByReason[reason] || 0) + 1
@@ -135,7 +141,7 @@ export function createPipeline({
       text: reason,
       data: { mode: effectiveGroupMode(), addressed: Boolean(turn.addressed), reason },
     })
-    return buildResult({ ok: true, decision: null, reply: '', degraded: false, error: `group_${reason}` })
+    return finishWithoutDelivery(loop, buildResult({ ok: true, decision: null, reply: '', degraded: false, error: `group_${reason}` }), 'GATED')
   }
 
   function scopeOf(turn) {
@@ -330,6 +336,7 @@ export function createPipeline({
     if (replyCfg.split !== false && !String(text).trim()) return { ok: false, error: 'SEND_FAILED' }
     let directPart = 0
     const sent = await executeDeliveryPlan({
+      observer, loop: opts.loop || null,
       plan: () => planner?.({
         text, turn, replyCfg: { ...replyCfg, ...(opts.noReplySegment ? { quote: false } : {}) },
         replyTo: turn.messages?.at(-1)?.messageId || '', source: 'pipeline', decisionId: decision.id,
@@ -536,29 +543,43 @@ export function createPipeline({
   }
 
   async function handleTurn(turn) {
+    const c = cfg()
+    const admitted = turn && c.enabled && !c.paused && !(turn.senderId && (turn.senderId === turn.selfId || turn.senderId === String(getConfig()?.botQQ || '')))
+    const loop = admitted ? observeLoop(observer, 'begin', { kind: 'social', turnId: turn.id }) : null
+    try {
+      const result = await handleTurnWithLoop(turn, loop)
+      observeLoop(observer, 'finishLoop', loop, { status: result?.ok === false ? 'failed' : 'completed', reasonCode: result?.ok === false ? 'SEND_FAILED' : null })
+      return result
+    } catch (error) {
+      observeLoop(observer, 'finishLoop', loop, { status: 'failed', reasonCode: 'EXECUTION_THROW' })
+      throw error
+    }
+  }
+
+  async function handleTurnWithLoop(turn, loop) {
     if (turnHooks !== null) {
       const context = { turn, settings: { typingEnabled: cfg().typing?.enabled === true } }
       await turnHooks.start(context)
       try {
-        return await processTurn(turn)
+        return await processTurn(turn, loop)
       } finally {
         await turnHooks.end(context)
       }
     }
     if (cfg().typing?.enabled !== true || turn?.chatType !== 'private' || typeof gateway?.actions?.setInputStatus !== 'function') {
-      return processTurn(turn)
+      return processTurn(turn, loop)
     }
     const userId = String(turn.chatId)
     // 输入状态只作尽力提示；不记录可能含聊天 ID 的网关异常。
     try { await gateway.actions.setInputStatus(userId, 1) } catch (error) {}
     try {
-      return await processTurn(turn)
+      return await processTurn(turn, loop)
     } finally {
       try { await gateway.actions.setInputStatus(userId, 2) } catch (error) {}
     }
   }
 
-  async function processTurn(turn) {
+  async function processTurn(turn, loop) {
     if (!turn) return buildResult({ ok: false, error: 'no_turn' })
     const c = cfg()
     if (!c.enabled) return buildResult({ ok: false, error: 'cognition_disabled' })
@@ -569,7 +590,7 @@ export function createPipeline({
     }
     if (commands && typeof commands.handle === 'function') {
       try {
-        const handled = await commands.handle(turn)
+        const handled = await commands.handle(turn, { loop })
         if (handled && handled.handled) {
           stats.turns += 1
           markLast(turn, handled.reply ? 'sent' : 'silenced')
@@ -619,19 +640,19 @@ export function createPipeline({
     if (turn.chatType === 'group') {
       const mode = effectiveGroupMode()
       if (mode === 'addressed' && !turn.addressed) {
-        return skipGroup(turn, personRecord, emotionState, scope, 'addressed_only')
+        return skipGroup(turn, personRecord, emotionState, scope, 'addressed_only', loop)
       }
       if (mode === 'probability' && !turn.addressed) {
         const probability = clamp(Number(cfg().turn?.groupReplyProbability ?? 0.2), 0, 1)
         if (Math.random() >= probability) {
-          return skipGroup(turn, personRecord, emotionState, scope, 'probability_miss')
+          return skipGroup(turn, personRecord, emotionState, scope, 'probability_miss', loop)
         }
       }
       const allowed = groupReplyAllowed(turn)
-      if (!allowed.ok) return skipGroup(turn, personRecord, emotionState, scope, allowed.reason)
+      if (!allowed.ok) return skipGroup(turn, personRecord, emotionState, scope, allowed.reason, loop)
       // 顺序：点名模式 → 概率 → 分钟上限 → 连续上限 → 冷却 → 可选词法相关度。
       if (!groupRelevanceAllowed(turn, memories)) {
-        return skipGroup(turn, personRecord, emotionState, scope, 'low_relevance')
+        return skipGroup(turn, personRecord, emotionState, scope, 'low_relevance', loop)
       }
     }
     const analysis = await analyzeTurn({
@@ -676,6 +697,7 @@ export function createPipeline({
     const groupEngaged = turn.chatType === 'group' && !turn.addressed && effectiveGroupMode() !== 'addressed'
     const policyTurn = groupEngaged ? { ...turn, groupEngaged: true } : turn
     const decision = policy.decide({ turn: policyTurn, relationship: rel, emotion: emotion.get(), appraisal, unknown: gaps[0] || null, memories, persona: personaState, skills: skillMap })
+    observeLoop(observer, 'recordStage', loop, 'decided', { decisionId: decision.id, unknownRefs: gaps.slice(0, 4).map(item => item.id) })
     stats.decisions += 1
     trace(turn.id, 'decision', { text: decision.action, data: { candidates: decision.candidates?.slice(0, 5), utilities: decision.candidates?.slice(0, 5) } })
     if (decision.action === 'silence' || decision.action === 'wait' || decision.action === 'recall_silence' || decision.action === 'recall_ignore') {
@@ -684,13 +706,14 @@ export function createPipeline({
       if (!isDry()) policy.markSent(decision.id, { dryRun: false })
       trimWorking(turn, personRecord, analysis, decision)
       metric('decision', 1, { action: decision.action })
-      return buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded })
+      return finishWithoutDelivery(loop, buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded }), decision.action === 'wait' ? 'WAIT' : 'SILENCE')
     }
     if (decision.action === 'learn') {
       markLast(turn, 'learned', decision.action)
       if (!isDry()) policy.markSent(decision.id, { dryRun: false })
-      return buildResult({ ok: true, decision, reply: '', degraded: false })
+      return finishWithoutDelivery(loop, buildResult({ ok: true, decision, reply: '', degraded: false }), 'LEARN_ONLY')
     }
+    observeLoop(observer, 'recordStage', loop, 'generating')
     const composed = await composeFor(decision, { turn, personRecord, relationship: rel, emotionState: emotion.get(), personaState, memories, analysis, purposes: purposeLines })
     if (!composed.ok) {
       stats.degraded += 1
@@ -698,16 +721,18 @@ export function createPipeline({
       policy.markFailed(decision.id, composed.error)
       trace(turn.id, 'compose_failed', { text: composed.error || 'compose failed', data: { message: composed.message || '', route: composed.route || null } })
       log.warn?.('回复生成失败：', composed.error || composed.message || 'unknown')
-      return buildResult({ ok: false, decision, degraded: true, error: composed.error })
+      return finishWithoutDelivery(loop, buildResult({ ok: false, decision, degraded: true, error: composed.error }), composed.error === 'EMPTY_REPLY' ? 'EMPTY_OUTPUT' : 'COMPOSE_FAILED', 'failed')
     }
     if (composed.skipped) {
       markLast(turn, 'composed_empty', composed.error || 'skipped')
       if (!isDry()) policy.markSent(decision.id, { dryRun: false })
       else { policy.markSent(decision.id, { dryRun: true }); stats.dryRun += 1 }
       trimWorking(turn, personRecord, analysis, decision)
-      return buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded })
+      return finishWithoutDelivery(loop, buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded }), 'COMPOSE_SKIP')
     }
-    const sent = await sendDecision(decision, composed.text, turn)
+    if (composed.text && String(composed.text).trim()) observeLoop(observer, 'recordStage', loop, 'delivering')
+    const sent = await sendDecision(decision, composed.text, turn, { loop })
+    observeLoop(observer, 'recordStage', loop, 'observing')
     markLast(turn, sent.ok ? 'sent' : 'send_failed', sent.error || decision.action)
     trace(turn.id, 'sent', { text: truncate(composed.text, 120) }, { latencyMs: clock.now() - started })
     trimWorking(turn, personRecord, analysis, decision)

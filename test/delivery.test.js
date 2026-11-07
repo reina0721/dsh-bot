@@ -171,3 +171,14 @@ test('executor: zero delays never sleep; empty first ID uses next nonempty ID', 
   assert.equal((await executeDeliveryPlan({ ...h.options, plan: () => zeroDelay })).messageId, 'next')
   assert.equal(h.events.some(([kind]) => kind === 'sleep'), false)
 })
+
+test('executor: content-free observer boundary never receives raw result, text, targets or error reason', async () => {
+  const calls = []
+  const observer = { beginDelivery(...args) { calls.push(args); return {} }, finishDelivery(...args) { calls.push(args) } }
+  await executeDeliveryPlan({ observer, text: 'PRIVATE_BODY', turn: { chatType: 'private', chatId: 'PRIVATE_TARGET' },
+    plan: { target: { chatType: 'private', chatId: 'PRIVATE_TARGET' }, parts: [{ segments: [{ type: 'text', data: { text: 'PRIVATE_BODY' } }], delayAfterMs: 0 }] },
+    deliver: async () => ({ ok: false, error: 'PRIVATE_ERROR', reason: 'PRIVATE_REASON', result: { raw: 'PRIVATE_RAW' } }),
+  })
+  assert.doesNotMatch(JSON.stringify(calls), /PRIVATE_/)
+  assert.equal(calls[1][1].errorCode, 'SEND_FAILED')
+})

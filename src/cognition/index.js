@@ -3,6 +3,7 @@
 // 平台层只通过 ingestRaw()/observe() 输入；内部服务不 import gateway/http。
 // 所有状态由本服务单写；查询/命令通过 snapshot()/api 暴露。
 
+import { createLoopObserver } from '../observability/loop.js'
 import { join } from 'node:path'
 import { appendJsonl, dataDir as pluginDataDir } from '../core/store.js'
 import { createStore } from './store.js'
@@ -110,6 +111,7 @@ export function createCognition({
       })
       const personaStore = state.scopedStore
       state.services.personaStore = personaStore
+      state.services.loopObserver = createLoopObserver({ base: state.store, getPersonaId: personaStore.currentPersonaId, clock })
       state.services.emotion = createEmotionService({ store: personaStore, getConfig, clock })
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
@@ -129,6 +131,7 @@ export function createCognition({
       state.services.policy = createPolicyService({ store: personaStore, getConfig, clock, rng })
       state.services.llm = createLlmClient({ ctx, models, getConfig, store: personaStore, clock, log })
       state.services.outbound = createOutbound({
+        observer: state.services.loopObserver,
         getConfig,
         gateway: {
           get actions() {
@@ -183,6 +186,7 @@ export function createCognition({
       state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock })
       state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
+        observer: state.services.loopObserver,
         turnHooks,
         deliveryRegistry,
         store: personaStore,

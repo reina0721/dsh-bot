@@ -25,11 +25,11 @@ function registeredRegistry() {
   return registry
 }
 
-function harness({ engine, deliveryRegistry = engine === 'planner' ? registeredRegistry() : null, reply = {}, dryRun = false, responses = [], direct = false, unavailable = false } = {}) {
+function harness({ observer = null, engine, deliveryRegistry = engine === 'planner' ? registeredRegistry() : null, reply = {}, dryRun = false, responses = [], direct = false, unavailable = false } = {}) {
   const calls = [], notes = [], marks = [], warnings = []
   const config = { cognition: { delivery: { engine }, dryRun, reply: { maxChars: 40, maxParts: 3, delayMs: 0, atSender: true, ...reply }, turn: { groupCooldownMs: 500 } } }
   const pipeline = createPipeline({
-    getConfig: () => config, deliveryRegistry,
+    observer, getConfig: () => config, deliveryRegistry,
     clock: { now: () => 1000 }, policy: { markSent: (...args) => marks.push(['sent', ...args]), markFailed: (...args) => marks.push(['failed', ...args]) },
     logger: { warn: (...args) => warnings.push(args) },
     turnAggregator: { noteBotMessage: (id) => notes.push(id) },
@@ -227,4 +227,21 @@ test('delivery planner: resolves registration on each send after disable and re-
   setupReplyDelivery({ delivery: { registerPlanner: registry.register } })
   assert.equal((await h.send()).parts, 3)
   assert.equal(h.pipeline.stats().sent, 10)
+})
+
+test('pipeline delivery engines: one receipt for all parts; historical empty paths have none', async t => {
+  const { loopHarness } = await import('./helpers/loop.js')
+  const observation = loopHarness(t)
+  for (const engine of ['auto', 'core', 'planner']) {
+    observation.advance(1)
+    const h = harness({ observer: observation.observer, engine })
+    assert.equal((await h.send()).parts, 3)
+    const receipt = observation.receipts().find(row => row.recordedAt === observation.clock.now())
+    assert.equal(receipt.data.parts, 3)
+    assert.equal(receipt.decisionId, 'd1')
+    const count = observation.receipts().length
+    await h.send('')
+    await h.send('   ')
+    assert.equal(observation.receipts().length, count)
+  }
 })

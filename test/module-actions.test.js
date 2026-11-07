@@ -137,3 +137,16 @@ test('actions: persona IDs follow existing dotted ID contract; parent eligibilit
   await flush()
   assert.equal(h.actions.getOperation({ requestId: 'request1' }).operation.status, 'succeeded')
 })
+
+test('actions: aggregate admission/rejection/completion counts are content-free and duplicate admission is counted once', async () => {
+  const h = fixture()
+  h.actions.submit(request())
+  h.actions.submit(request())
+  assert.throws(() => h.actions.submit(request({ expectedPersonaId: 'PRIVATE_PERSONA', requestId: 'rejected' })))
+  await flush()
+  const counts = h.actions.stats()
+  assert.deepEqual(counts, { admitted: 1, rejected: 1, completed: 1, failed: 0, firstAt: 0, lastAt: 0 })
+  assert.doesNotMatch(JSON.stringify(counts), /PRIVATE_|requestId|moduleId/)
+  counts.admitted = 100
+  assert.equal(h.actions.stats().admitted, 1)
+})

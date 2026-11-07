@@ -419,6 +419,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     const proactivityPort = record.builtin && record.id === 'builtin-proactivity' && record.permissions.includes('proactivity:service')
       ? createProactivityPort({
         getConfig, store: personaStore, services: cognition?.services, delivery, outbound,
+        moduleId: record.id, runtimeGeneration: runtime.runtimeGeneration,
         getState: () => cognition?.services?.proactivityState?.() || { ready: false },
         assertActive() {
           requireActive(runtime)
@@ -521,7 +522,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
           const moduleSource = `module:${record.id}`
           if (source !== undefined && source !== moduleSource && !(record.id === 'builtin-reminders' && source === 'reminder')) throw new Error('交付 source 不合法')
           if (!['private', 'group'].includes(chatType) || !/^[1-9]\d*$/.test(String(chatId ?? '')) || !Number.isSafeInteger(Number(chatId)) || typeof text !== 'string' || !text.trim()) throw new Error('交付需要 chatType、chatId、text')
-          return delivery.deliver({ chatType, chatId, segments: [{ type: 'text', data: { text } }], source: source || moduleSource })
+          return delivery.deliver({ chatType, chatId, segments: [{ type: 'text', data: { text } }], source: source || moduleSource, moduleId: record.id, runtimeGeneration: runtime.runtimeGeneration })
         },
         registerPlanner(descriptor) {
           requireActive(runtime)
@@ -565,7 +566,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
             ? invoke(record, runtime, 'COMMAND_FAILED', () => mediaPort.withCommand(input.turn, commandToken => handler({ ...input, commandToken })))
             : invoke(record, runtime, 'COMMAND_FAILED', () => handler(input))
           return Promise.resolve(result).then(value => runtime.active ? value : undefined)
-        }, { ownerOnly: ownerOnly !== false, allowProtected: overrideBuiltin === true, ...(audience !== undefined ? { audience } : {}) })
+        }, { ownerOnly: ownerOnly !== false, allowProtected: overrideBuiltin === true, moduleId: record.id, runtimeGeneration: runtime.runtimeGeneration, ...(audience !== undefined ? { audience } : {}) })
         runtime.disposers.push(dispose)
         return dispose
       },
@@ -578,7 +579,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         const id = String(chatId ?? '').trim()
         const value = String(text ?? '').trim()
         if (!type || !id || !value) throw new Error('sendText 需要 chatType、chatId、text')
-        return sender.deliver({ chatType: type, chatId: id, segments: [{ type: 'text', data: { text: value } }], source: `module:${record.id}` })
+        return sender.deliver({ chatType: type, chatId: id, segments: [{ type: 'text', data: { text: value } }], source: `module:${record.id}`, moduleId: record.id, runtimeGeneration: runtime.runtimeGeneration })
       },
       registerKnowledgeSource(source) {
         requireActive(runtime)

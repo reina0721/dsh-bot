@@ -325,3 +325,13 @@ test('reminder health observes disabled/no-task idle and captured delivery failu
   assert.equal(read().lifecycle, 'loaded')
   assert.doesNotMatch(JSON.stringify(read()), /PRIVATE_ERROR/)
 })
+
+
+test('builtin delivery attribution is captured at the service boundary', async t => {
+  const calls = []
+  const h = await harness(t, { delivery: { async deliver(input) { calls.push(input); return { ok: true } } } })
+  await h.api.delivery.send({ ...target, text: 'hello' })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].moduleId, 'builtin-reminders')
+  assert.equal(calls[0].runtimeGeneration, h.kernel.list().find(row => row.id === 'builtin-reminders').runtimeGeneration)
+})

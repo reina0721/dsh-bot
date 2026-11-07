@@ -4,6 +4,7 @@
 // 只做一次发送，不自动重试（OneBot 发送非幂等，重试可能重复发消息）。
 // 面板手动 /send 是人工操作，不经过这里。
 
+import { observeLoop, deliveryObservation } from '../observability/loop.js'
 import { reasonText } from '../core/access.js'
 import { createLeakGuard } from '../core/leak-guard.js'
 
@@ -26,7 +27,7 @@ function messageIdOf(result) {
  * @param {object} [o.logger]
  * @param {() => number} [o.clock]
  */
-export function createOutbound({ getConfig, gateway, policy = null, access = null, logger = null, clock = () => Date.now() } = {}) {
+export function createOutbound({ getConfig, gateway, policy = null, access = null, logger = null, clock = () => Date.now(), observer = null } = {}) {
   const now = () => (typeof clock === 'function' ? Number(clock()) : typeof clock?.now === 'function' ? Number(clock.now()) : Date.now())
   const state = {
     sent: 0,
@@ -63,7 +64,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
    * @param {string} [o.source]
    * @param {boolean|null} [o.dryRun] 显式覆盖；null/undefined 读 cognition.dryRun
    */
-  async function deliver({ chatType, chatId, segments, decisionId = '', source = 'pipeline', dryRun = null, decisionPolicy = policy } = {}) {
+  async function deliverPart({ chatType, chatId, segments, decisionId = '', source = 'pipeline', dryRun = null, decisionPolicy = policy } = {}) {
     const type = chatType === 'group' ? 'group' : chatType === 'private' ? 'private' : ''
     const id = String(chatId ?? '').trim()
     if (!type || !id) return finish({ ok: false, error: 'INVALID_TARGET' })
@@ -136,6 +137,22 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
     }
   }
 
+  async function deliver(input = {}) {
+    const owned = input.deliveryOwner === true
+    const attempt = owned ? input.deliveryAttempt : observeLoop(observer, 'beginDelivery', input.loop || null, { decisionId: input.decisionId, moduleId: input.moduleId, runtimeGeneration: input.runtimeGeneration })
+    try {
+      const result = await deliverPart(input)
+      if (!owned) observeLoop(observer, 'finishDelivery', attempt, deliveryObservation({
+        status: result.dryRun ? 'dry_run' : result.ok ? 'sent' : result.error === 'EMPTY_MESSAGE' ? 'empty' : 'failed',
+        parts: result.ok && !result.dryRun ? 1 : 0, error: result.error,
+      }))
+      return result
+    } catch (error) {
+      if (!owned) observeLoop(observer, 'finishDelivery', attempt, null, { threw: true })
+      throw error
+    }
+  }
+
   function stats() {
     return {
       ...state,
@@ -143,5 +160,5 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
     }
   }
 
-  return { deliver, stats }
+  return { deliver, stats, loopObserver: observer }
 }

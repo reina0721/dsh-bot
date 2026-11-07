@@ -121,3 +121,23 @@ test('LLM dual usage: global stays global, persona is isolated and dropped, neit
   assert.equal(scoped.get('llm_usage', '2026-11-06').tokens, 450)
   assert.equal(scoped.get('llm_usage', '2026-11-05').tokens, 150)
 })
+
+test('persona observation kinds: scoped, excluded from copy, removed by persona deletion', async t => {
+  const { createLoopObserver } = await import('../src/observability/loop.js')
+  const { base, persona, scoped } = setup()
+  t.after(() => base.close())
+  const source = persona.activeId()
+  const other = persona.create({ name: 'Other' }).persona
+  persona.activate(source)
+  const observer = createLoopObserver({ base, getPersonaId: scoped.currentPersonaId, clock })
+  const loop = observer.begin({ turnId: 'turn_1' })
+  observer.beginDelivery(loop)
+  assert.equal(copyPersonaData({ base, from: source, to: other.id }).ok, true)
+  for (const kind of ['loop_run', 'delivery_receipt']) {
+    assert.equal(PERSONA_DATA_KINDS.includes(kind), false)
+    assert.equal(base.count(scopedPersonaKind(source, kind)), 1)
+    assert.equal(base.count(scopedPersonaKind(other.id, kind)), 0)
+  }
+  dropPersonaData({ base, personaId: source })
+  for (const kind of ['loop_run', 'delivery_receipt']) assert.equal(base.count(scopedPersonaKind(source, kind)), 0)
+})

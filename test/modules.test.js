@@ -917,7 +917,7 @@ test('modules：sendText 优先 delivery，保留结果/来源与旧 outbound ha
     `)
     await h.kernel.start()
     assert.equal(h.kernel.list()[0].status, 'loaded')
-    const expected = { chatType: 'group', chatId: '20001', segments: [{ type: 'text', data: { text: 'hello' } }], source: 'module:sender' }
+    const expected = { chatType: 'group', chatId: '20001', segments: [{ type: 'text', data: { text: 'hello' } }], source: 'module:sender', moduleId: 'sender', runtimeGeneration: h.kernel.list()[0].runtimeGeneration }
     assert.deepEqual(injected ? calls : h.sent, [expected])
     if (injected) {
       assert.equal(h.sent.length, 0)
