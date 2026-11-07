@@ -2,14 +2,14 @@
 
 > 本文件描述当前模块边界与接口契约。接口变更需同步更新本文、测试及用户文档。
 
-## 闭环 v2 契约（C02 已批准，待实现）
+## 闭环 v2（C01–C07 已实现，C08 离线验收）
 
-基于 C01 `5e0c6c4`，以下为实现前契约，新增 API/UI 与记录尚未实现，不改变下文当前能力与历史阶段说明：
+实现基线为 C07 `6cf5637`；[C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)记录连续提交链、贴纸矩阵、管理/系统闭环、测试及双格式包证据。下文历史阶段说明按原阶段保留。
 
-- [ADR-018：模块闭环](architecture/ADR-018-module-closed-loop.md) 分离 lifecycle、ModuleHealth 与实际 provider owner；runtimeGeneration 独立于 UI generation。健康 GET 只读缓存，不导入/探测；提醒注册、owner 与核心 fallback 分开呈现。新动作仅固定内置人工 restart，经 operation registry/requestId 去重；依赖逆序排空后正序恢复，10 秒未停完为 STOP_PENDING，不提前启动第二 owner；无自动重启循环。外部原启停/重载与隔离 UI 边界不变，无同源 React/action bridge。
+- [ADR-018：模块闭环](architecture/ADR-018-module-closed-loop.md) 分离 lifecycle、ModuleHealth 与实际 provider owner；runtimeGeneration 独立于 UI generation。健康 GET 只读缓存，不导入/探测；提醒注册、owner 与核心 fallback 分开呈现。固定六项启停/重启/重载/主动运行/学习队列动作，经 operation registry/requestId 去重；内置人工 restart 依赖逆序排空后正序恢复，10 秒未停完为 STOP_PENDING，不提前启动第二 owner；无自动重启循环。外部原启停/重载与隔离 UI 边界不变，无同源 React/action bridge。
 - [ADR-019：系统闭环](architecture/ADR-019-system-closed-loop.md) 定义无正文 loop/receipt，每人格合计最多 5000 条、最长 7 天。核心交付适配器单写真实回执，保留 ADR-006 status/parts；no-send 与发送分开，decision.status 不是送达真相。反馈保留 provenance 并事务更新 outcome/policy，未观察不算负面；研究保留 firstDetectedTurnId，历史缺失保持 null。API/UI 限管理只读，重启遗留 loop 标 interrupted，无重发或 exactly-once 承诺。
 
-逻辑数据与隐私保留摘要见 [DATA-MODEL](cognitive/DATA-MODEL.md#6-闭环-v2-逻辑记录c02-已批准待实现)。本次仅文档，不增加代码、测试、配置、权限或版本变化。
+逻辑数据与隐私保留摘要见 [DATA-MODEL](cognitive/DATA-MODEL.md#6-闭环-v2-逻辑记录c02-已批准待实现)，最终实现以 ADR-019 的 C05/C06 说明和验收为准。核心 UI 已展示健康/动作/operation 与当前人格闭环，仍仅 main/sidebar.panellist 两项 DSH 注册。C08 仅文档、包断言和集成测试，无生产功能或权限/版本变化；没有浏览器二进制，未做 live/浏览器验收。
 
 WebUI Phase 1–2、Phase 3A/3B、Phase 4 已实现 [ADR-014](architecture/ADR-014-module-webui.md)：`src/modules/webui.js` 校验内置 ui / 外部 manifest webui.version:1，内核只读 UI 目录暴露 generation、uiRevision 与元数据，`GET /onebot-qq/api/modules/ui` 不扫描目录、导入代码或读取配置值。信任分为核心、受信内置、外部声明式、未来外部沙箱；禁止外部同源 React。五个内部 module.* hook 每模块各一个、总数最多五个，order -100～100；外部仅接受 status/schema renderer，内置额外允许 builtin-react 与四个冻结编译期 componentKey，无 UI capability 授予。
 

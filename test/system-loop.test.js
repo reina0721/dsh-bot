@@ -63,6 +63,8 @@ for (const [name, responses, expected] of [
   assert.equal(result.ok, !['failed', 'empty'].includes(expected.status))
   assert.deepEqual(h.receipts()[0].data, expected)
   assert.equal(h.receipts().length, 1)
+  assert.equal(h.receipts()[0].loopId, h.loops()[0].id)
+  assert.deepEqual(h.loops()[0].receiptRefs, [h.receipts()[0].id])
   assert.equal(h.receipts()[0].decisionId, 'decision_1')
   assert.equal(h.receipts()[0].turnId, 'turn_1')
   assert.doesNotMatch(JSON.stringify(h.receipts()), /PRIVATE_|PLATFORM_MESSAGE|RAW_SECRET/)

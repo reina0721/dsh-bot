@@ -13,6 +13,8 @@
 
 ## 闭环 v2 管理与导航（C07）
 
+C01–C07 的提交链、贴纸库/发送矩阵、恢复与系统闭环验收、包检查和离线限制统一见 [C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)。C08 不新增生产功能；main/sidebar.panellist 仍恰好两项 DSH 注册，无自动 restart、exactly-once 或 UI 权限扩展。
+
 [ADR-018](architecture/ADR-018-module-closed-loop.md) 定义模块健康与人工恢复；C03/C04 已实现核心 API，C07 接入核心客户端详情。lifecycle 的 loaded 只证明 setup 完成；ModuleHealth 只呈现缓存遥测，实际 provider owner 由宿主协调状态确定。提醒注册不等于接管，核心 fallback 必须在实际启动后才显示 active；其它功能模块停用仍无 fallback。未知/不适用字段为 null，不能显示为 0/false；runtimeGeneration 绑定每次 setup，独立于 UI 授权可轮换的 generation。
 
 健康 GET 不扫描、不 import、不调用 provider status/stats 或网络探针。详情独立显示 lifecycle/health/reasons/lastError、注册与实际 owner/fallback、依赖、scheduler/engine/telemetry，并保留 telemetryGeneration。核心 action allowlist 包含 enable/disable/restart/reload、proactivity.runOnce、learning.runPending，可用性来自 `/modules/actions?id=`，必须经过核心 operation registry、requestId 幂等与 expectedGeneration 校验；先下游后目标停止排空，再按依赖正序恢复。10 秒未排空显示 STOP_PENDING，保持同一操作并阻止第二 owner，不强行重启或自动循环恢复。外部模块继续原 toggle/reload 与授权规则；纯 React preview 和隔离 iframe 均不获得 action bridge 或宿主执行权。

@@ -2,6 +2,9 @@
 
 ## Unreleased（未发布）
 
+- C08：完成 C01–C07 最终离线验收文档，记录提交链、贴纸库/发送矩阵、健康/实际所有权、动作/restart、loop/receipt/反馈/研究与 UI 目的地及两项 DSH 注册；同步架构/模块/手册/排障/实现状态。补 unhealthy 只读观察不自动恢复、人工 restart 后旧代次隔离与沙箱管理 API 拒绝集成测试，复用现有白名单、人格、贴纸和 UI 回归。
+- 双格式包检查强制包含健康/动作/观测源码、ADR-018/019 与验收文档，校验包内 web 客户端闭环入口及恰好两项注册，拒绝私有模块状态/路径。证据与限制见 [C08 最终验收](docs/architecture/CLOSED-LOOP-ACCEPTANCE.md)。无新生产功能/依赖/版本或权限变化；没有浏览器二进制，未做 live/浏览器验收，无推送/部署/标签/发布。
+
 - C07：模块详情接入核心 health/actions/operation，显示 lifecycle/health/reasons/lastError、Provider 注册/实际 owner/fallback、依赖与调度/引擎遥测；动作携带 expectedGeneration/人格凭证并确认模型/发送影响，轮询同一操作至终态，展示 STOP_PENDING/错误，busy/skip/NO_TASK/fail 不报成功，丢失接纳响应按原 requestId 查询。
 - 新增核心 typed goTo 与 go 兼容导航，已挂载组件响应同页目标；B站唯一模块 panel、表情包库/主动/学习/提醒数据/配置入口和返回模块链接。认知增加「主动行为」「闭环」，闭环摘要/运行分页/详情显示阶段、交付 parts、反馈来源/观测/策略提交与研究关联，限当前人格、无正文或 QQ/事件 ID；学习移除逐任务“运行”，保留队列运行与任务重试/取消。预览/配置编辑器及外部 UI 隔离保持，无新增 DSH 注册。
 - 扩展 panel/module-webui/E2E 离线测试并更新手册/排障/模块文档；提醒仅现有汇总，学习目标受最近列表限制；operation 观察不跨页面持久保存，闭环按需刷新。无浏览器或真实 QQ/模型验收；不改版本/依赖/后端契约，不推送/部署/打标签/发布。

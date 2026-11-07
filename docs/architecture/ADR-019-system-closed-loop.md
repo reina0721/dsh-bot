@@ -1,6 +1,6 @@
 # ADR-019：系统闭环 v2 关联、回执与反馈契约
 
-- 状态：已批准，C05 执行观测与 C06 反馈/研究关联及只读 API 已实现；C07 UI 待实现
+- 状态：C05 执行观测、C06 反馈/研究关联及只读 API、C07 核心 UI 已实现；见 [C08 最终验收](CLOSED-LOOP-ACCEPTANCE.md)
 - 日期：2026-11-07
 - 基线：分支 `feat/closed-loop-v2`，C01 `5e0c6c4`
 - 前置：[ADR-006](ADR-006-delivery-result-status.md)、[ADR-016](ADR-016-builtin-proactivity.md)、[ADR-017](ADR-017-builtin-learning.md)、[ADR-018](ADR-018-module-closed-loop.md)
@@ -9,7 +9,7 @@
 
 为社交回复、主动行为与研究提供统一、无正文的关联视图：已观察到什么、在哪一步停止、真实发送了多少、反馈从哪里来、是否完成策略更新。loop 是管理投影，不接管 pipeline、DeliveryService、policy 或 learning provider，也不建立第二套业务执行器。loop 完成、decision 状态、发送回执、研究发布和用户反馈分别表达不同事实。
 
-C05/C06 已增加记录与只读 API；UI 留待 C07。本 ADR 不改变 C01 的贴纸授权区分、ADR-006 的执行器行为、出站闸门、主动/学习停用无 fallback、人格租约或原研究数据。没有自动重发、自动恢复任务或跨进程 exactly-once 承诺。
+C05/C06 已增加记录与只读 API，C07 已接入核心管理 UI；下文各阶段实现说明保留当时范围。本 ADR 不改变 C01 的贴纸授权区分、ADR-006 的执行器行为、出站闸门、主动/学习停用无 fallback、人格租约或原研究数据。没有自动重发、自动恢复任务或跨进程 exactly-once 承诺。
 
 ## Loop / receipt v1 schema
 

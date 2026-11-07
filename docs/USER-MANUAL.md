@@ -3,6 +3,8 @@
 本手册面向「已经能打开 DeepSeek Harness（DSH）Web，想把 QQ 接进来」的用户。
 安装细节与全部配置项分别见 [README](../README.md) 与 [CONFIG.md](CONFIG.md)。
 
+模块健康、人工动作、表情包库/发送开关及当前人格闭环的完整证据与限制见 [C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)。关闭图片发送仍可管理已获授权的表情包库；健康刷新不会自动重启，动作接纳后需观察 operation 终态。此次仅离线测试，没有浏览器二进制，未做真实 QQ/模型/浏览器验收。
+
 > 本插件只连接**你已经运行并登录好的** OneBot v11 网关（NapCat / SnowLuma / Lagrange.OneBot /
 > LLOneBot），不下载、不安装、不启动、不注入任何网关。网关怎么装、怎么登录 QQ 不在本文范围。
 

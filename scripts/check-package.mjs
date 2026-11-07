@@ -5,6 +5,7 @@ import { join, resolve, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { runInNewContext } from 'node:vm';
 process.chdir(resolve(import.meta.dirname,'..'));
 const work = mkdtempSync(join(tmpdir(),'dsh-bot-check-'));
 try {
@@ -17,13 +18,30 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
+    for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
+    assert.equal(pkg.dsh.client.platform, 'web');
+    // Execute the shipped client entry with a Node shim; this is not a browser check.
+    let entry;
+    runInNewContext(readFileSync(join(base, 'client.js'), 'utf8'), {
+      window: { __ModuleLoader__: { load(value) { assert.equal(entry, undefined); entry = value; } } },
+    });
+    const client = entry.factory(name => {
+      assert.equal(name, 'react');
+      return { createElement() {}, createContext: () => ({}), Component: class {}, Fragment: 'fragment' };
+    });
+    for (const name of ['CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    const registrations = [];
+    const slots = { inject(name, register) { register(); }, register(def) { registrations.push(def.name); } };
+    client.apply({ get: name => name === 'slots' ? slots : undefined, effect() {} });
+    assert.deepEqual(registrations, ['main', 'sidebar.panellist']);
     for(const file of ['docs/architecture/ADR-017-builtin-learning.md','src/cognition/research.js','src/modules/learning-port.js','src/modules/builtin/learning/index.js','src/modules/builtin/learning/engine.js','docs/architecture/ADR-016-builtin-proactivity.md','src/modules/proactivity-port.js','src/modules/builtin/proactivity/index.js','src/modules/builtin/proactivity/engine.js','src/modules/webui.js','docs/architecture/ADR-014-module-webui.md','docs/architecture/ADR-015-builtin-media-features.md','src/modules/media-features-port.js','src/modules/builtin/media-features/index.js','src/modules/builtin/media-features/bilibili.js','src/modules/builtin/media-features/commands.js']) readFileSync(join(base,file));
     for(const file of ['docs/ARCHITECTURE.md','docs/MODULES.md','docs/cognitive/IMPLEMENTATION-STATUS.md','docs/architecture/ADR-013-media-boundary.md','docs/architecture/MODULE-ACCEPTANCE.md']) readFileSync(join(base,file));
     for(const file of ['src/host.js','src/cognition/turn-hooks.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/reminders.js','src/reminders/service.js','src/reminders/commands.js','src/modules/builtin/typing.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
       const file = join(dir,entry.name);
-      assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist)$/.test(entry.name),file);
-      assert.ok(!/\.(png|sqlite|db|log|tmp)$/.test(entry.name),file);
+      assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist|\.archify|\.builtin|plugins-data)$/.test(entry.name),file);
+      assert.ok(!/^(state|config|data)\.json$/.test(entry.name), `Private module state: ${file}`);
+      assert.ok(!/\.(png|sqlite(?:-wal|-shm)?|db|log|tmp|jsonl)$/.test(entry.name),file);
       if(entry.isDirectory())scan(file);
       else if(/\.(js|json|md|yml|ps1|sh)$/.test(entry.name)) assert.ok(!/C:[\\/]Users[\\/]Run|C:[\\/]rin[\\/]coder/.test(readFileSync(file,'utf8')),`Personal path: ${file}`);
       if(entry.name.endsWith('.md')) for(const match of readFileSync(file,'utf8').matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) {
@@ -69,7 +87,9 @@ try {
           assert.equal(item.generation, items.find(row => row.id === item.moduleId).generation);
           assert.equal(item.config.binding, item.moduleId === 'builtin-sample' ? 'module-file' : 'legacy-core');
         }
-        assert.ok(!JSON.stringify(ui).includes(root));
+        const management = JSON.stringify([ui, kernel.health(), ...items.map(item => kernel.actions(item.id))]);
+        assert.ok(!management.includes(JSON.stringify(root).slice(1, -1)), 'Private module path in packaged management projection');
+        assert.doesNotMatch(management, /"(?:moduleDir|entryPath|configValues|dbFile)"/);
         assert.deepEqual(kernel.uiCatalog(), ui);
         const learning = items.find(item => item.id === 'builtin-learning');
         assert.equal(learning.status, 'loaded'); assert.ok(providerRegistry.get('learning'));
@@ -104,5 +124,5 @@ try {
     `],{stdio:'pipe'});
     execFileSync(process.execPath,['--check',join(base,'client.js')]);
   }
-  console.log('Both archives verified: checksums, contents and standalone module loading.');
+  console.log('Both archives verified: checksums, closed-loop files/client, exactly two DSH registrations, no private module state/paths, links and standalone module loading (Node shim; no browser).');
 } finally { rmSync(work,{recursive:true,force:true}); }

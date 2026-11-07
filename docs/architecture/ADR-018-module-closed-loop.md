@@ -1,6 +1,6 @@
 # ADR-018：模块闭环 v2 健康、所有权与人工恢复契约
 
-- 状态：C04 已实现固定动作、操作注册表与人工恢复；C03 健康/遥测/Provider 所有权保持；系统闭环（C05）与 UI（C07）未实现
+- 状态：C03/C04 健康/遥测/Provider 所有权、固定动作与人工恢复已实现；C05/C06 系统闭环及 C07 核心 UI 已实现，见 [C08 最终验收](CLOSED-LOOP-ACCEPTANCE.md)。下文 C04 范围说明保留当时边界。
 - 日期：2026-11-07
 - 基线：分支 `feat/closed-loop-v2`，C03 `e444574`
 - C03 实现状态：健康 GET（含 `?id=`）统一返回 `{ok,collectedAt,revision,items,summary}`；增加有界 reasons、lastError、dependencies、phase、scheduler/engine 聚合计数与停用后 telemetryGeneration 标签。未接入遥测保留 null。
@@ -126,7 +126,7 @@ restart 使用已加载的内置代码重新 setup，不重新 import 或改变�
 
 外部模块通过固定 toggle/reload helper，保留清单上限、依赖图、配置 revision 和授权绑定；不增加外部 restart、provider 权限、健康探针导入或特殊自动修复。原错误恢复能力及信任层级不变。
 
-后续 C07 核心模块详情应分别展示 lifecycle、health、实际 owner/fallback 和 operation。C04 未修改客户端，也未新增 UI action bridge。核心 action 按 allowlist/服务端可用性呈现，接纳后轮询 operation 再刷新健康；禁止把 POST `ok:true` 当作已恢复。未知/null 显示“未观察/不适用”，不得显示成零故障。新请求超时先按相同 requestId 确认，不能自动生成新 id 重启。
+C07 已在核心模块详情分别展示 lifecycle、health、实际 owner/fallback 和 operation；C04 当时未修改客户端。核心 action 按 allowlist/服务端可用性呈现，接纳后轮询 operation 再刷新健康；禁止把 POST `ok:true` 当作已恢复。未知/null 显示“未观察/不适用”，不得显示成零故障。新请求超时先按相同 requestId 确认，不能自动生成新 id 重启。
 
 沿用 ADR-014：只有核心客户端调用管理 API；受信编译期 React preview 保持纯只读，不获得请求/操作执行权；外部没有同源 React、宿主 exports 或 action bridge。隔离 iframe 的 ready/resize/notify 桥不新增健康查询、restart、配置保存或任意 HTTP 代理。管理面继续使用既有 DSH 访问边界，不新增 DSH slot、Agent 工具或聊天恢复命令。
 
