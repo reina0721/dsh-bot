@@ -182,9 +182,9 @@ test('startup and writes enforce 5000 combined records per persona with no orpha
 
 test('real restart interrupts unfinished records for all personas without sends, replay or historical backfill', t => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-loop-'))
-  t.after(() => rmSync(root, { recursive: true, force: true }))
   const clock = { now: () => 1000000 }, file = join(root, 'store.sqlite')
   let base = createStore({ file, clock }), personaId = 'self'
+  t.after(() => { try { base.close() } catch {} ; rmSync(root, { recursive: true, force: true }) })
   for (const key of ['self', 'other']) base.put('persona', key, {})
   const observer = createLoopObserver({ base, getPersonaId: () => personaId, clock })
   const loop = observer.begin({ turnId: 'turn_1' })
@@ -196,7 +196,6 @@ test('real restart interrupts unfinished records for all personas without sends,
   base.put(scopedPersonaKind('other', 'decision'), 'old_sent', { status: 'sent' })
   base.close()
   base = createStore({ file, clock })
-  t.after(() => base.close())
   createLoopObserver({ base, clock })
   const rows = name => base.list(scopedPersonaKind('self', name))
   assert.equal(rows('loop_run')[0].status, 'interrupted')
