@@ -434,6 +434,10 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
     assert.equal(item.status, module.status)
     assert.equal(item.trust, 'builtin')
     assert.equal(item.surfaces.length, 2)
+    assert.equal(item.surfaces[0].renderer, 'builtin-react')
+    assert.equal(item.surfaces[0].componentKey, item.moduleId.slice('builtin-'.length) + '.preview')
+    assert.equal(item.surfaces[1].renderer, 'schema')
+    assert.equal(Object.hasOwn(item.surfaces[1], 'componentKey'), false)
     assert.deepEqual(item.grantedCapabilities, [])
   }
   assert.equal(uiCatalog.items.find((item) => item.moduleId === sample.id).status, 'disabled')
@@ -1170,6 +1174,12 @@ test('e2e: module UI external opt-in, invalid/oversized fallback, fresh generati
   const invalid = await readUi()
   assert.notEqual(invalid.generation, first.generation)
   assert.deepEqual(invalid.surfaces, []); assert.equal(invalid.uiWarning, 'MODULE_UI_INVALID')
+  await writeManifest({ ...webui, surfaces: [{ id: 'detail', hook: 'module.detail', renderer: 'builtin-react', componentKey: 'sample.preview' }] })
+  await postJson(fake, '/modules/reload', { id })
+  const externalReact = await readUi()
+  assert.equal(externalReact.trust, 'external')
+  assert.deepEqual(externalReact.surfaces, [])
+  assert.equal(externalReact.uiWarning, 'MODULE_UI_INVALID')
   manifest.enabled = true
   await writeManifest({ ...webui, padding: 'x'.repeat(65537) })
   await postJson(fake, '/modules/reload', { id })

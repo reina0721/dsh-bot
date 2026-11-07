@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { CONFIG_GROUPS, DEFAULTS } from '../src/core/config.js'
 import { DIMENSIONS } from '../src/cognition/relationships.js'
+import { BUILTIN_COMPONENT_KEYS } from '../src/modules/webui.js'
 
 let captured = null
 globalThis.window = {
@@ -2238,4 +2239,80 @@ test('ModulesPage config: successful save keeps new revision when reread fails',
     assert.equal(session.values[4].values.message, 'saved')
     assert.match(JSON.stringify(render()), /reread failed/)
   } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage Phase 3B: four trusted previews render bounded read-only drafts without requests', () => {
+  assert.ok(Object.isFrozen(panel.BUILTIN_MODULE_UI))
+  assert.deepEqual(Object.keys(panel.BUILTIN_MODULE_UI), BUILTIN_COMPONENT_KEYS)
+  const draft = { secret: 'global-secret-marker', cognition: {
+    reply: { split: true, maxChars: 480, maxParts: 4, quote: true, atSender: false, delayMs: 800, secret: 'reply-secret-marker' },
+    typing: { enabled: true },
+    reminders: { enabled: true, maxActive: 25, minIntervalSeconds: 120, maxIntervalSeconds: 3600, tickMs: 5000 },
+  } }
+  const original = globalThis.fetch
+  globalThis.fetch = () => { throw Error('preview must not request data') }
+  try {
+    const cases = [
+      ['reply-delivery', ['模块启用：开启', '长回复分条：开启', '单条字数上限：480', '最多分条：4', '引用原消息：开启；群聊 @ 对方：关闭', '分条等待：800 ms / 条间']],
+      ['typing', ['模块启用：开启', '输入状态开关：开启', '输入状态有效状态：开启（仅私聊，依赖网关支持）']],
+      ['reminders', ['模块启用：开启', '主人提醒开关：开启', '每人格活跃提醒上限：25', '最短重复间隔：120 s', '最长重复间隔：3600 s', '到期检查间隔：5000 ms']],
+      ['sample', ['示例回复：<img src=x onerror=evil()> 只读样例']],
+    ]
+    for (const [name, expected] of cases) {
+      const item = { id: 'builtin-' + name, name: 'n'.repeat(200), builtin: true, source: 'builtin', enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
+      const key = name + '.preview'
+      const ui = moduleUi(item, { surfaces: [{ id: 'detail', hook: 'module.detail', renderer: 'builtin-react', componentKey: key, order: 0 }] })
+      const editor = { id: item.id, values: { message: '<img src=x onerror=evil()> 只读样例', secret: 'sample-secret-marker' } }
+      stateOverrides = [[item], false, '', '', editor, '', moduleCatalog(ui), '', item.id]
+      let tree
+      try { tree = panel.ModulesPage({ draft, saveUiPatch() { throw Error('preview must not save') } }) } finally { stateOverrides = null }
+      const preview = treeNodes(tree).find((node) => node.type === panel.BUILTIN_MODULE_UI[key])
+      assert.ok(preview, key)
+      for (const data of [preview.props.module, preview.props.config, preview.props.summary]) assert.ok(Object.isFrozen(data))
+      assert.ok(preview.props.module.name.length <= 128)
+      assert.equal(preview.props.summary.readOnly, true)
+      assert.doesNotMatch(JSON.stringify(preview.props), /secret-marker|saveUiPatch/)
+      const rendered = preview.type(preview.props)
+      for (const text of expected) assert.ok(JSON.stringify(rendered).includes(text), text)
+      assert.equal(treeNodes(rendered).some((node) => ['input', 'textarea', 'button', 'iframe', 'script', 'img'].includes(node.type) || node.props?.dangerouslySetInnerHTML || Object.keys(node.props || {}).some((key) => key.startsWith('on'))), false)
+      if (name === 'typing') {
+        for (const module of [{ ...preview.props.module, enabled: false }, { ...preview.props.module, status: 'error' }]) assert.match(JSON.stringify(preview.type({ ...preview.props, module })), /输入状态有效状态：未生效/)
+        assert.match(JSON.stringify(preview.type({ ...preview.props, config: { enabled: false } })), /输入状态有效状态：未生效/)
+      }
+      if (name === 'reply-delivery') assert.match(JSON.stringify(preview.type({ ...preview.props, config: { ...preview.props.config, split: false } })), /分条关闭，无条间等待/)
+    }
+    assert.equal(draft.cognition.reply.maxChars, 480)
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage Phase 3B: unknown key fallback and external builtin-react never reaches registry', () => {
+  const base = { id: 'builtin-sample', builtin: true, source: 'builtin', enabled: false, status: 'disabled', generation: 'g', uiRevision: 'r' }
+  for (const [patch, key, fallback] of [
+    [{}, 'unknown.preview', '内置预览组件不可用'],
+    [{}, 'constructor.preview', '内置预览组件不可用'],
+    [{ id: 'external', builtin: false, source: 'external' }, 'sample.preview', 'UI 描述不可用或未声明'],
+    [{ id: 'spoof', builtin: false, source: 'builtin' }, 'typing.preview', 'UI 描述不可用或未声明'],
+  ]) {
+    const item = { ...base, ...patch }
+    const ui = moduleUi(item, { surfaces: [{ id: 'detail', hook: 'module.detail', renderer: 'builtin-react', componentKey: key, order: 0 }] })
+    stateOverrides = [[item], false, '', '', null, '', moduleCatalog(ui), '', item.id]
+    let tree
+    try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+    assert.match(JSON.stringify(tree), new RegExp(fallback))
+    assert.equal(treeNodes(tree).some((node) => Object.values(panel.BUILTIN_MODULE_UI).includes(node.type)), false)
+  }
+})
+
+test('ModulesPage Phase 3B: missing or oversized config stays bounded and module scoped', () => {
+  const item = { id: 'builtin-sample', builtin: true, source: 'builtin', status: 'disabled', generation: 'g', uiRevision: 'r' }
+  const ui = moduleUi(item, { surfaces: [{ id: 'detail', hook: 'module.detail', renderer: 'builtin-react', componentKey: 'sample.preview', order: 0 }] })
+  for (const editor of [null, { id: 'other', values: { message: 'wrong-module-marker' } }, { id: item.id, values: { message: 'x'.repeat(1000) } }]) {
+    stateOverrides = [[item], false, '', '', editor, '', moduleCatalog(ui), '', item.id]
+    let tree
+    try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+    const preview = treeNodes(tree).find((node) => node.type === panel.BUILTIN_MODULE_UI['sample.preview'])
+    assert.ok(preview.props.config.message.length <= 200)
+    assert.doesNotMatch(JSON.stringify(preview.props), /wrong-module-marker/)
+    if (!editor || editor.id !== item.id) assert.match(JSON.stringify(preview.type(preview.props)), /未加载配置/)
+  }
 })

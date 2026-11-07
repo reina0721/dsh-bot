@@ -7349,6 +7349,76 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    // Trusted compile-time registry. Components receive only frozen, bounded data;
+    // no host callbacks, API clients, raw config or module exports cross this boundary.
+    const previewText = (value, max) => typeof value === 'string' ? value.slice(0, max) : ''
+    const previewBool = (value) => typeof value === 'boolean' ? value : null
+    const previewNumber = (value, min, max) => Number.isInteger(value) && value >= min && value <= max ? value : null
+    const previewSwitch = (value) => value === null ? '未加载' : value ? '开启' : '关闭'
+    const previewValue = (value, unit = '') => value === null ? '未加载' : value + unit
+    const previewBody = (summary, lines) => h('div', { className: 'ob-stack', 'aria-label': '内置模块只读预览' },
+      h('p', { className: 'ob-muted ob-small' }, summary.text),
+      lines.map((line, index) => h('p', { key: index, className: 'ob-small' }, line)),
+    )
+    const BUILTIN_MODULE_UI = Object.freeze({
+      'reply-delivery.preview': function ReplyDeliveryPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '长回复分条：' + previewSwitch(config.split),
+          '单条字数上限：' + previewValue(config.maxChars),
+          '最多分条：' + previewValue(config.maxParts),
+          '引用原消息：' + previewSwitch(config.quote) + '；群聊 @ 对方：' + previewSwitch(config.atSender),
+          '分条等待：' + (config.split === false ? '分条关闭，无条间等待' : previewValue(config.delayMs, ' ms / 条间')),
+        ])
+      },
+      'typing.preview': function TypingPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '输入状态开关：' + previewSwitch(config.enabled),
+          '输入状态有效状态：' + (module.enabled && module.status === 'loaded' && config.enabled === true ? '开启（仅私聊，依赖网关支持）' : '未生效'),
+        ])
+      },
+      'reminders.preview': function RemindersPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '主人提醒开关：' + previewSwitch(config.enabled),
+          '每人格活跃提醒上限：' + previewValue(config.maxActive),
+          '最短重复间隔：' + previewValue(config.minIntervalSeconds, ' s'),
+          '最长重复间隔：' + previewValue(config.maxIntervalSeconds, ' s'),
+          '到期检查间隔：' + previewValue(config.tickMs, ' ms'),
+        ])
+      },
+      'sample.preview': function SamplePreview({ config, summary }) {
+        return previewBody(summary, ['示例回复：' + (summary.configAvailable ? config.message : '未加载配置')])
+      },
+    })
+
+    function builtinPreviewProps(item, key, draft, editor) {
+      const config = {}
+      let configAvailable = false
+      // Select fields individually. Never pass the global draft (which may contain secrets).
+      if (key === 'reply-delivery.preview') {
+        const raw = safeObject(draft?.cognition?.reply)
+        Object.assign(config, { split: previewBool(raw.split), maxChars: previewNumber(raw.maxChars, 80, 2000), maxParts: previewNumber(raw.maxParts, 1, 10), quote: previewBool(raw.quote), atSender: previewBool(raw.atSender), delayMs: previewNumber(raw.delayMs, 0, 5000) })
+        configAvailable = isPlainObject(draft?.cognition?.reply)
+      } else if (key === 'typing.preview') {
+        config.enabled = previewBool(draft?.cognition?.typing?.enabled)
+        configAvailable = config.enabled !== null
+      } else if (key === 'reminders.preview') {
+        const raw = safeObject(draft?.cognition?.reminders)
+        Object.assign(config, { enabled: previewBool(raw.enabled), maxActive: previewNumber(raw.maxActive, 1, 1000), minIntervalSeconds: previewNumber(raw.minIntervalSeconds, 60, 2592000), maxIntervalSeconds: previewNumber(raw.maxIntervalSeconds, 60, 2592000), tickMs: previewNumber(raw.tickMs, 1000, 3600000) })
+        configAvailable = isPlainObject(draft?.cognition?.reminders)
+      } else if (key === 'sample.preview') {
+        configAvailable = editor?.id === item.id && typeof editor.values?.message === 'string'
+        config.message = configAvailable ? previewText(editor.values.message, 200) : ''
+      }
+      return Object.freeze({
+        module: Object.freeze({ id: previewText(item.id, 64), name: previewText(item.name, 128), status: ['disabled', 'loading', 'loaded', 'blocked', 'error'].includes(item.status) ? item.status : 'error', enabled: item.enabled === true }),
+        config: Object.freeze(config),
+        summary: Object.freeze({ readOnly: true, configAvailable, text: '当前配置草稿预览（只读）' }),
+      })
+    }
+
     function ModulesPage(props) {
       const [items, setItems] = useState([])
       const [loading, setLoading] = useState(true)
@@ -7377,8 +7447,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         const hooks = new Set(), ids = new Set()
         for (const surface of ui.surfaces) {
           if (!surface || typeof surface.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(surface.id) || ids.has(surface.id) || hooks.has(surface.hook)) return null
-          if (Object.keys(surface).some((key) => !['id', 'hook', 'renderer', 'order'].includes(key))) return null
-          if (!['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'].includes(surface.hook) || !['status', 'schema'].includes(surface.renderer)) return null
+          if (Object.keys(surface).some((key) => !['id', 'hook', 'renderer', 'order', 'componentKey'].includes(key))) return null
+          if (!['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'].includes(surface.hook) || !['status', 'schema', 'builtin-react'].includes(surface.renderer)) return null
+          if (surface.renderer === 'builtin-react') {
+            if (source !== 'builtin' || typeof surface.componentKey !== 'string' || surface.componentKey.length > 64 || !/^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$/.test(surface.componentKey)) return null
+          } else if (Object.prototype.hasOwnProperty.call(surface, 'componentKey')) return null
           if (!Number.isInteger(surface.order) || surface.order < -100 || surface.order > 100) return null
           ids.add(surface.id); hooks.add(surface.hook)
         }
@@ -7517,6 +7590,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
       )
       const renderSurface = (item, ui, surface) => {
+        if (surface.hook === 'module.detail' && surface.renderer === 'builtin-react') {
+          const Component = Object.prototype.hasOwnProperty.call(BUILTIN_MODULE_UI, surface.componentKey) ? BUILTIN_MODULE_UI[surface.componentKey] : null
+          return h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
+            Component ? h(Component, builtinPreviewProps(item, surface.componentKey, props.draft, editor))
+              : h('p', { className: 'ob-muted ob-small' }, '内置预览组件不可用，显示核心模块信息。'),
+          )
+        }
         if (['module.card', 'module.detail'].includes(surface.hook) && surface.renderer === 'status') return statusSummary(item, surface)
         if (surface.hook === 'module.config' && surface.renderer === 'schema' && hasLegacyConfigUi(item, ui)) return legacyConfigSurface(item, surface)
         if (surface.hook === 'module.config' && hasConfigUi(item, ui)) return configSurface(item, surface)
@@ -8267,6 +8347,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.nextPresence = nextPresence
     exports.pageTransitionClass = pageTransitionClass
     exports.contentTransitionFor = contentTransitionFor
+    exports.BUILTIN_MODULE_UI = BUILTIN_MODULE_UI
     exports.applyConfigPatch = applyConfigPatch
     exports.settingsSections = settingsSections
     exports.accentValues = accentValues

@@ -11,11 +11,11 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
-## WebUI Phase 3A 当前状态
+## WebUI Phase 3B 当前状态
 
-现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，仅 status/schema renderer。拒绝未知字段/能力、重复 ID/hook、componentKey/sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不 rescan、不读配置值；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
+现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，外部仅 status/schema renderer，内置额外允许 builtin-react。拒绝未知字段/能力、重复 ID/hook、非法 componentKey、sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不 rescan、不读配置值；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
 
-核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：受信内置 `module-file` 使用通用编辑器（当前 builtin-sample），受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。未来 actions/panel、未支持的 hook/renderer 组合与不可用配置保留禁用占位，不执行 componentKey 或 sandbox。
+核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：受信内置 `module-file` 使用通用编辑器（当前 builtin-sample），受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。未来 actions/panel、未支持的 hook/renderer 组合与不可用配置保留禁用占位，不执行 sandbox；builtin-react 仅在 module.detail 查找编译期组件。
 
 reply-delivery、typing、reminders 使用 `legacy-core`（available:true），sample 使用 `module-file`（available:true）；均为 schemaVersion:1 并包含 module.config/schema surface。前三者从现有 `configInfo.groups` 按字段 `module` 归属读取表单，值来自全局 draft，以 `saveUiPatch({[path]:value})` 即时保存并显示既有保存状态，不访问 `/modules/config`。归属元数据只允许最多 64 字符的模块 ID 字符串，不包含配置值或新存储位置。
 
@@ -27,7 +27,19 @@ Phase 3A 精确归属：
 | builtin-typing | cognition.typing.enabled |
 | builtin-reminders | cognition.reminders.enabled、cognition.reminders.maxActive、cognition.reminders.minIntervalSeconds、cognition.reminders.maxIntervalSeconds、cognition.reminders.tickMs |
 
-系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；内置受信 React、自定义组件注册/执行、外部 UI、iframe、沙箱与能力消息桥均留待后续。
+系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；外部声明式扩展、iframe、沙箱与能力消息桥留待后续，外部同源 React 继续禁止。
+
+
+Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 module.config/schema，无重复 hook。服务端冻结 `BUILTIN_COMPONENT_KEYS` 与客户端冻结 `BUILTIN_MODULE_UI` 编译期注册表一致：
+
+| componentKey | 只读预览 |
+|---|---|
+| reply-delivery.preview | 分条开关、单条字数/最多条数、引用/@、分条等待 |
+| typing.preview | 模块启用、typing 开关及 enabled + loaded + typing.enabled 有效状态 |
+| reminders.preview | 模块/提醒开关、活跃上限、最短/最长间隔、tick；不创建或列出提醒 |
+| sample.preview | 当前配置草稿的示例消息，最多 200 字符，纯文本 |
+
+componentKey 必须匹配 `^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$` 且长度 ≤64；服务端拒绝未知 key、外部 builtin-react 和非 builtin-react 上的 componentKey。客户端先经 uiFor 校验来源、generation、revision、status 与描述，再查冻结表；未知 key 显示安全回退，外部从不渲染预览。组件只接收冻结的有界模块元数据、各自配置字段与只读 summary；不接收全局 draft、秘密、请求/保存回调或宿主 API。前三者从全局 draft 选择字段，sample 使用匹配模块的既有 editor.values；缺失配置显示未加载。无 DOM 注入、网络、副作用、动态 import/eval 或任意 slot。配置编辑器、存储键、默认值、实际值与保存流程保持；`/modules/ui` 仍只有元数据，componentKey 仅见于 builtin-react surface，无函数或路径。
 
 ## 最终边界（Phase 14）
 

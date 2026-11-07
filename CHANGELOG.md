@@ -2,6 +2,8 @@
 
 ## 未发布（Unreleased）
 
+- 模块 WebUI Phase 3B：仅受信内置可声明 builtin-react 与冻结编译期白名单 reply-delivery.preview、typing.preview、reminders.preview、sample.preview；四个 module.detail 替换为纯 React 只读预览，保留 module.config/schema 与全部编辑/保存流程。组件只接收冻结的有界模块元数据、各自配置草稿与只读摘要，无 DOM 注入、请求或副作用。服务端拒绝外部 builtin-react、未知 key、非 builtin-react 的 componentKey、重复 hook 与可执行值；客户端经 uiFor 查冻结表，未知 key 安全回退，外部从不执行。/modules/ui 仍无配置值、函数或路径。补充契约、目录/E2E 与面板测试；同步 ADR-014、MODULES、架构说明。无配置值、版本、依赖、DSH 注册变化，无推送、部署、tag 或 release；外部声明式扩展/沙箱/iframe/能力消息桥留待后续。
+
 - 模块 WebUI Phase 3A：reply-delivery/typing/reminders 的 12 个既有核心字段新增有界 module 归属元数据，内置 legacy-core 描述改为 available:true、schemaVersion:1。模块详情复用 FieldRow、全局 draft/saveUiPatch/prefStatus；停用或未 loaded 时只读，系统设置去除重复字段与空 cog-reminders 组，保留通知/请求及其余轮次设置。sample 保持 module-file 编辑与 revision 流程；`/modules/ui` 无配置值，无新增后端配置端点。存储键 cognition.reply.*、cognition.typing.enabled、cognition.reminders.*、默认值、规范化及运行行为不变，无数据迁移。补充字段归属、详情/系统去重、精确保存路径、只读与 sample 回归；同步 MODULES、ARCHITECTURE、ADR-014。受信 React、自定义组件与外部 UI/沙箱/iframe/能力消息桥仍待后续，无版本、依赖或 DSH 注册变化，仅本地验证与提交。
 
 - 模块 WebUI Phase 2：核心模块页提供卡片/详情 → 独立详情 → 返回列表，显示来源/信任、启用/运行状态与错误；status surfaces 仅显示安全文本，未来 hooks 为禁用占位。builtin-sample 的通用配置移入详情，移除列表行内表单，沿用 `/modules/config`、revision、保存重读、取消与 MODULE_CONFIG_* 错误语义；停用/未 loaded 模块配置只读。三个 legacy-core 模块仅显示 Phase 3 迁移说明并链接原认知设置分组；未知/无效/过期 UI 回退为核心状态信息。补充面板导航、只读、配置/错误、安全回退与两项 DSH 注册回归；更新 MODULES、架构及 ADR-014 状态。无后端配置/所有权迁移、内置自定义 React、外部执行/沙箱、新 DSH 入口、依赖或版本变化；仅本地验证与提交。

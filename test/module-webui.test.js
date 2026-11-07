@@ -5,11 +5,34 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { builtinRegistry } from '../src/modules/registry.js'
 import { createModuleKernel } from '../src/modules/kernel.js'
-import { MAX_UI_BYTES, UI_HOOKS, loadWebuiDescriptor, validateWebuiDescriptor } from '../src/modules/webui.js'
+import { BUILTIN_COMPONENT_KEYS, MAX_UI_BYTES, UI_HOOKS, loadWebuiDescriptor, validateWebuiDescriptor } from '../src/modules/webui.js'
 
 const surface = (hook = 'module.detail', extra = {}) => ({ id: 'detail', hook, renderer: 'status', ...extra })
 const descriptor = (extra = {}) => ({ version: 1, surfaces: [surface()], ...extra })
 const validate = (raw, source = 'external') => validateWebuiDescriptor(raw, { source })
+
+test('WebUI builtin-react: frozen compile-time allowlist and strict source/key matrix', () => {
+  assert.ok(Object.isFrozen(BUILTIN_COMPONENT_KEYS))
+  assert.deepEqual(BUILTIN_COMPONENT_KEYS, ['reply-delivery.preview', 'typing.preview', 'reminders.preview', 'sample.preview'])
+  const react = (componentKey) => descriptor({ surfaces: [surface('module.detail', { renderer: 'builtin-react', componentKey })] })
+  for (const key of BUILTIN_COMPONENT_KEYS) {
+    assert.equal(validate(react(key), 'builtin').surfaces[0].componentKey, key)
+    assert.throws(() => validate(react(key), 'external'), /MODULE_UI_INVALID/)
+    for (const renderer of ['status', 'schema']) {
+      assert.throws(() => validate(descriptor({ surfaces: [surface('module.detail', { renderer, componentKey: key })] }), 'builtin'), /MODULE_UI_INVALID/)
+    }
+  }
+  for (const key of [undefined, null, 1, '', 'unknown.preview', 'Sample.preview', '../sample.preview', 'sample.preview/evil', 'a'.repeat(32) + '.' + 'b'.repeat(32), () => 'sample.preview']) {
+    assert.throws(() => validate(react(key), 'builtin'), /MODULE_UI_INVALID/)
+  }
+  let executed = false
+  const getter = { id: 'detail', hook: 'module.detail', renderer: 'builtin-react', get componentKey() { executed = true; return 'sample.preview' } }
+  assert.throws(() => validate(descriptor({ surfaces: [getter] }), 'builtin'), /MODULE_UI_INVALID/)
+  assert.equal(executed, false)
+  const duplicate = react('sample.preview')
+  duplicate.surfaces.push({ ...duplicate.surfaces[0], id: 'duplicate' })
+  assert.throws(() => validate(duplicate, 'builtin'), /MODULE_UI_INVALID/)
+})
 
 async function harness(t, registry = []) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-webui-'))
@@ -100,6 +123,10 @@ test('WebUI built-in registry catalog includes disabled sample; no import/config
     assert.equal(item.source, 'builtin'); assert.equal(item.trust, 'builtin')
     assert.equal(typeof item.generation, 'string'); assert.match(item.uiRevision, /^[a-f0-9]{64}$/)
     assert.deepEqual(item.surfaces.map((row) => row.hook), ['module.detail', 'module.config'])
+    assert.equal(item.surfaces[0].renderer, 'builtin-react')
+    assert.equal(item.surfaces[0].componentKey, item.moduleId.slice('builtin-'.length) + '.preview')
+    assert.equal(item.surfaces[1].renderer, 'schema')
+    assert.equal(Object.hasOwn(item.surfaces[1], 'componentKey'), false)
     assert.deepEqual(item.requestedCapabilities, []); assert.deepEqual(item.grantedCapabilities, [])
     assert.equal(item.uiWarning, '')
     assert.deepEqual(item.config, { binding: item.moduleId === 'builtin-sample' ? 'module-file' : 'legacy-core', schemaVersion: 1, available: true })
@@ -121,13 +148,15 @@ test('WebUI external opt-in/denial is independent of valid backend module lifecy
   await h.external('opt-out', undefined)
   await h.external('invalid', descriptor({ componentKey: '/private/secret-marker' }))
   await h.external('too-large', descriptor({ padding: 'x'.repeat(MAX_UI_BYTES + 1) }))
+  await h.external('react-spoof', descriptor({ surfaces: [surface('module.detail', { renderer: 'builtin-react', componentKey: 'sample.preview' })] }), { source: 'builtin', builtin: true })
   const disabledDir = await h.external('disabled', descriptor(), { enabled: false }, 'throw Error("disabled code imported")')
   await h.kernel.start()
   for (const id of ['opt-in', 'opt-out', 'invalid', 'too-large']) assert.equal(h.item(id).status, 'loaded')
   assert.equal(h.item('opt-in').trust, 'external')
   assert.equal(h.item('opt-in').surfaces.length, 1)
   assert.deepEqual(h.item('opt-out').surfaces, []); assert.equal(h.item('opt-out').uiWarning, '')
-  for (const id of ['invalid', 'too-large']) {
+  for (const id of ['invalid', 'too-large', 'react-spoof']) {
+    assert.equal(h.item(id).status, 'loaded')
     assert.deepEqual(h.item(id).surfaces, []); assert.equal(h.item(id).uiWarning, 'MODULE_UI_INVALID')
     assert.deepEqual(h.item(id).config, { binding: 'none', schemaVersion: null, available: false })
   }
