@@ -1,8 +1,8 @@
 # ADR-014：模块 WebUI 描述契约与核心详情/通用配置
 
-- 状态：已批准；WebUI Phase 1、Phase 2 已实现；Phase 3 配置归属迁移及自定义 UI 待实施（独立于此前模块内核的 Phase 编号）
+- 状态：已批准；WebUI Phase 1、Phase 2、Phase 3A 已实现；内置受信 React 与外部 UI 待实施（独立于此前模块内核的 Phase 编号）
 - 日期：2026-11-07
-- 范围：UI 元数据、信任边界、只读目录、核心模块详情与通用模块配置；配置所有权、内置自定义 React 与外部沙箱留待后续阶段。
+- 范围：UI 元数据、信任边界、只读目录、核心模块详情与通用模块配置；Phase 3A 调整内置旧配置的呈现归属；内置自定义 React 与外部沙箱留待后续阶段。
 
 ## 信任与宿主边界
 
@@ -36,19 +36,19 @@ UI 信任分层不改变后端外部 JS 仍是操作员安装的同进程代码�
 
 严格允许的根字段只有 version/config/surfaces/requestedCapabilities；surface 字段只有 id/hook/renderer/order，config 字段只有 binding/schemaVersion/available。拒绝未知字段、可执行值、getter、toJSON、非 JSON 对象和深度超过 8 的嵌套。描述符 `JSON.stringify` 的 UTF-8 大小最多 65,536 字节（不计算整个 module.json 的其它字段或源文件空白）。config 可省略，归一化为 `{binding:'none',schemaVersion:null,available:false}`；surfaces、requestedCapabilities 可省略，默认空数组。
 
-| 内部 hook | Phase 2 核心渲染 |
+| 内部 hook | Phase 3A 核心渲染 |
 |---|---|
 | `module.card` | status 为纯文本说明/状态，在卡片及详情中展示 |
 | `module.detail` | status 为纯文本说明/状态 |
-| `module.config` | schema + 内置可用 module-file 为通用编辑器；其余为不可用占位 |
+| `module.config` | schema + 内置可用 module-file 为通用编辑器、legacy-core 为全局字段表单；其余为不可用占位 |
 | `module.actions` | 禁用占位，无模块动作执行 |
 | `module.panel` | 禁用占位 |
 
 每模块每 hook 最多一个贡献；surface 总数最多 5，id 不重复且匹配 `[a-z0-9][a-z0-9_-]{0,63}`。order 默认 0，必须为 -100～100 的整数；模块内按 order 升序、id 次序排列。hook 是内部契约，不是 DSH slot，不包含任意挂载位置或代码入口。
 
-内置与外部都只接受 `status` / `schema` renderer。Phase 1 只显示元数据占位；Phase 2 的核心渲染器解释 status 纯文本与可用内置 module-file 的 schema 表单，其它组合显示禁用占位，不执行模块提供的代码或动作。`builtin-react` / `sandbox` renderer、`componentKey` / `sandbox` 字段均拒绝；未来执行器必须另行演进版本和授权，v1 不通过保留字段暗中开启执行。UI capabilities 当前白名单为空，requestedCapabilities 只能为空数组，grantedCapabilities 始终为空；不继承后端 permissions。
+内置与外部都只接受 `status` / `schema` renderer。Phase 1 只显示元数据占位；Phase 2 的核心渲染器解释 status 纯文本与可用内置 module-file 的 schema 表单，Phase 3A 增加可用内置 legacy-core 的全局字段表单；其它组合显示禁用占位，不执行模块提供的代码或动作。`builtin-react` / `sandbox` renderer、`componentKey` / `sandbox` 字段均拒绝；未来执行器必须另行演进版本和授权，v1 不通过保留字段暗中开启执行。UI capabilities 当前白名单为空，requestedCapabilities 只能为空数组，grantedCapabilities 始终为空；不继承后端 permissions。
 
-config.binding 只允许 none/legacy-core/module-file；schemaVersion 为 null 或正安全整数，available 必须为布尔值。none 要求 null/false；legacy-core 仅内置且 available:false；外部不能声明 available:true。schemaVersion 是模块 UI 配置契约的版本元数据，与全局配置文件版本、配置值 revision 无关。描述符与目录没有 schema 字段表、默认值、实际值、文件路径、URL、HTML 或可执行宿主 exports。
+config.binding 只允许 none/legacy-core/module-file；schemaVersion 为 null 或正安全整数，available 必须为布尔值。none 要求 null/false；legacy-core 仅内置，Phase 3A 允许 available:true；外部不能声明 available:true。schemaVersion 是模块 UI 配置契约的版本元数据，与全局配置文件版本、配置值 revision 无关。描述符与目录没有 schema 字段表、默认值、实际值、文件路径、URL、HTML 或可执行宿主 exports。
 
 ## 加载、目录与生命周期
 
@@ -74,6 +74,10 @@ ModulesPage 并行读取 `/modules` 与 `/modules/ui`。点击模块卡片背景
 
 ## 配置归属与后续阶段
 
-reply-delivery、typing、reminders 声明 detail/status 与 config/schema，config binding 为 legacy-core、schemaVersion:1、available:false；详情只显示「配置仍在系统设置，Phase 3 迁移」与前往现有认知设置分组的按钮（cog-reply/cog-turn/cog-reminders），不复制或写字段。即使 UI 目录不可用，已知内置 legacy 模块仍保留说明。现有 cognition.reply/typing/reminders 配置路径、值、编辑所有权与行为保持。sample 的 binding 为 module-file、schemaVersion:1、available:true，现有通用编辑器迁入详情。
+Phase 3A：reply-delivery、typing、reminders 声明 detail/status 与 config/schema，config binding 为 legacy-core、schemaVersion:1、available:true。现有核心字段表新增有界 `module` 字符串元数据（`[a-z0-9][a-z0-9_-]{0,63}`）；normalizeFieldSpec/buildFieldSpecs 保留合法归属。精确 12 个路径见 [模块文档](../MODULES.md#webui-phase-3a-当前状态)：cognition.reply 的六字段归属 builtin-reply-delivery，cognition.typing.enabled 归属 builtin-typing，cognition.reminders 的五字段归属 builtin-reminders。
 
-Phase 3 再将 legacy 配置编辑入口归属模块页；存储 key、数据位置与兼容契约保留，不能因 UI 迁入就迁移或复制配置值。Phase 2 只移动 sample 的既有通用编辑器，不改变配置所有权。内置自定义 React 组件、外部沙箱、能力消息桥、外部 UI 执行与额外 DSH 入口均未实施；未来执行器须独立设计与验证。本阶段无版本升级、推送、部署、tag 或 release。
+模块详情使用 `props.configInfo.groups` 中匹配当前模块的字段、既有 FieldRow、`getByPath(props.draft,path)`、`saveUiPatch({[path]:value})` 与 prefStatus；不进入 module-file 编辑器或请求 `/modules/config`。关闭或未 loaded 时字段与写入回调均禁用，启用且 loaded 后可编辑。详情注明设置归属当前模块、存储键保持不变。系统设置统一过滤 module 字段并丢弃空组；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，cog-reminders 移除，无重复编辑路径。UI 无效/过期/不可用时保持核心安全回退，不呈现可编辑旧配置。
+
+sample 的 binding 为 module-file、schemaVersion:1、available:true，继续既有详情通用编辑器、revision、保存重读、取消、冲突及只读语义。`/modules/ui` 无配置字段表或值，无新后端配置端点。Phase 3A 仅移动设置呈现与编辑入口；存储键、数据位置、默认值、规范化与运行行为保留，无数据迁移、复制或模块独立 config 文件。
+
+后续的内置受信 React 仍需设计组件注册、componentKey 契约与受控执行器；外部 UI 仍需独立设计沙箱、iframe、能力授权与消息桥及验证。当前没有自定义 React、外部 UI 执行或额外 DSH 入口。本阶段无版本升级、推送、部署、tag 或 release。

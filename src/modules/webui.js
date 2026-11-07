@@ -44,7 +44,7 @@ export function validateWebuiDescriptor(raw, { source } = {}) {
   if (!BINDINGS.has(config.binding) || typeof config.available !== 'boolean') invalid()
   if (config.schemaVersion !== null && (!Number.isSafeInteger(config.schemaVersion) || config.schemaVersion < 1)) invalid()
   if (config.binding === 'none' && (config.available || config.schemaVersion !== null)) invalid()
-  if (config.binding === 'legacy-core' && (source !== 'builtin' || config.available)) invalid()
+  if (config.binding === 'legacy-core' && source !== 'builtin') invalid()
   // External config editing is not implemented. Opt-in cannot grant it.
   if (source === 'external' && config.available) invalid()
   const requested = raw.requestedCapabilities === undefined ? [] : raw.requestedCapabilities

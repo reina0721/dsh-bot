@@ -5,6 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { CONFIG_GROUPS, DEFAULTS } from '../src/core/config.js'
 import { DIMENSIONS } from '../src/cognition/relationships.js'
 
 let captured = null
@@ -1744,7 +1745,7 @@ test('CogBudgetCard: failed reset shows error toast without success or reload', 
 })
 
 test('CogSettings: budget card appears only above cog-llm fields and keeps config editor', () => {
-  const groups = [{ id: 'cog-core', title: '核心', fields: [] }, { id: 'cog-llm', title: '模型路由与预算', fields: ['dailyTokenBudget', 'budgetScope', 'personaDailyTokenBudget'].map((name) => ({ path: 'cognition.llm.' + name })) }]
+  const groups = [{ id: 'cog-core', title: '核心', fields: [{ path: 'cognition.enabled', type: 'switch' }] }, { id: 'cog-llm', title: '模型路由与预算', fields: ['dailyTokenBudget', 'budgetScope', 'personaDailyTokenBudget'].map((name) => ({ path: 'cognition.llm.' + name })) }]
   for (const active of ['cog-core', 'cog-llm']) {
     stateOverrides = [active]
     let tree
@@ -1855,7 +1856,7 @@ test('ModulesPage WebUI: unknown/invalid/stale/absent UI falls back without hidi
     ...[
       { generation: 'old' }, { uiRevision: 'old' }, { status: 'loaded' }, { trust: 'external' },
       { config: null }, { config: { binding: 'unknown', schemaVersion: 1, available: true } },
-      { config: { binding: 'legacy-core', schemaVersion: 1, available: true } },
+      { config: { binding: 'legacy-core', schemaVersion: 0, available: true } },
       { requestedCapabilities: ['execute'] }, { grantedCapabilities: ['execute'] }, { componentKey: 'malicious' }, { sandbox: {} },
       { surfaces: [null] }, { surfaces: ['invalid'] },
       { surfaces: [{ ...base.surfaces[0], renderer: 'builtin-react' }] },
@@ -2114,35 +2115,108 @@ test('ModulesPage config: disabled sample loads read-only; toggle enables editin
   } finally { globalThis.fetch = original }
 })
 
-test('ModulesPage legacy config: read-only note links all three modules to existing cognition groups', async () => {
-  const original = globalThis.fetch, calls = []
-  globalThis.fetch = async (path) => { calls.push(path); throw Error('legacy detail must not read config') }
+test('module ownership metadata survives normalization and rejects unbounded/non-string IDs', () => {
+  for (const module of ['builtin-typing', 'a'.repeat(64)]) {
+    assert.equal(panel.normalizeFieldSpec({ path: 'x', module }).module, module)
+    assert.equal(panel.buildFieldSpecs([{ fields: [{ path: 'x', module }] }])[0].fields[0].module, module)
+  }
+  for (const module of ['', 'a'.repeat(65), ' builtin-typing ', 'UPPER', {}, true, null]) {
+    assert.equal(panel.normalizeFieldSpec({ path: 'x', module }).module, undefined)
+  }
+})
+
+test('ModulesPage legacy config: all owned fields, draft values, global patch saves and preference status; no module-file requests', async () => {
+  const original = globalThis.fetch, calls = [], patches = []
+  globalThis.fetch = async (path) => { calls.push(path); throw Error('legacy detail must not fetch module-file config') }
   try {
-    for (const [id, group] of [['builtin-reply-delivery', 'cog-reply'], ['builtin-typing', 'cog-turn'], ['builtin-reminders', 'cog-reminders']]) {
+    for (const id of ['builtin-reply-delivery', 'builtin-typing', 'builtin-reminders']) {
+      const owned = CONFIG_GROUPS.flatMap((group) => group.fields).filter((spec) => spec.module === id)
+      assert.ok(owned.length)
       const item = { id, builtin: true, source: 'builtin', status: 'loaded', enabled: true, generation: id, uiRevision: 'ui' }
       const catalog = moduleCatalog(moduleUi(item, {
-        config: { binding: 'legacy-core', schemaVersion: 1, available: false },
+        config: { binding: 'legacy-core', schemaVersion: 1, available: true },
         surfaces: [{ id: 'config', hook: 'module.config', renderer: 'schema', order: 1 }],
       }))
-      const session = { values: [[item], false, '', '', null, '', catalog], index: 0 }, navigation = []
-      const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ go: (...args) => navigation.push(args) }) } finally { hookSession = null } }
-      await moduleControl(render(), '详情').props.onClick()
-      assert.match(JSON.stringify(render()), /配置仍在系统设置，Phase 3 迁移/)
-      assert.ok(!treeNodes(render()).some((node) => node.type?.name === 'FieldRow' || node.props?.['aria-label'] === '模块配置'))
-      control(render(), '前往现有配置').props.onClick()
-      assert.deepEqual(navigation, [['cognition', group]])
-      const props = { configTarget: group, configInfo: { groups: [{ id: 'cog-core', title: '核心', fields: [] }, { id: group, title: '目标设置', fields: [] }] } }
-      const cognition = panel.CognitionTab(props)
-      const settings = treeNodes(cognition).find((node) => node.type === panel.CogSettings)
-      assert.ok(settings, 'navigation opens existing cognition settings')
-      const settingsTree = settings.type(settings.props)
-      assert.equal(settingsTree.props.active, group)
-      assert.ok(treeNodes(settingsTree).some((node) => node.props?.title === '目标设置'))
-      session.values[6] = null
-      assert.match(JSON.stringify(render()), /配置仍在系统设置，Phase 3 迁移/)
+      const session = { values: [[item], false, '', '', null, '', catalog], index: 0 }
+      let draft = panel.setByPath(DEFAULTS, owned[0].path, owned[0].type === 'switch' ? !owned[0].default : 17)
+      const prefStatus = { state: 'saved' }
+      const render = () => {
+        session.index = 0; hookSession = session
+        try { return panel.ModulesPage({ configInfo: { groups: CONFIG_GROUPS }, draft, saveUiPatch: (patch) => patches.push(patch), prefStatus }) }
+        finally { hookSession = null }
+      }
+      await moduleControl(render(), '配置').props.onClick()
+      let tree = render()
+      assert.match(JSON.stringify(tree), /这些设置属于本模块；存储键保持不变/)
+      assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块配置').length, 1)
+      const rows = treeNodes(tree).filter((node) => node.type?.name === 'FieldRow')
+      assert.deepEqual(rows.map((row) => row.props.spec.path), owned.map((spec) => spec.path))
+      assert.equal(treeNodes(tree).find((node) => node.type?.name === 'PreferenceSaveStatus').props.status, prefStatus)
+      for (const row of rows) {
+        const { spec } = row.props
+        assert.equal(row.props.value, panel.getByPath(draft, spec.path))
+        assert.equal(row.props.disabled, false)
+        assert.ok(treeNodes(row.type(row.props)).some((node) => node.type?.name === 'FieldControl'))
+        const next = spec.type === 'switch' ? !row.props.value : row.props.value + 1
+        row.props.onChange(next)
+        assert.deepEqual(patches.at(-1), { [spec.path]: next })
+      }
+      draft = panel.setByPath(draft, owned[0].path, owned[0].default)
+      assert.equal(treeNodes(render()).find((node) => node.type?.name === 'FieldRow').props.value, owned[0].default)
+      assert.ok(!treeNodes(tree).some((node) => node.children?.includes('保存配置') || node.children?.includes('加载配置')))
+      for (const [enabled, status] of [[false, 'disabled'], [true, 'loading'], [true, 'blocked'], [true, 'error'], [false, 'loaded']]) {
+        session.values[0] = [{ ...item, enabled, status }]
+        session.values[6] = moduleCatalog({ ...catalog.items[0], status })
+        tree = render()
+        assert.match(JSON.stringify(tree), /配置只读/)
+        const disabledRows = treeNodes(tree).filter((node) => node.type?.name === 'FieldRow')
+        assert.equal(disabledRows.length, owned.length)
+        const count = patches.length
+        for (const row of disabledRows) { assert.equal(row.props.disabled, true); row.props.onChange('forbidden') }
+        assert.equal(patches.length, count)
+      }
+      session.values[0] = [item]
+      session.values[6] = catalog
+      assert.ok(treeNodes(render()).filter((node) => node.type?.name === 'FieldRow').every((row) => !row.props.disabled))
+      for (const invalid of [null, moduleCatalog({ ...catalog.items[0], generation: 'old' }), moduleCatalog({ ...catalog.items[0], config: { ...catalog.items[0].config, available: false } })]) {
+        session.values[6] = invalid
+        assert.ok(!treeNodes(render()).some((node) => node.type?.name === 'FieldRow'))
+      }
     }
     assert.deepEqual(calls, [])
   } finally { globalThis.fetch = original }
+})
+
+test('system settings exclude module fields and empty reminders group without duplicate paths', () => {
+  const modulePaths = CONFIG_GROUPS.flatMap((group) => group.fields).filter((spec) => spec.module).map((spec) => spec.path)
+  const props = { configInfo: { groups: CONFIG_GROUPS }, draft: DEFAULTS, issues: [], saveUiPatch() {} }
+  const cog = panel.CogSettings(props)
+  const groupIds = cog.props.items.map((group) => group.id)
+  assert.ok(!groupIds.includes('cog-reminders'))
+  assert.ok(groupIds.includes('cog-reply') && groupIds.includes('cog-turn'))
+  const systemPaths = []
+  for (const id of groupIds) {
+    stateOverrides = [id]
+    let tree
+    try { tree = panel.CogSettings(props) } finally { stateOverrides = null }
+    const paths = treeNodes(tree).filter((node) => node.type?.name === 'FieldRow').map((row) => row.props.spec.path)
+    if (id === 'cog-reply') assert.deepEqual(paths, ['cognition.notices.enabled', 'cognition.requests.enabled', 'cognition.notice.patReply', 'cognition.notice.patCooldownMs'])
+    if (id === 'cog-turn') assert.deepEqual(paths, CONFIG_GROUPS.find((group) => group.id === id).fields.filter((spec) => !spec.module).map((spec) => spec.path))
+    systemPaths.push(...paths)
+  }
+  // Removed navigation targets safely fall back to a nonempty system group.
+  stateOverrides = ['cog-reminders']
+  try { assert.ok(!treeNodes(panel.CogSettings(props)).some((node) => node.props?.spec?.module)) } finally { stateOverrides = null }
+  const config = panel.ConfigTab(props)
+  const configIds = treeNodes(config).find((node) => node.type?.name === 'SettingsShell').props.items.map((group) => group.id)
+  for (const id of configIds) {
+    stateOverrides = [id]
+    try { systemPaths.push(...treeNodes(panel.ConfigTab(props)).filter((node) => node.type?.name === 'FieldRow').map((row) => row.props.spec.path)) }
+    finally { stateOverrides = null }
+  }
+  systemPaths.push(...panel.settingsSections(CONFIG_GROUPS).flatMap((group) => group.fields.map((spec) => spec.path)))
+  assert.equal(new Set([...systemPaths, ...modulePaths]).size, systemPaths.length + modulePaths.length)
+  assert.deepEqual(new Set([...systemPaths, ...modulePaths]), new Set(CONFIG_GROUPS.flatMap((group) => group.fields.map((spec) => spec.path))))
 })
 
 test('ModulesPage config: successful save keeps new revision when reread fails', async () => {

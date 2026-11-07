@@ -78,6 +78,9 @@ test('WebUI config is metadata only; no external grant or legacy ownership spoof
     { schemaVersion: 0 }, { schemaVersion: '1' }, { values: { secret: 'secret' } },
     { schema: {} }, { path: '/private/config.json' },
   ]) assert.throws(() => validate(descriptor({ config: { ...config, ...patch } })), /MODULE_UI_INVALID/)
+  const legacy = { binding: 'legacy-core', schemaVersion: 1, available: true }
+  assert.deepEqual(validateWebuiDescriptor(descriptor({ config: legacy }), { source: 'builtin' }).config, legacy)
+  assert.throws(() => validate(descriptor({ config: legacy })), /MODULE_UI_INVALID/)
   assert.throws(() => validate(descriptor({ config: { binding: 'none', schemaVersion: 1, available: false } })), /MODULE_UI_INVALID/)
 })
 
@@ -99,7 +102,7 @@ test('WebUI built-in registry catalog includes disabled sample; no import/config
     assert.deepEqual(item.surfaces.map((row) => row.hook), ['module.detail', 'module.config'])
     assert.deepEqual(item.requestedCapabilities, []); assert.deepEqual(item.grantedCapabilities, [])
     assert.equal(item.uiWarning, '')
-    assert.deepEqual(item.config, { binding: item.moduleId === 'builtin-sample' ? 'module-file' : 'legacy-core', schemaVersion: 1, available: item.moduleId === 'builtin-sample' })
+    assert.deepEqual(item.config, { binding: item.moduleId === 'builtin-sample' ? 'module-file' : 'legacy-core', schemaVersion: 1, available: true })
   }
   assert.equal(imports, 0)
   assert.ok(!JSON.stringify(catalog).includes(h.root))

@@ -20,7 +20,7 @@ export const builtinRegistry = Object.freeze([
       requires: Object.freeze([]),
     }),
     provides: Object.freeze(['reminders']),
-    ui: placeholderUi('legacy-core'),
+    ui: placeholderUi('legacy-core', true),
     defaultEnabled: true,
     load: () => import('./builtin/reminders.js'),
   }),
@@ -33,7 +33,7 @@ export const builtinRegistry = Object.freeze([
     }),
     defaultEnabled: true,
     load: () => import('./builtin/typing.js'),
-    ui: placeholderUi('legacy-core'),
+    ui: placeholderUi('legacy-core', true),
   }),
   Object.freeze({
     manifest: Object.freeze({
@@ -44,7 +44,7 @@ export const builtinRegistry = Object.freeze([
     }),
     defaultEnabled: true,
     load: () => import('./builtin/reply-delivery.js'),
-    ui: placeholderUi('legacy-core'),
+    ui: placeholderUi('legacy-core', true),
   }),
   Object.freeze({
     manifest: Object.freeze({

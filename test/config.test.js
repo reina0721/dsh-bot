@@ -325,3 +325,21 @@ test('LLM dual budgets: normalize scopes and persona limits; invalid input defau
     assert.ok(issues.some((issue) => issue.includes('llm.personaDailyTokenBudget')))
   }
 })
+
+test('module ownership is bounded metadata on exactly the existing legacy fields', () => {
+  const expected = {
+    'builtin-reply-delivery': ['split', 'maxChars', 'maxParts', 'delayMs', 'quote', 'atSender'].map((key) => 'cognition.reply.' + key),
+    'builtin-typing': ['cognition.typing.enabled'],
+    'builtin-reminders': ['enabled', 'maxActive', 'minIntervalSeconds', 'maxIntervalSeconds', 'tickMs'].map((key) => 'cognition.reminders.' + key),
+  }
+  const fields = CONFIG_GROUPS.flatMap((group) => group.fields)
+  assert.equal(fields.filter((field) => field.module).length, 12)
+  for (const [module, paths] of Object.entries(expected)) {
+    assert.match(module, /^[a-z0-9][a-z0-9_-]{0,63}$/)
+    assert.deepEqual(fields.filter((field) => field.module === module).map((field) => field.path), paths)
+    for (const path of paths) {
+      assert.deepEqual(fields.find((field) => field.path === path).default, getPath(DEFAULTS, path))
+      assert.deepEqual(getPath(normalizeConfig({}).config, path), getPath(DEFAULTS, path))
+    }
+  }
+})

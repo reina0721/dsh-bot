@@ -252,6 +252,7 @@ window.__ModuleLoader__.load({
         type,
         label: typeof field.label === 'string' && field.label.trim() ? field.label : path,
       }
+      if (typeof field.module === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(field.module)) spec.module = field.module
       if (Object.prototype.hasOwnProperty.call(field, 'default')) spec.default = clone(field.default)
       if (field.help != null && String(field.help).trim()) spec.help = String(field.help)
       if (field.placeholder != null && String(field.placeholder).trim()) spec.placeholder = String(field.placeholder)
@@ -288,6 +289,12 @@ window.__ModuleLoader__.load({
         })
       })
       return out
+    }
+
+    function systemFieldSpecs(groups) {
+      return buildFieldSpecs(groups)
+        .map((group) => ({ ...group, fields: group.fields.filter((field) => !field.module) }))
+        .filter((group) => group.fields.length)
     }
 
     function flattenFieldSpecs(groups) {
@@ -880,7 +887,7 @@ window.__ModuleLoader__.load({
      * 返回的每个分类字段仍带服务端 label/type/options/default，客户端不写死选项。
      */
     function settingsSections(groups) {
-      const specs = buildFieldSpecs(groups)
+      const specs = systemFieldSpecs(groups)
       const uiGroup = specs.find((group) => group.id === 'ui')
       const fields = uiGroup ? uiGroup.fields : []
       const used = new Set()
@@ -4072,7 +4079,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const configInfo = props.configInfo
       const draft = props.draft
       const groups = useMemo(
-        () => buildFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui' && !String(group.id).startsWith('cog-')),
+        () => systemFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui' && !String(group.id).startsWith('cog-')),
         [configInfo],
       )
       const [active, setActive] = useState('')
@@ -6189,14 +6196,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     }
 
     function CogSettings(props) {
-      const groups = useMemo(() => safeArray(props.configInfo && props.configInfo.groups).filter((group) => String(group.id).startsWith('cog-')), [props.configInfo])
+      const groups = useMemo(() => systemFieldSpecs(props.configInfo && props.configInfo.groups).filter((group) => String(group.id).startsWith('cog-')), [props.configInfo])
       const [active, setActive] = useState(props.configTarget || (groups[0] ? groups[0].id : 'cog-core'))
       const current = groups.find((group) => group.id === active) || groups[0]
       if (!groups.length) return h(CogEmpty, { title: '认知设置不可用', description: '服务端未返回 cog-* 字段组；请检查插件版本。' })
       return h(SettingsShell, {
         label: '认知设置分类',
         items: groups.map((group) => ({ id: group.id, label: group.title, icon: configGroupIcon ? configGroupIcon(group.id) : 'sliders' })),
-        active,
+        active: current.id,
         onSelect: setActive,
         footer: props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
       },
@@ -7364,7 +7371,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         if (!['none', 'legacy-core', 'module-file'].includes(config.binding) || typeof config.available !== 'boolean') return null
         if (config.schemaVersion !== null && (!Number.isSafeInteger(config.schemaVersion) || config.schemaVersion < 1)) return null
         if (config.binding === 'none' && (config.available || config.schemaVersion !== null)) return null
-        if (config.binding === 'legacy-core' && (source !== 'builtin' || config.available)) return null
+        if (config.binding === 'legacy-core' && source !== 'builtin') return null
         if (source === 'external' && config.available) return null
         if (!Array.isArray(ui.requestedCapabilities) || ui.requestedCapabilities.length || !Array.isArray(ui.grantedCapabilities) || ui.grantedCapabilities.length) return null
         const hooks = new Set(), ids = new Set()
@@ -7380,7 +7387,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
       const hasConfigUi = (item, ui) => item.builtin && item.source === 'builtin' && item.hasConfig && ui?.config.available === true && ui.config.binding === 'module-file' && ui.surfaces.some((surface) => surface.hook === 'module.config' && surface.renderer === 'schema')
       const configReadOnly = (item) => !item.enabled || item.status !== 'loaded'
-      const legacyGroups = { 'builtin-reply-delivery': 'cog-reply', 'builtin-typing': 'cog-turn', 'builtin-reminders': 'cog-reminders' }
+      const legacyFields = buildFieldSpecs(props.configInfo?.groups).flatMap((group) => group.fields)
+      const hasLegacyConfigUi = (item, ui) => item.builtin && item.source === 'builtin' && ui?.config.binding === 'legacy-core' && ui.config.available === true && ui.surfaces.some((surface) => surface.hook === 'module.config' && surface.renderer === 'schema')
+      const legacyReadOnly = (item) => Boolean(busy) || configReadOnly(item) || !props.draft || typeof props.saveUiPatch !== 'function'
 
       const readModuleConfig = async (id) => {
         const result = safeObject(await get('/modules/config?id=' + encodeURIComponent(id)))
@@ -7497,8 +7506,19 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           ),
         ) : h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '加载配置'),
       )
+      const legacyConfigSurface = (item, surface) => h('section', { key: surface.id, className: 'ob-stack', 'aria-label': '模块配置' },
+        h('h3', null, '模块设置'),
+        h('p', { className: 'ob-muted ob-small' }, '这些设置属于本模块；存储键保持不变，沿用现有全局配置保存。'),
+        configReadOnly(item) ? h('p', { className: 'ob-muted ob-small' }, '模块未运行，配置只读；启用并加载成功后可编辑。') : null,
+        legacyFields.filter((spec) => spec.module === item.id).map((spec) => h(FieldRow, {
+          key: spec.path, spec, value: getByPath(props.draft || {}, spec.path), disabled: legacyReadOnly(item),
+          onChange: (value) => { if (!legacyReadOnly(item)) props.saveUiPatch({ [spec.path]: value }) },
+        })),
+        props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
+      )
       const renderSurface = (item, ui, surface) => {
         if (['module.card', 'module.detail'].includes(surface.hook) && surface.renderer === 'status') return statusSummary(item, surface)
+        if (surface.hook === 'module.config' && surface.renderer === 'schema' && hasLegacyConfigUi(item, ui)) return legacyConfigSurface(item, surface)
         if (surface.hook === 'module.config' && hasConfigUi(item, ui)) return configSurface(item, surface)
         return h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
           h('p', { className: 'ob-muted ob-small' }, surface.hook + ' · 暂不可用'),
@@ -7510,7 +7530,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (detailId) {
         const item = items.find((item) => item.id === detailId)
         const ui = item ? uiFor(item) : null
-        const legacy = item?.builtin && item.source === 'builtin' && (legacyGroups[item.id] || ui?.config.binding === 'legacy-core')
         return h('section', { className: 'ob-stack', 'aria-label': '模块详情' },
           h('div', { className: 'ob-row' },
             h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { setDetailId(''); setEditor(null); setConfigError('') } }, '返回模块列表'),
@@ -7522,10 +7541,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             badges(item),
             item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
             item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
-            legacy ? h('section', { className: 'ob-stack', 'aria-label': '旧配置归属' },
-              h('p', { className: 'ob-muted ob-small' }, '配置仍在系统设置，Phase 3 迁移'),
-              props.go ? h(Btn, { small: true, kind: 'secondary', onClick: () => props.go('cognition', legacyGroups[item.id] || 'cog-core') }, '前往现有配置') : null,
-            ) : null,
             !ui || !ui.surfaces.length ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
               : ui.surfaces.map((surface) => renderSurface(item, ui, surface)),
           ) : h(Banner, { tone: 'muted', message: '模块已不在目录中，请返回列表。' }),
@@ -7552,7 +7567,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 description: String(item.description || item.id),
                 actions: h('div', { className: 'ob-row' },
                   h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '详情'),
-                  hasConfigUi(item, ui) ? h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '配置') : null,
+                  hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui) ? h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '配置') : null,
                   item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
                   h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
                 ),
