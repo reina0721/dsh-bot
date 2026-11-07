@@ -428,7 +428,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         },
       }) : null
     const learningPort = record.builtin && record.id === 'builtin-learning' && record.permissions.includes('learning:service')
-      ? createLearningPort({ getConfig, store: personaStore, services: cognition?.services,
+      ? createLearningPort({ getConfig, store: personaStore, services: cognition?.services, moduleId: record.id, runtimeGeneration: runtime.runtimeGeneration,
         getState: () => cognition?.services?.learningState?.() || { ready: false },
         assertActive() {
           requireActive(runtime)

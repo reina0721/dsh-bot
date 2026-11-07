@@ -73,3 +73,18 @@ test('proactivity：安静时段跨午夜正确', () => {
   assert.equal(isQuietHour(12, 23, 8), false)
   assert.equal(isQuietHour(12, 9, 18), true)
 })
+
+test('unknown first turn belongs only to new turn detections; repeats and legacy/manual records never backfill', () => withStore(store => {
+  const knowledge = createKnowledgeService({ store, getConfig, clock: createClock() })
+  const detect = (surface, id) => knowledge.detectFromTurn({ turn: { id, text: surface }, analysis: { confidence: 0.8, unknownCandidates: [{ surface }] } })
+  const [first] = detect('new', 'turn_first')
+  assert.equal(first.firstDetectedTurnId, 'turn_first')
+  detect('new', 'turn_second')
+  assert.equal(store.get('unknown', first.id).firstDetectedTurnId, 'turn_first')
+  const [manual] = detect('manual')
+  assert.equal(manual.firstDetectedTurnId, null)
+  assert.equal(detect('empty-turn', '')[0].firstDetectedTurnId, null)
+  store.put('unknown', 'legacy', { surface: 'legacy', status: 'open' })
+  detect('legacy', 'turn_now')
+  assert.equal(store.get('unknown', 'legacy').firstDetectedTurnId, undefined)
+}))

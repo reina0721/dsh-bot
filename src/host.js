@@ -271,6 +271,7 @@ export function apply(ctx, rowConfig) {
   }
 
   const routes = createRoutes({
+    ingress,
     providerRegistry,
     ctx,
     getConfig,

@@ -82,7 +82,7 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
   const stats = { puts: 0, gets: 0, fts: 0, errors: 0 }
 
   function saveJson() {
-    if (mode !== 'json' || !jsonFile) return
+    if (mode !== 'json' || !jsonFile || txDepth > 0) return
     mkdirSync(dirname(jsonFile), { recursive: true })
     const tmp = `${jsonFile}.tmp-${process.pid}`
     writeFileSync(tmp, JSON.stringify(json), 'utf8')
@@ -286,16 +286,18 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
     if (mode === 'json') {
       const snapshot = txDepth === 0 ? clone(json) : null
       txDepth += 1
-      try {
-        const result = fn()
+      let result
+      try { result = fn() } catch (error) {
         txDepth -= 1
-        saveJson()
-        return result
-      } catch (error) {
-        txDepth -= 1
-        if (snapshot) { json = snapshot; saveJson() }
+        if (snapshot) json = snapshot
         throw error
       }
+      txDepth -= 1
+      try { saveJson() } catch (error) {
+        if (snapshot) json = snapshot
+        throw error
+      }
+      return result
     }
     if (txDepth > 0) return fn()
     txDepth += 1
@@ -371,6 +373,7 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
 
   return {
     mode,
+    atomicTransactions: true,
     info,
     put, get, list, count, remove, removeWhere, search, tx,
     appendRaw, markRawAccepted,

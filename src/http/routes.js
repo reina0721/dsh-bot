@@ -62,6 +62,12 @@ function queryOf(req) {
   }
 }
 
+function loopQueryOf(req) {
+  const params = new URL(req.url, 'http://dsh.local').searchParams
+  if ([...params.keys()].some(key => params.getAll(key).length !== 1)) return { invalid: true }
+  return Object.fromEntries(params)
+}
+
 function toInt(value, fallback, min, max) {
   const n = Number(value)
   if (!Number.isFinite(n)) return fallback
@@ -81,7 +87,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -154,6 +160,25 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       recentEvents: events.recent(20),
     }
   }
+
+  // Same management registration and sandbox rejection as every host API.
+  const loopRead = work => { try { return work() } catch { return { ok: false, code: 'LOOP_READ_UNAVAILABLE' } } }
+  route('GET', '/system/loop/runs', req => loopRead(() => cognition.loopRuns(loopQueryOf(req))))
+  route('GET', '/system/loop/detail', req => loopRead(() => cognition.loopDetail(loopQueryOf(req))))
+  route('GET', '/system/loop/summary', req => loopRead(() => {
+    if (Object.keys(loopQueryOf(req)).length) return { ok: false, code: 'LOOP_QUERY_INVALID' }
+    const result = cognition.loopSummary()
+    if (!result.ok) return result
+    const gatewayState = gateway?.snapshot?.() || {}
+    const health = modules?.health?.() || { summary: {}, items: [] }
+    return { ...result, processLifetime: { ...result.processLifetime, ingress: ingress?.stats?.() || null },
+      readiness: { cognition: cognition.loopReadiness(), gateway: {
+        state: ['stopped', 'connected', 'connecting', 'disconnected', 'paused', 'unconfigured'].includes(gatewayState.state) ? gatewayState.state : 'unknown',
+        loginCheck: ['off', 'pending', 'ok', 'mismatch', 'error'].includes(gatewayState.loginCheck) ? gatewayState.loginCheck : 'unknown',
+      } },
+      modules: { summary: health.summary, total: health.items.length, limited: health.items.length > 200, items: health.items.slice(0, 200).map(row => ({ moduleId: row.moduleId, health: row.health, lifecycle: row.lifecycle, reasonCode: row.reasonCode, runtimeGeneration: row.runtimeGeneration })) },
+      providers: (providerRegistry?.health?.().items || []).map(row => ({ name: row.name, owner: row.owner, state: row.state, ownerModuleId: row.ownerModuleId, ownerRuntimeGeneration: row.ownerRuntimeGeneration, reasonCode: row.reasonCode, fallback: row.fallback })) }
+  }))
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
@@ -595,7 +620,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     route('POST', '/cognition/decision/correct', async (req) => {
       const body = await readBody(req)
       if (!body?.decisionId) throw new Error('缺少 decisionId')
-      return { ok: true, outcome: cognition.correctDecision(body.decisionId, body.observation || {}) }
+      return { ok: true, outcome: cognition.correctDecision(body.decisionId, body.observation || {}, body.requestId) }
     })
     route('GET', '/cognition/policy/stats', async () => ({ ok: true, stats: cognition.policyStats() }))
     route('POST', '/cognition/policy/reset', async () => ({ ok: true, ...cognition.resetPolicy() }))

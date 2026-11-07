@@ -18,7 +18,8 @@ export async function executeDeliveryPlan({
   observer = null, loop = null, moduleId = null, runtimeGeneration = null, preflightResult = null,
 }) {
   const attempt = observeLoop(observer, 'beginDelivery', loop, { decisionId, moduleId, runtimeGeneration })
-  const finish = result => { observeLoop(observer, 'finishDelivery', attempt, deliveryObservation(result)); return result }
+  let attemptedParts = 0
+  const finish = result => { observeLoop(observer, 'finishDelivery', attempt, deliveryObservation(result), { attemptedParts }); return result }
   try {
     if (preflightResult) return finish(preflightResult)
     let resolved
@@ -40,6 +41,7 @@ export async function executeDeliveryPlan({
     let outcome = { status: 'sent' }
     for (let index = 0; index < resolved.parts.length; index += 1) {
       const part = resolved.parts[index]
+      attemptedParts += 1
       const delivered = typeof send === 'function' ? await send({
         ...(observer ? { deliveryOwner: true, deliveryAttempt: attempt } : {}),
         chatType: resolved.target.chatType,
@@ -69,7 +71,7 @@ export async function executeDeliveryPlan({
     }
     return finish({ ok: true, ...outcome, messageId: firstMessageId, result: lastResult, parts: sentParts })
   } catch (error) {
-    observeLoop(observer, 'finishDelivery', attempt, null, { threw: true })
+    observeLoop(observer, 'finishDelivery', attempt, null, { threw: true, attemptedParts })
     throw error
   }
 }

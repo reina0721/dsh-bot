@@ -145,10 +145,10 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
       if (!owned) observeLoop(observer, 'finishDelivery', attempt, deliveryObservation({
         status: result.dryRun ? 'dry_run' : result.ok ? 'sent' : result.error === 'EMPTY_MESSAGE' ? 'empty' : 'failed',
         parts: result.ok && !result.dryRun ? 1 : 0, error: result.error,
-      }))
+      }), { attemptedParts: 1 })
       return result
     } catch (error) {
-      if (!owned) observeLoop(observer, 'finishDelivery', attempt, null, { threw: true })
+      if (!owned) observeLoop(observer, 'finishDelivery', attempt, null, { threw: true, attemptedParts: 1 })
       throw error
     }
   }

@@ -1,6 +1,6 @@
 # ADR-019：系统闭环 v2 关联、回执与反馈契约
 
-- 状态：已批准，C05 执行观测已实现；C06/C07 反馈/研究关联及 API/UI 待实现
+- 状态：已批准，C05 执行观测与 C06 反馈/研究关联及只读 API 已实现；C07 UI 待实现
 - 日期：2026-11-07
 - 基线：分支 `feat/closed-loop-v2`，C01 `5e0c6c4`
 - 前置：[ADR-006](ADR-006-delivery-result-status.md)、[ADR-016](ADR-016-builtin-proactivity.md)、[ADR-017](ADR-017-builtin-learning.md)、[ADR-018](ADR-018-module-closed-loop.md)
@@ -9,7 +9,7 @@
 
 为社交回复、主动行为与研究提供统一、无正文的关联视图：已观察到什么、在哪一步停止、真实发送了多少、反馈从哪里来、是否完成策略更新。loop 是管理投影，不接管 pipeline、DeliveryService、policy 或 learning provider，也不建立第二套业务执行器。loop 完成、decision 状态、发送回执、研究发布和用户反馈分别表达不同事实。
 
-后续实现才增加记录与 API/UI。本 ADR 不改变 C01 的贴纸授权区分、ADR-006 的执行器行为、出站闸门、主动/学习停用无 fallback、人格租约或原研究数据。没有自动重发、自动恢复任务或跨进程 exactly-once 承诺。
+C05/C06 已增加记录与只读 API；UI 留待 C07。本 ADR 不改变 C01 的贴纸授权区分、ADR-006 的执行器行为、出站闸门、主动/学习停用无 fallback、人格租约或原研究数据。没有自动重发、自动恢复任务或跨进程 exactly-once 承诺。
 
 ## Loop / receipt v1 schema
 
@@ -108,7 +108,7 @@ NoSendData = {
 
 ```text
 FeedbackData = {
-  source: 'followup' | 'reaction' | 'recall' | 'explicit_correction' | 'timeout',
+  source: 'incoming' | 'reaction' | 'manual' | 'unknown',
   sourceEventId: string,
   attribution: 'direct' | 'heuristic' | 'unobserved',
   attributionConfidence: number,
@@ -125,7 +125,7 @@ FeedbackData = {
 
 只有可归因的实际观察才进入现有 reward 规则；不在此引入新 reward 权重或自动把启发式升级为事实。dry_run、no_send、未知投递不能产生“用户收到后”的正负学习。partial 仅对已确认发送部分的可关联事件归因，不把未发送部分算成用户拒绝。
 
-**unobserved ≠ negative**：超时、无后续消息、窗口到期、人格切换、观察器停用、历史清理或重启均不证明用户忽略/不满。需要记录时使用 `source:timeout/attribution:unobserved/observation:unobserved/reward:null/outcomeId:null/policyUpdated:false`，不调用负奖励，也不以 reward=0 的“中性样本”增加 trials 或 alpha/beta。超时后的实际反馈只有仍有合法归因证据时才接纳，并按原事件去重，不能补写想象中的负反馈。
+**unobserved ≠ negative**：超时、无后续消息、窗口到期、人格切换、观察器停用、历史清理或重启均不证明用户忽略/不满。需要记录时使用 `source:unknown/attribution:unobserved/observation:unobserved/reward:null/outcomeId:null/policyUpdated:false`，不调用负奖励，也不以 reward=0 的“中性样本”增加 trials 或 alpha/beta。超时后的实际反馈只有仍有合法归因证据时才接纳，并按原事件去重，不能补写想象中的负反馈。
 
 ## Research 关联与 firstDetectedTurnId
 
@@ -146,14 +146,24 @@ ResearchData = {
 
 ## 管理 API/UI 与重启语义
 
-拟新增只读 API，沿用 `/onebot-qq/api`、当前人格和 HTTP 200 JSON 约定：
+C06 只读 API 沿用 `/onebot-qq/api` 管理前缀、当前人格和 HTTP 200 JSON 约定；以下路径均相对该前缀：
 
 | 方法与路径 | 返回 |
 | --- | --- |
-| `GET /cognition/loops?limit=&cursor=&kind=&status=` | `{ok:true,items,nextCursor}`；limit 默认 50、最大 100，kind/status 只接受上述枚举 |
-| `GET /cognition/loops/detail?id=<loopId>&cursor=` | `{ok:true,item,receipts,nextCursor}`；回执每页最多 100，续页携带 cursor；未知为 `LOOP_NOT_FOUND` |
+| `GET /system/loop/summary` | `{ok:true,personaId,collectedAt,processLifetime,retained,businessRecords,readiness,modules,providers}` |
+| `GET /system/loop/runs?limit=&before=&kind=&state=` | `{ok:true,items,nextBefore}`；limit 默认 50、最大 200；kind 为 social/proactivity/research，state 为 running/completed/failed/interrupted |
+| `GET /system/loop/detail?id=<loopId>` | `{ok:true,item,receipts,feedback,feedbackCount,research}` |
+| `GET /system/loop/detail?decisionId=<decisionId>` | 同上；只按当前人格实际保留的 loop 关联查找，不补造历史 |
 
-cursor 是绑定当前人格与查询条件的不透明分页标识；拒绝任意 kind/store/predicate/跨人格参数，切换人格后旧 cursor 失效。详情 receipt 依 recordedAt/id 稳定分页，列表同样有界。GET 不开始/继续 loop、不执行任务、更新 policy、发送消息、修复关联或清理历史。无效参数为固定 `LOOP_QUERY_INVALID`，响应不包含正文或原始异常。
+列表按 `(createdAt,id)` 降序稳定分页，before 是带进程签名、绑定人格/切换代次/kind/state 的不透明 cursor；切换人格或进程重启后旧 cursor 无效，更新不改变排序键。拒绝重复参数、未知字段、非法 kind/state/limit/cursor；非法查询为固定 `LOOP_QUERY_INVALID`。详情 id 与 decisionId 必须二选一；跨人格、已过期和不存在统一 `LOOP_NOT_FOUND`。读取失败为 `LOOP_READ_UNAVAILABLE`，不返回异常正文。
+
+每次详情最多 200 条 outcome、200 个 task、200 个 evidence 和 200 个 claim；receipt 受每 loop 最多 16 条约束。`feedbackCount`、research 的 `taskCount/evidenceCount/claimCount` 提供仓库计数，`linksLimited` 表示关联列表截断；evidence/claim 计数的范围是本次选择的最多 200 个 task。只沿真实 unknownId/taskId/claimId/evidenceIds 关联，不做时间/文本近似；返回内部 ID、固定状态、计数和 policy 数值快照，正文仍在既有 learning 面。
+
+summary 明确区分：`processLifetime` 为当前进程入站/拒绝/过滤原因和 observationFailures，`retained` 为 7 天/5000 联合上限内的 loop/receipt 状态、阶段、真实发送 parts、反馈来源/reward/归因/策略提交与覆盖率，`businessRecords` 为当前人格仍存储的业务记录状态统计（保留规则独立，绝非 all-time）。模块健康/降级和 provider 实际所有权复用 C03 缓存，只投影必要字段；readiness 不暴露网关地址/账号/错误正文。没有目标、人物、prompt 或 URL 标签。
+
+`attemptedParts` 计核心交付边界逐 part 的实际求值次数（包括 gate/dry-run），不等于网络发送次数或计划 parts；preflight 未进入 part 为 0。独立 outbound 入口每次为 1。旧/缺失观测值为 null，summary 的 attemptedParts 任一未知即 null，同时提供 attemptedPartsKnown。sentParts 仅汇总确认成功的 parts；sentPartsComplete=false 表示仍存在完整投递结果未知的 attempt，不能把汇总解释成总共只发了这些。delivery 的 data 四字段与 ADR-006 返回保持不变，attemptedParts 是 receipt 的独立字段。
+
+GET 不开始/继续 loop、不执行任务、更新 policy、发送消息、修复关联、初始化恢复或清理历史；即使物理缓存未清理，也隐藏超期与失去有效父 loop 的 receipt。继续使用管理 route 和 rejectSandboxApi，不增加 CORS、公开接口或 sandbox 能力。
 
 核心认知管理页显示阶段、真实 delivery status/parts、no-send 原因、反馈 provenance/置信度/policyUpdated、研究关联与 null/未知。没有数据展示空态；不从 decision.status 推断送达、不把 interrupted 显示为成功或负反馈。模块详情的健康/人工 restart 使用 ADR-018；loop 不是 restart 的命令通道。保持既有 DSH 管理访问边界，不把回执暴露到聊天、Agent 工具、公开模块 API 或外部 iframe；不增加同源 React/action bridge、新 DSH slot 或通用执行入口。
 
@@ -179,3 +189,17 @@ C05 已实现无正文执行观测，不代表 C06/C07 的反馈/研究关联、
 - 启动在接纳业务前为所有已持久化人格初始化，遗留 running loop 与 attempt 标 interrupted，保留真实完成回执；不 resume/resend、不从 decision.status 补造回执。落盘失败、崩溃和过期淘汰仍可能留下未知观测；observer 的失败被隔离，不改变发送返回/异常或触发网络重发。没有跨进程 exactly-once 保证。
 
 C05 验证包括新的 `test/system-loop.test.js` 及 ingress/delivery/outbound/pipeline/persona/commands/module/proactivity 回归；执行全套 npm tests、文档/对等/本地打包/包检查和 diff whitespace 检查。真实 QQ、模型与网络故障窗口未作在线验收，版本与发布状态不变。
+
+## C06 实现状态（2026-11-07）
+
+C06 已实现反馈/策略/研究关联及上述只读 API，C07 UI 尚未实现。
+
+- `recordOutcome(decisionId, observation, {source,dedupeKey})` 白名单化布尔观察、sentiment（-1–1）、归因枚举和置信度（0–1）；只沿现有 inferReward/Beta 规则更新，不改算法、权重、rate ledger 或预算。incoming 保持 heuristic（原置信度 0.5）；reaction 只有当前人格/切换代次、相同目标和私有 messageId 映射命中才 direct（保留原置信度 0.6）。manual 使用管理请求的 requestId 作为 dedupeKey；缺失/非法 requestId 拒绝，旧调用方需携带 requestId。unknown 明示来源未知。
+- 来源事件的去重键保存在人格业务 outcome，按 decisionId+dedupeKey 去重，不依赖短期 receipt。incoming 使用实际 turn.id；既有 pending 设计每个 decision 消费第一次匹配 reaction，用其 decision 内部 ID 固定该观察槽位。receipt 的 sourceEventId 是在接纳时生成并保存到 outcome 的不透明观察 ID，平台映射/去重键不暴露到 loop API。
+- 核心 feedback owner 先确认同人格、仍在保留期的 parent 和实际 parts>0 的完整 delivery receipt，再在同一同步 store 事务内完成 outcome、decision.outcomeId、policy alpha/beta/trials/rewardSum、feedback receipt 与 parent 引用；outcome 保存 policyBefore/policyAfter。后续 dry-run 前已确认的发送 parts 仍可归因，首条 dry-run、no-send、异常未知或过期/删除证据不能产生新 trial。容量/每 loop 16 回执耗尽也拒绝新反馈学习；业务去重返回先前 outcome，不重复提交。
+- store 显式声明同步原子事务能力；缺少该能力/owner 时拒绝，不 fallback。SQLite 复用原事务；JSON 在外层事务提交时一次原子 rename 发布完整快照，写入中途不落部分 outcome/policy。任一写失败回滚，feedback 错误向调用方传播，自动路径不再继续技能反馈，失败计数可读。没有跨进程 exactly-once 承诺。
+- unobserved 返回 reward:null/policyUpdated:false/outcomeId 不存在，不写 outcome/receipt、不调用奖励规则、不增加 trials；原 pending 到期仍只删除待观察槽位，不自动记录负/中性反馈。未添加新的自动反馈入口或 observer timer。旧 outcome 的 source 为 unknown，缺失 sourceEventId/归因/policyBefore/policyAfter/policyUpdated 保留 null，不推断旧策略是否提交。
+- unknown 仅在实际 turn 首次创建时保存 firstDetectedTurnId；人工无 turn 为 null，重复检测不覆盖，旧记录不回填。learning port 为每次实际 claim 建独立 research loop，保存 task/unknown/首次轮次、module/runtime；真实 running/完成/失败/取消/release 后记研究 receipt，retry 建新 attempt，旧 attempt 不改写。claim 发布继续由原 lease 和同步事务控制，loop 权限不能发布业务结果。排队与尚未执行的任务通过业务引用/summary 表示，不虚构研究 attempt。
+- 扩展 cognition-learning、learning-port、persona、feedback/policy、E2E 回归，新增 `test/loop-api.test.js`；覆盖分页/隔离/无正文、保留与只读、事务失败/去重、legacy unknown、首次轮次、取消/retry/中断。运行 npm test、check:docs、check:parity、pack:release、check:package、git diff --check；仅本地构建验证，无 UI、版本变更、推送、部署或发布，未连接真实 QQ/模型验收。
+
+仍保留 C05 未接入路径的未知窗口：wait/silence/learn-only/gate/compose skip 等只有 loop 终结码，没有 no_send receipt；未观察到的历史送达、超时/无后续反馈、崩溃 I/O 不能补造为失败/负反馈。原研究内容与业务保留周期不受短期 loop 清理影响。

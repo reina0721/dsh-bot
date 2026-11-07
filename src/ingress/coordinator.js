@@ -1,6 +1,9 @@
 // 原始事件入站编排；各服务继续拥有访问、规范化、过滤与认知语义。
 export function createIngressCoordinator({ access, cognition, events, modules, ctx, normalizeEvent, getConfig, logger, clock = { now: Date.now } }) {
   const counts = { received: 0, admitted: 0, rejected: 0, filtered: 0, unrecognized: 0, errors: 0, firstAt: null, lastAt: null }
+  const rejectedReasons = { private_not_allowed: 0, group_not_allowed: 0, other: 0 }
+  const filteredReasons = { disabled: 0, kind: 0, subType: 0, ignoreUser: 0, ignoreGroup: 0, self: 0, invalid: 0, other: 0 }
+  const reasonCount = (counts, reason) => { const key = Object.hasOwn(counts, reason) ? reason : 'other'; counts[key] = Math.min(Number.MAX_SAFE_INTEGER, counts[key] + 1) }
   function handleRaw(raw) {
     counts.received += 1
     let at = null
@@ -24,6 +27,7 @@ export function createIngressCoordinator({ access, cognition, events, modules, c
       const gate = access.decideRaw(raw)
       if (!gate.allowed) {
         counts.rejected += 1
+        reasonCount(rejectedReasons, gate.reason)
         envelope.reason = gate.reason || ''
         logger.debug(`访问拒绝：${gate.chatType || '?'}:${gate.chatId || '?'}/${gate.senderId || '?'}（${gate.reason}）`)
         return result()
@@ -45,6 +49,7 @@ export function createIngressCoordinator({ access, cognition, events, modules, c
       envelope.reason = pushed.reason || ''
       try { cognition.observe(pushed.record || normalized, { accepted: pushed.accepted, reason: pushed.reason || '' }) } catch (error) { logger.warn('认知 observe 失败：', error.message) }
       if (!pushed.accepted) {
+        reasonCount(filteredReasons, pushed.reason)
         logger.debug(`事件被过滤：${pushed.reason}`)
         return result()
       }
@@ -63,5 +68,5 @@ export function createIngressCoordinator({ access, cognition, events, modules, c
     return result()
   }
 
-  return { handleRaw, stats: () => ({ ...counts }) }
+  return { handleRaw, stats: () => ({ ...counts, rejectedReasons: { ...rejectedReasons }, filteredReasons: { ...filteredReasons } }) }
 }

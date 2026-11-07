@@ -21,6 +21,9 @@ export function createPipeline({
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
   const pending = new Map() // chatKey -> { decisionId, sentAt, action }
+  const pendingOwners = new Map()
+  const scope = () => ({ personaId: store?.currentPersonaId?.() || 'self', generation: persona?.scopeGeneration?.() ?? null })
+  const sameScope = owner => owner && owner.personaId === scope().personaId && owner.generation === scope().generation
   const groupReplyAt = new Map() // chatKey -> last reply timestamp
   const groupReplyTimes = [] // sliding minute window
   const consecutiveAmbientReplies = new Map() // chatKey -> 连续未点名接话数
@@ -330,6 +333,7 @@ export function createPipeline({
       if (isDry()) stats.dryRun += 1
       return { ok: true, dryRun: isDry(), messageId: '' }
     }
+    const owner = scope()
     const replyCfg = cfg().reply || {}
     // The core splitter produces zero parts for whitespace. Keep its historical
     // SEND_FAILED result rather than turning that case into fallback delivery.
@@ -363,7 +367,12 @@ export function createPipeline({
     if (sent.ok && !sent.dryRun) {
       stats.sent += sent.parts
       noteGroupReply(turn)
-      pending.set(chatKey(turn), { decisionId: decision.id, messageId: sent.messageId, sentAt: clock.now(), action: decision.action, text })
+      if (sameScope(owner)) {
+        const prior = pending.get(chatKey(turn))
+        if (prior) pendingOwners.delete(prior.decisionId)
+        pending.set(chatKey(turn), { decisionId: decision.id, messageId: sent.messageId, sentAt: clock.now(), action: decision.action, text })
+        pendingOwners.set(decision.id, owner)
+      }
     }
     return sent
   }
@@ -381,8 +390,9 @@ export function createPipeline({
     const key = chatKey(turn)
     const item = pending.get(key)
     if (!item) return null
-    if (clock.now() - item.sentAt > 10 * 60 * 1000) { pending.delete(key); return null }
-    pending.delete(key)
+    if (!sameScope(pendingOwners.get(item.decisionId))) { pending.delete(key); pendingOwners.delete(item.decisionId); return null }
+    if (clock.now() - item.sentAt > 10 * 60 * 1000) { pending.delete(key); pendingOwners.delete(item.decisionId); return null }
+    pending.delete(key); pendingOwners.delete(item.decisionId)
     const text = String(turn.text || '')
     const observation = {
       userContinued: Boolean(text),
@@ -392,7 +402,9 @@ export function createPipeline({
       userIgnored: false,
       attributionConfidence: 0.5,
     }
-    try { policy.recordOutcome(item.decisionId, observation) } catch (error) { log.debug?.('outcome 记录失败：', error.message) }
+    let outcome
+    try { outcome = policy.recordOutcome(item.decisionId, observation, { source: 'incoming', dedupeKey: turn.id }) } catch { return null }
+    if (!outcome?.policyUpdated) return null
     try {
       const decision = store.get('decision', item.decisionId)
       skills?.applyOutcome?.(decision, observation.positiveReaction || observation.sentiment > 0 ? true : observation.explicitCorrection ? false : null)
@@ -445,15 +457,18 @@ export function createPipeline({
     let key = ''
     let item = null
     for (const [candidateKey, candidate] of pending) {
-      if (String(candidate.messageId || '') === messageId) {
+      const [chatType, ...chatIds] = candidateKey.split(':')
+      const matchesTarget = notice.groupId ? chatType === 'group' && chatIds.join(':') === String(notice.groupId) : chatType === 'private' && chatIds.join(':') === String(notice.userId)
+      if (sameScope(pendingOwners.get(candidate.decisionId)) && matchesTarget && clock.now() - candidate.sentAt <= 10 * 60 * 1000 && String(candidate.messageId || '') === messageId) {
         key = candidateKey
         item = candidate
         break
       }
     }
     if (!item) return { ok: false, reason: 'no_pending' }
-    pending.delete(key)
+    pending.delete(key); pendingOwners.delete(item.decisionId)
     const observation = {
+      attribution: 'direct',
       userContinued: false,
       explicitCorrection: false,
       sentiment: 0.5,
@@ -461,7 +476,9 @@ export function createPipeline({
       userIgnored: false,
       attributionConfidence: 0.6,
     }
-    try { policy.recordOutcome(item.decisionId, observation) } catch (error) { log.debug?.('表态归因失败：', error.message) }
+    let outcome
+    try { outcome = policy.recordOutcome(item.decisionId, observation, { source: 'reaction', dedupeKey: `reaction:${item.decisionId}` }) } catch { return { ok: false, reason: 'feedback_unavailable' } }
+    if (!outcome?.policyUpdated) return { ok: false, reason: 'feedback_unavailable' }
     try {
       const decision = store.get('decision', item.decisionId)
       skills?.applyOutcome?.(decision, true)

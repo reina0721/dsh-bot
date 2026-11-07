@@ -2,6 +2,10 @@
 
 ## Unreleased（未发布）
 
+- C06：新增 `/system/loop/summary`、`/system/loop/runs?limit=&before=&kind=&state=`、`/system/loop/detail?id=` 或 `?decisionId=` 管理只读 API（`/onebot-qq/api` 前缀）。默认 50/最多 200，按 createdAt/id 稳定分页，cursor 绑定当前人格/代次/过滤；跨人格、过期与不存在同 not-found。summary 分离进程计数、保留观测与当前业务记录，覆盖入口拒绝/过滤、readiness、模块/provider、阶段/回执、attempted/sent parts、反馈/策略与研究状态；无目标/正文/URL 标签，沿用 sandbox 拒绝与管理边界。
+- Feedback 增加 incoming/reaction/manual/unknown 来源、持久事件去重、bounded sentiment/归因和 Beta before/after/trials；manual 必须携带 requestId。只凭有效 parent/实际发送 receipt 学习，outcome/decision/policy/feedback receipt 同步事务全成全败；缺少原子能力拒绝，JSON 只在事务提交发布快照。unobserved/窗口到期不产生负或中性 trial；历史来源/提交状态未知保留 unknown/null。保留原 reward/Beta 算法、rate ledger 和既有自动路径，不新增 auto-feedback。
+- 新 unknown 记录真实 firstDetectedTurnId，重复/旧数据不覆盖或回填；研究每次实际 claim 单独 loop，取消/retry/中断保留各 attempt，通过真实 unknown/task/evidence/claim 引用只返回 ID/计数/状态，内容留在 learning 面。扩展事务/去重/人格/隐私/保留/首次轮次/取消重试/E2E 回归并更新 ADR-019；C07 UI 未实现，无版本/依赖变更、推送/部署/发布。
+
 - C05：新增无正文 LoopRun/DeliveryReceipt 人格观测，显式 handle 贯穿 admitted turn、决策/生成/交付/观察、命令与主动 port；入站/受控 action 增加聚合计数/时间/拒绝计数，访问仍先于存储。executor 单独拥有 multipart 回执，DeliveryService 无 wrapper 回执，直接 outbound 仅建独立 attempt，模块发送记录核心 module/runtime 归因。
 - 保留 ADR-006 的 partial+ok、真实 parts、从零开始的 failedPart、dry_run 与异常传播，无重试/补发。wait/silence/learn-only/compose skip 等未发送路径不建 receipt；异常/重启的未完成观测标 interrupted、结果未知，不推断历史。observer 失败不影响业务发送返回或异常。
 - 新 kind 无 SQL migration、不随人格复制、随人格删除；16 阶段/16 回执引用/4 unknown 引用/8 KiB，按人格 loop+receipt 合计最多 5000、最长 7 天，启动/写入增量清理，无后台 timer。补充系统闭环与各边界回归、ADR-019 实现状态；不含 C06/C07 反馈/研究关联、API/UI，不改版本/依赖/传输，不推送/部署/发布，未作真实 QQ/模型在线验收。

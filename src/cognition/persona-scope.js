@@ -63,6 +63,7 @@ export function createPersonaScopedStore({ base, getPersonaId }) {
     search(kind, query, limit) { return base.search(kindOf(kind), query, limit) },
     tx(fn) { return base.tx(fn) },
     base,
+    get atomicTransactions() { return base.atomicTransactions === true },
     scopedKind: kindOf,
     currentPersonaId: current,
   }
