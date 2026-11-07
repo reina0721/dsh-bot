@@ -196,3 +196,26 @@ test('context projection is <=4 summaries of <=160 characters and rejects other 
   assert.doesNotMatch(JSON.stringify(context), /OTHER_PERSON|OTHER_CHAT|GROUP|RAW_SECRET/)
   h.port.release(token)
 })
+
+
+test('proactivity health records healthy policy skips and captured failures', async t => {
+  const h = await moduleHarness(t)
+  const read = () => h.kernel.health('builtin-proactivity').items[0]
+  const provider = h.providers.get('proactivity')
+  h.config.cognition.proactivity.enabled = false
+  await provider.tick()
+  assert.equal(read().health, 'healthy')
+  assert.equal(read().reasonCode, 'BUSINESS_DISABLED')
+  assert.equal(read().engine.skipped, 1)
+  h.config.cognition.proactivity.enabled = true
+  h.services.llm.complete = async () => ({ ok: false, error: 'BUDGET_EXHAUSTED' })
+  await provider.tick()
+  assert.equal(read().health, 'healthy')
+  assert.equal(read().reasonCode, 'BUDGET_EXHAUSTED')
+  h.services.llm.complete = async () => { throw Error('SECRET') }
+  await provider.tick()
+  assert.equal(read().health, 'degraded')
+  assert.equal(read().lastError.reasonCode, 'PROACTIVITY_RUN_FAILED')
+  assert.equal(read().engine.inFlight, 0)
+  assert.equal(read().lifecycle, 'loaded')
+})

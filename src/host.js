@@ -293,6 +293,12 @@ export function apply(ctx, rowConfig) {
   let disposed = false
   let modulesSettled = false
   let reminderProvider = null
+  let reminderOwner = null
+  let uncertainReminderStop = false
+  let coreRemindersActive = false
+  const publishReminder = (state, owner = reminderOwner, reasonCode = null, fallback = null) => {
+    providerRegistry.publishHealth('reminders', { ...owner, state, reasonCode, ...(fallback ? { fallback } : {}) })
+  }
   let failedProvider = null
   let providerRevision = 0
   let ownerRevision = -1
@@ -300,7 +306,16 @@ export function apply(ctx, rowConfig) {
   let ownership = Promise.resolve()
   async function stopReminderProvider(provider = reminderProvider) {
     if (!provider) return
-    try { await provider.stop({ dispose: disposed }) } catch { log.warn('提醒 provider 停止失败') }
+    publishReminder('draining')
+    try {
+      await provider.stop({ dispose: disposed })
+      uncertainReminderStop = false
+      publishReminder('unowned', null)
+    } catch {
+      uncertainReminderStop = true
+      publishReminder('failed', reminderOwner, 'PROVIDER_STOP_FAILED')
+      log.warn('提醒 provider 停止失败')
+    }
   }
 
   function syncReminderOwnership() {
@@ -317,15 +332,31 @@ export function apply(ctx, rowConfig) {
           if (disposed) return
           continue
         }
-        if (!desired) { cognition.startReminders(); return }
+        if (!desired) {
+          if (!uncertainReminderStop && !coreRemindersActive) publishReminder('starting', { owner: 'core' })
+          try {
+            cognition.startReminders()
+            coreRemindersActive = true
+            if (!uncertainReminderStop) publishReminder('active', { owner: 'core' }, null, { active: true, reasonCode: selected ? 'PROVIDER_START_FAILED' : 'NO_PROVIDER' })
+          } catch (error) { publishReminder('failed', { owner: 'core' }, 'PROVIDER_START_FAILED'); throw error }
+          return
+        }
         if (reminderProvider === desired) return
-        await cognition.stopReminders()
+        if (coreRemindersActive) publishReminder('draining', { owner: 'core' })
+        try { await cognition.stopReminders() }
+        catch (error) { publishReminder('failed', { owner: 'core' }, 'PROVIDER_STOP_FAILED'); throw error }
+        coreRemindersActive = false
+        publishReminder('unowned', null)
         if (disposed) return
         if (providerRevision !== revision) continue
         reminderProvider = desired
         ownerRevision = revision
+        const registered = providerRegistry.registration('reminders')
+        reminderOwner = { owner: 'module', ownerModuleId: registered?.moduleId || null, ownerRuntimeGeneration: registered?.runtimeGeneration || null }
+        publishReminder('starting')
         try { await desired.start() }
         catch {
+          publishReminder('failed', reminderOwner, 'PROVIDER_START_FAILED')
           log.warn('提醒 provider 启动失败，回退核心提醒')
           await stopReminderProvider(desired)
           reminderProvider = null
@@ -337,6 +368,7 @@ export function apply(ctx, rowConfig) {
         // Synchronous teardown can occur during an asynchronous start.
         if (disposed) { await stopReminderProvider(desired); return }
         if (providerRevision !== revision) continue
+        publishReminder('active')
         return
       }
     }
@@ -385,6 +417,8 @@ export function apply(ctx, rowConfig) {
     } catch (error) {}
     try {
       cognition.dispose()
+      if (coreRemindersActive && !uncertainReminderStop) publishReminder('unowned', null)
+      coreRemindersActive = false
     } catch (error) {}
     try {
       models.dispose()

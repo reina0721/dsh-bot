@@ -2,6 +2,11 @@
 
 ## Unreleased（未发布）
 
+- C03：新增 generation-bound 模块健康缓存与只读 `/modules/health`（含 `?id=`，统一返回 `items/summary/collectedAt/revision`），runtimeGeneration 独立于 UI generation；旧报告与迟到调度结果不能污染新实例，停用后保留带 telemetryGeneration 的快照。
+- 保留 lifecycle 原语义；健康区分未观察、正常/合法空闲、降级、业务故障与停止。原因码来自固定白名单，最多 8 条；错误仅投影固定码/宿主时间/代次。未接入或不适用遥测为 null，不猜测为零；调度与已接入的引擎/命令/事件/配置/输入状态/回复规划回调分别记录有界计数。
+- Provider 注册与实际所有权分离；提醒宿主发布交接/排空/失败及 core fallback，另三个 provider 仅报告模块激活，无核心回退。健康 GET 只复制内存元数据，不运行模块/provider 探针、不读文件/配置、不排队等待 stop、不触发恢复。现有提醒尽力停止失败保留 failed owner，不能视为已证实排空；本阶段不改变其兼容回退行为。
+- C03 不含 restart/actions、operation registry、系统闭环或 UI；计数为当前 runtime 中已接入工作入口的聚合，不覆盖媒体远程操作、学习来源/模型内部每个步骤，也不追溯历史。未验证真实 QQ/模型/网络故障与浏览器。
+
 - C01：拆分表情包库与发送授权，修复关闭 `media.images.enabled` 时列表、上传、标签、删除及文件预览被误禁用的问题；模块、媒体或表情包开关关闭仍关闭库，发送继续要求图片开关及媒体/delivery 服务可用。
 - `/media/status.stickers.available` 保留为库可用性别名，新增库/发送可用性及拒绝原因；媒体页按库状态开放管理并说明图片关闭导致发送禁用，模块草稿预览区分库和发送，配置帮助同步修正。
 - 补充 16 种开关组合、库管理/预览、服务缺失、异步复查、一次性/过期令牌与 access/rate/leak/dryRun 回归。配置键、数据、依赖及版本不变。

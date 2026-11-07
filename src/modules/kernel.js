@@ -7,6 +7,7 @@ import { access, lstat, mkdir, readFile, readdir, realpath, rename, stat, unlink
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { createModuleHealth, observeHealth, projectModuleHealth, validateHealthReport, increment, PROVIDER_NAMES, createProviderHealth } from './health.js'
 import { ID_RE, validateManifest } from './manifest.js'
 import { analyzeDependencies, dependentClosure } from './dependencies.js'
 import { builtinRegistry } from './registry.js'
@@ -73,6 +74,7 @@ function publicRecord(record) {
     error: record.error,
     loadedAt: record.loadedAt,
     generation: record.generation,
+    runtimeGeneration: record.runtime?.runtimeGeneration || null,
     uiRevision: record.uiRevision || 'none',
   }
 }
@@ -94,6 +96,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   let started = false
   let disposed = false
   let operation = Promise.resolve()
+  let healthRevision = 0
+  const touchHealth = () => { healthRevision = increment(healthRevision) }
 
   const serialize = (work) => {
     const next = operation.then(work, work)
@@ -157,7 +161,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   function makeRecord(manifest) {
-    return { ...manifest, generation: randomUUID(), enabled: effectiveEnabled(manifest), status: 'disabled', error: '', loadedAt: null, runtime: null, storage: null }
+    return { ...manifest, health: createModuleHealth(), provides: manifest.builtin ? [...(manifest.provides || [])] : [], generation: randomUUID(), enabled: effectiveEnabled(manifest), status: 'disabled', error: '', loadedAt: null, runtime: null, storage: null }
   }
 
   function errorRecord(id, error, previous = null) {
@@ -166,7 +170,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       permissions: previous?.permissions || [], requires: [], apiVersion: previous?.apiVersion || 1,
       source: 'external', builtin: false, valid: false, manifestEnabled: false,
       enabled: false, status: 'error', error: safeMessage(error), loadedAt: null, runtime: null,
-      generation: randomUUID(), ui: null, uiRevision: 'none', uiWarning: '',
+      health: createModuleHealth(), provides: [], generation: randomUUID(), ui: null, uiRevision: 'none', uiWarning: '',
     }
   }
 
@@ -222,14 +226,24 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   async function disposeRuntime(record) {
     const runtime = record?.runtime
     if (!runtime) return
+    record.health.phase = 'draining'
+    observeHealth(record.health, { state: record.health.health, reasonCode: 'STOP_PENDING' })
+    touchHealth()
     // Drain provider sends while repository leases are still valid, then revoke APIs.
     for (const stop of runtime.providerStops) {
-      try { await stop() } catch { log.warn?.(`模块 ${record.id} provider 停止失败`) }
+      try { await stop() } catch {
+        observeHealth(record.health, { state: 'degraded', reasonCode: 'PROVIDER_STOP_FAILED' })
+        touchHealth()
+        log.warn?.(`模块 ${record.id} provider 停止失败`)
+      }
     }
     runtime.active = false
-    record.runtime = null
-    for (const timer of runtime.timers.values()) globalThis.clearTimeout(timer.native)
+    for (const timer of runtime.timers.values()) {
+      globalThis.clearTimeout(timer.native)
+      record.health.scheduler.cancelled = increment(record.health.scheduler.cancelled)
+    }
     runtime.timers.clear()
+    if (record.health.scheduler.active !== null) schedulerSnapshot(record, runtime)
     const disposers = [...runtime.disposers].reverse()
     runtime.disposers.length = 0
     for (const dispose of disposers) {
@@ -238,6 +252,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     await record.drainStorage?.()
     record.storage = null
     record.drainStorage = null
+    record.runtime = null
+    record.health.phase = 'stopped'
+    record.health.telemetry.lastStoppedAt = Date.now()
+    observeHealth(record.health, { state: 'stopped', reasonCode: 'MODULE_STOPPED' })
+    touchHealth()
   }
 
   function requirePermission(record, permission) {
@@ -292,6 +311,38 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     }
   }
 
+  function currentRuntime(record, runtime) {
+    return runtime.active && record.runtime === runtime && records.get(record.id) === record
+  }
+  function report(record, runtime, value) {
+    if (!currentRuntime(record, runtime)) return false
+    observeHealth(record.health, value)
+    touchHealth()
+    return true
+  }
+  function invoke(record, runtime, code, fn) {
+    if (!currentRuntime(record, runtime)) return undefined
+    report(record, runtime, { state: record.health.health, result: 'started' })
+    const done = (failed, value) => {
+      report(record, runtime, { state: failed ? 'degraded' : 'healthy', result: failed ? 'failure' : 'success', reasonCode: failed ? code : null })
+      if (failed) throw value
+      return value
+    }
+    try {
+      const result = fn()
+      if (result && typeof result.then === 'function') return Promise.resolve(result).then(value => done(false, value), error => done(true, error))
+      return done(false, result)
+    } catch (error) { return done(true, error) }
+  }
+  function schedulerSnapshot(record, runtime) {
+    const cache = record.health
+    cache.scheduler.active = runtime.timers.size
+    cache.scheduler.nextDueAt = runtime.timers.size ? Math.min(...[...runtime.timers.values()].map(timer => timer.dueAt)) : null
+    cache.telemetry.timerScheduled = runtime.timers.size > 0
+    cache.telemetry.nextRunAt = cache.scheduler.nextDueAt
+    cache.observedAt = Date.now()
+    touchHealth()
+  }
   function schedulerApi(record, runtime) {
     const isCurrent = () => !disposed && runtime.active && record.runtime === runtime && records.get(record.id) === record
     const warn = () => {
@@ -303,6 +354,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (!timer) return false
       globalThis.clearTimeout(timer.native)
       runtime.timers.delete(id)
+      record.health.scheduler.cancelled = increment(record.health.scheduler.cancelled)
+      schedulerSnapshot(record, runtime)
       return true
     }
     return Object.freeze({
@@ -314,14 +367,25 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         if (!Number.isSafeInteger(delayMs) || delayMs < 0 || delayMs > MAX_SCHEDULER_DELAY_MS) throw new Error('调度延迟必须是 0–2592000000 ms 的整数')
         if (runtime.timers.size >= MAX_MODULE_TIMERS) throw new Error('模块最多允许 64 个活跃定时器')
         const id = randomUUID()
-        const timer = { native: null, deadline: performance.now() + delayMs }
+        const timer = { native: null, deadline: performance.now() + delayMs, dueAt: Date.now() + delayMs }
         const run = () => {
           // runtime 身份即本次 setup 的 generation；旧回调不能进入新生命周期。
           if (!isCurrent() || runtime.timers.get(id) !== timer) return
           const remaining = timer.deadline - performance.now()
           if (remaining > 0) { schedule(remaining); return }
           runtime.timers.delete(id)
-          try { Promise.resolve(fn()).catch(warn) } catch { warn() }
+          const counters = record.health.scheduler
+          counters.fired = increment(counters.fired)
+          counters.running = increment(counters.running)
+          schedulerSnapshot(record, runtime)
+          const finish = failed => {
+            if (!currentRuntime(record, runtime)) return
+            counters.running = Math.max(0, counters.running - 1)
+            counters[failed ? 'failed' : 'completed'] = increment(counters[failed ? 'failed' : 'completed'])
+            if (failed) report(record, runtime, { state: 'degraded', reasonCode: 'SCHEDULER_CALLBACK_FAILED', result: 'observation' })
+            schedulerSnapshot(record, runtime)
+          }
+          try { Promise.resolve(fn()).then(() => finish(false), () => { finish(true); warn() }) } catch { finish(true); warn() }
         }
         // Node 超过有符号 32 位毫秒会退化为 1 ms，按单调时钟分段等待。
         const schedule = (remaining) => {
@@ -329,6 +393,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         }
         schedule(delayMs)
         runtime.timers.set(id, timer)
+        record.health.scheduler.scheduled = increment(record.health.scheduler.scheduled)
+        schedulerSnapshot(record, runtime)
         return Object.freeze({ id, dispose: () => clearTimeout(id) })
       },
       clearTimeout,
@@ -374,13 +440,35 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       permissions: Object.freeze([...record.permissions]),
       log: moduleLog,
       providers: Object.freeze({
+        ...(record.builtin ? { started(name) {
+          requireActive(runtime)
+          requirePermission(record, 'providers:register')
+          if (!record.builtin || name === 'reminders' || !currentRuntime(record, runtime)) throw new Error('provider 生命周期不可用')
+          const registered = providerRegistry?.registration(name)
+          if (registered?.moduleId !== record.id || registered.runtimeGeneration !== runtime.runtimeGeneration) throw new Error('provider 未注册')
+          providerRegistry.publishHealth(name, { owner: 'module', ownerModuleId: record.id, ownerRuntimeGeneration: runtime.runtimeGeneration, state: 'active' })
+        } } : {}),
         register(name, provider) {
           requireActive(runtime)
           requirePermission(record, 'providers:register')
           if (!record.builtin) throw new Error('provider 仅允许内置模块注册')
           if (!providerRegistry?.register) throw new Error('provider 注册表不可用')
-          const dispose = providerRegistry.register(name, provider, { moduleId: record.id, source: record.source })
-          runtime.providerStops.push(() => provider.stop({ dispose: disposed }))
+          const dispose = providerRegistry.register(name, provider, { moduleId: record.id, source: record.source, runtimeGeneration: runtime.runtimeGeneration })
+          runtime.providerStops.push(async () => {
+            const owner = { owner: 'module', ownerModuleId: record.id, ownerRuntimeGeneration: runtime.runtimeGeneration }
+            const owns = () => {
+              const cached = providerRegistry.health().items.find(item => item.name === name)
+              return cached?.owner === 'module' && cached.ownerModuleId === record.id && cached.ownerRuntimeGeneration === runtime.runtimeGeneration
+            }
+            if (owns()) providerRegistry.publishHealth(name, { ...owner, state: 'draining' })
+            try {
+              await provider.stop({ dispose: disposed })
+              if (owns()) providerRegistry.publishHealth(name, { state: 'unowned' })
+            } catch (error) {
+              if (owns()) providerRegistry.publishHealth(name, { ...owner, state: 'failed', reasonCode: 'PROVIDER_STOP_FAILED' })
+              throw error
+            }
+          })
           runtime.disposers.push(dispose)
           return dispose
         },
@@ -401,8 +489,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
           requireActive(runtime)
           requirePermission(record, 'status:write')
           if (!record.builtin) throw new Error('输入状态仅允许内置模块写入')
-          if (typeof gateway?.actions?.setInputStatus !== 'function') throw new Error('输入状态服务不可用')
-          return gateway.actions.setInputStatus(String(userId), eventType)
+          return invoke(record, runtime, 'TYPING_STATUS_FAILED', () => {
+            if (typeof gateway?.actions?.setInputStatus !== 'function') throw new Error('输入状态服务不可用')
+            return gateway.actions.setInputStatus(String(userId), eventType)
+          })
         },
       }),
       access: Object.freeze({
@@ -430,7 +520,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
           requirePermission(record, 'delivery:plan')
           if (!record.builtin) throw new Error('交付规划仅允许内置模块注册')
           if (!deliveryRegistry?.register) throw new Error('交付规划服务不可用')
-          const dispose = deliveryRegistry.register(descriptor)
+          const dispose = deliveryRegistry.register(typeof descriptor?.plan === 'function'
+            ? { ...descriptor, plan: (...args) => invoke(record, runtime, 'REPLY_PLAN_FAILED', () => descriptor.plan(...args)) } : descriptor)
           runtime.disposers.push(dispose)
           return dispose
         },
@@ -461,10 +552,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         if (!commands?.registerCommand) throw new Error('命令服务不可用')
         const dispose = commands.registerCommand(normalized, input => {
           if (!runtime.active) return undefined
-          if (!mediaPort) return handler(input)
+          if (!mediaPort) return invoke(record, runtime, 'COMMAND_FAILED', () => handler(input))
           const result = normalized === 'sticker'
-            ? mediaPort.withCommand(input.turn, commandToken => handler({ ...input, commandToken }))
-            : handler(input)
+            ? invoke(record, runtime, 'COMMAND_FAILED', () => mediaPort.withCommand(input.turn, commandToken => handler({ ...input, commandToken })))
+            : invoke(record, runtime, 'COMMAND_FAILED', () => handler(input))
           return Promise.resolve(result).then(value => runtime.active ? value : undefined)
         }, { ownerOnly: ownerOnly !== false, allowProtected: overrideBuiltin === true, ...(audience !== undefined ? { audience } : {}) })
         runtime.disposers.push(dispose)
@@ -497,6 +588,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         return dispose
       },
     }
+    if (record.builtin) api.health = Object.freeze({ report: value => {
+      if (!currentRuntime(record, runtime)) return false
+      return report(record, runtime, validateHealthReport(value))
+    } })
     if (record.builtin && record.permissions.includes('scheduler')) api.scheduler = schedulerApi(record, runtime)
     for (const [permission, property, create] of [
       ['reminders:service', 'reminderRepository', assertActive => createReminderRepository({ store: personaStore, assertActive })],
@@ -562,9 +657,13 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
 
   async function loadRecord(record) {
     record.generation = randomUUID()
-    const runtime = { generation: record.generation, active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
+    const runtime = { runtimeGeneration: randomUUID(), active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
     record.runtime = runtime
     record.status = 'loading'
+    record.health = createModuleHealth(runtime.runtimeGeneration, record.builtin && record.permissions.includes('scheduler'))
+    record.health.telemetry.lastStartedAt = Date.now()
+    observeHealth(record.health, { state: 'unknown', reasonCode: 'MODULE_LOADING' })
+    touchHealth()
     try {
       if (record.builtin) await storagePath(record)
       if (!record.storage) record.storage = storageApi(record)
@@ -585,12 +684,17 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (cleanup !== undefined && typeof cleanup !== 'function') throw new Error('setup 返回值必须是 cleanup 函数或 undefined')
       if (cleanup) runtime.disposers.push(cleanup)
       record.status = 'loaded'
+      record.health.phase = 'active'
+      if (record.health.reasonCode === 'MODULE_LOADING') observeHealth(record.health, { state: 'unknown' })
+      touchHealth()
       record.error = ''
       record.loadedAt = Date.now()
       log.info?.(`模块 ${record.id} 已加载`)
     } catch (error) {
       await disposeRuntime(record)
       record.status = 'error'
+      observeHealth(record.health, { state: 'unhealthy', reasonCode: 'MODULE_SETUP_FAILED' })
+      touchHealth()
       record.error = safeMessage(error)
       log.warn?.(`模块 ${record.id} 加载失败：${record.error}`)
     }
@@ -613,8 +717,14 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     await stop(unavailable)
     for (const id of order) {
       const record = records.get(id)
+      record.dependencyStatus = Object.fromEntries(record.requires.map(dep => [dep, records.get(dep)?.status === 'loaded']))
+      touchHealth()
       if (!record.valid) continue
-      if (errors.has(id)) { record.status = 'error'; record.error = errors.get(id); continue }
+      if (errors.has(id)) {
+        record.status = 'error'; record.error = errors.get(id)
+        observeHealth(record.health, { state: 'unhealthy', reasonCode: 'DEPENDENCY_BLOCKED' })
+        continue
+      }
       if (!record.enabled) { record.status = 'disabled'; record.error = ''; continue }
       const missing = record.requires.find((dep) => records.get(dep)?.status !== 'loaded')
       if (missing) { record.status = 'blocked'; record.error = `依赖未加载：${missing}`; continue }
@@ -632,8 +742,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       const record = makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
         ...loadWebuiDescriptor(descriptor.ui, { source: 'builtin' }),
         configSchema: descriptor.config === undefined ? null : validateConfigSchema(descriptor.config),
+        provides: Array.isArray(descriptor.provides) ? [...new Set(descriptor.provides.filter(name => PROVIDER_NAMES.includes(name)))] : [],
         defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) })
       await loadModuleConfig(record)
+      for (const name of record.provides) providerRegistry?.expect(name, record.id)
       records.set(manifest.id, record)
     }
     const entries = await readdir(root, { withFileTypes: true })
@@ -663,6 +775,17 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
 
   function list() {
     return [...records.values()].map(publicRecord).sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  // Deliberately bypass serialize(): reads must complete even during stalled drain.
+  function health(id) {
+    if (id !== undefined && (typeof id !== 'string' || !records.has(id))) return { ok: false, code: 'MODULE_NOT_FOUND' }
+    const providerSnapshot = providerRegistry?.health() || { revision: 0, items: [] }
+    const selected = id === undefined ? [...records.values()] : [records.get(id)]
+    const items = selected.map(record => projectModuleHealth(record, record.provides?.map(name => providerSnapshot.items.find(item => item.name === name) || createProviderHealth(name, record.id)).filter(Boolean) || []))
+      .sort((a, b) => a.moduleId.localeCompare(b.moduleId))
+    const summary = Object.fromEntries(['unknown', 'healthy', 'degraded', 'unhealthy', 'stopped'].map(state => [state, items.filter(item => item.health === state).length]))
+    return { ok: true, collectedAt: Date.now(), revision: Math.min(Number.MAX_SAFE_INTEGER, healthRevision + providerSnapshot.revision), items, summary }
   }
 
   function uiCatalog() {
@@ -818,7 +941,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         if (!runtime.active || !runtime.configListeners.has(registration)) continue
         try {
           // 不等待 handler，避免 handler 排队启停/保存时和生命周期队列互锁。
-          Promise.resolve(registration.handler(clone(validated))).catch(() => log.warn?.(`模块 ${record.id} 配置监听器失败`))
+          Promise.resolve(invoke(record, runtime, 'CONFIG_LISTENER_FAILED', () => registration.handler(clone(validated)))).catch(() => log.warn?.(`模块 ${record.id} 配置监听器失败`))
         } catch { log.warn?.(`模块 ${record.id} 配置监听器失败`) }
       }
       return configSnapshot(record)
@@ -834,11 +957,13 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         if (registration.name !== 'any' && registration.name !== normalizedEvent.kind) continue
         const runtime = record.runtime
         tasks.push(Promise.resolve().then(() => {
-          if (runtime.active && record.runtime === runtime) return registration.handler(normalizedEvent)
+          if (runtime.active && record.runtime === runtime) return invoke(record, runtime, 'EVENT_FAILED', () => registration.handler(normalizedEvent))
         }).catch((error) => serialize(async () => {
           if (!runtime.active || record.runtime !== runtime || records.get(record.id) !== record) return
           await stop(dependentClosure(records, [record.id]))
           record.status = 'error'
+          observeHealth(record.health, { state: 'unhealthy', reasonCode: 'EVENT_FAILED' })
+          touchHealth()
           record.error = `事件处理失败：${safeMessage(error)}`
           await reconcile()
           log.warn?.(`模块 ${record.id} 事件处理失败：${messageOf(error)}`)
@@ -856,6 +981,6 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
-  return { start, list, uiCatalog, refreshUiCatalog, setUiGrant, readSandboxAsset, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
+  return { start, list, health, uiCatalog, refreshUiCatalog, setUiGrant, readSandboxAsset, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
 }
 

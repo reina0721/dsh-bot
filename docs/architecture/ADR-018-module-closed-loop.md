@@ -1,8 +1,9 @@
 # ADR-018：模块闭环 v2 健康、所有权与人工恢复契约
 
-- 状态：已批准，待实现（C02 仅文档，不代表已有 API/UI）
+- 状态：已批准，C03 已实现只读健康/遥测/Provider 所有权；人工恢复、操作注册表、系统闭环与 UI 待后续阶段实现（C02 仅文档）
 - 日期：2026-11-07
 - 基线：分支 `feat/closed-loop-v2`，C01 `5e0c6c4`
+- C03 实现状态：健康 GET（含 `?id=`）统一返回 `{ok,collectedAt,revision,items,summary}`；增加有界 reasons、lastError、dependencies、phase、scheduler/engine 聚合计数与停用后 telemetryGeneration 标签。未接入遥测保留 null；不包含 actions/restart 实现。提醒既有 best-effort stop 失败保留 failed owner，兼容回退行为未变，不声称已证实排空；完整停止/恢复保障仍属后续阶段。
 - 前置：[ADR-010](ADR-010-provider-composition.md)、[ADR-012](ADR-012-builtin-reminders.md)、[ADR-014](ADR-014-module-webui.md)、[ADR-015](ADR-015-builtin-media-features.md)、[ADR-016](ADR-016-builtin-proactivity.md)、[ADR-017](ADR-017-builtin-learning.md)
 
 ## 决定与范围

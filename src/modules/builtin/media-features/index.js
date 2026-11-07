@@ -31,6 +31,7 @@ export function createBuiltinMediaFeatures(api) {
   })
   api.providers.register('mediaFeatures', engine)
   engine.start()
+  api.providers.started?.('mediaFeatures')
   api.registerCommand('bili', input => biliCommand({ ...input, bilibili, getConfig }), { overrideBuiltin: true, audience: 'owner-or-operator' })
   api.registerCommand('sticker', input => stickerCommand({ ...input, port, authorize: authorizeStickerSend }), { overrideBuiltin: true, audience: 'owner' })
   return engine

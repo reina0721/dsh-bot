@@ -1,3 +1,4 @@
+import { reportEngine } from '../../health.js'
 // Policy, prompts and timing belong to the module; state, model and sends use a narrow port.
 export function isQuietHour(hour, start, end) {
   const s = Number(start), e = Number(end)
@@ -5,20 +6,26 @@ export function isQuietHour(hour, start, end) {
   return s < e ? hour >= s && hour < e : hour >= s || hour < e
 }
 
-export function createProactivityEngine({ port, getConfig, scheduler } = {}) {
+export function createProactivityEngine({ port, getConfig, scheduler, health } = {}) {
   let active = false, timer = null, generation = 0, running = false, token = null, sendWork = null
   const state = { lastTickAt: 0, lastError: '', sent: 0, skipped: 0 }
   async function tick() {
     if (!active) return { ok: false, reason: 'MODULE_DISABLED' }
     if (running) return { ok: false, reason: 'busy' }
     running = true
+    reportEngine(health, 'started')
     const epoch = generation
     let run = null
     try {
       const p = getConfig()
       const s = port.snapshot()
       state.lastTickAt = s.now
-      const skip = reason => { state.skipped++; return { ok: false, reason } }
+      const skip = reason => {
+        state.skipped++
+        const code = { disabled: 'BUSINESS_DISABLED', quiet_hours: 'QUIET_HOURS', daily_budget: 'BUDGET_EXHAUSTED', BUDGET_EXHAUSTED: 'BUDGET_EXHAUSTED', no_candidate: 'NO_CANDIDATE', no_person: 'NO_CANDIDATE', backoff: 'BACKOFF', MODULE_DISABLED: 'MODULE_DISABLED' }[reason]
+        reportEngine(health, code ? 'skipped' : 'failure', code || 'PROACTIVITY_RUN_FAILED')
+        return { ok: false, reason }
+      }
       if (!p.enabled || !s.ready || !s.enabled || s.paused) return skip('disabled')
       if (isQuietHour(new Date(s.now).getHours(), p.quietStart, p.quietEnd)) return skip('quiet_hours')
       if (s.dailyCount >= Number(p.maxPrivatePerDay ?? 1)) return skip('daily_budget')
@@ -50,9 +57,11 @@ export function createProactivityEngine({ port, getConfig, scheduler } = {}) {
       sendWork = port.send(run)
       const result = await sendWork
       if (result.ok) { state.sent++; state.lastError = '' } else state.lastError = result.reason
+      reportEngine(health, result.ok ? 'success' : result.reason === 'BUDGET_EXHAUSTED' ? 'skipped' : 'failure', result.ok ? null : result.reason === 'BUDGET_EXHAUSTED' ? 'BUDGET_EXHAUSTED' : 'PROACTIVITY_RUN_FAILED')
       return result
     } catch {
       state.skipped++
+      reportEngine(health, 'failure', 'PROACTIVITY_RUN_FAILED')
       return { ok: false, reason: active && epoch === generation ? 'RUN_CANCELLED' : 'MODULE_DISABLED' }
     } finally {
       if (run) port.release(run)

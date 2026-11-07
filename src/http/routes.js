@@ -205,6 +205,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }
 
   if (modules) {
+    route('GET', '/modules/health', req => modules.health(queryOf(req).id))
     const configAnswer = async (work) => {
       try {
         const { id, schema, values, revision } = await work()
