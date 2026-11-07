@@ -7,24 +7,24 @@
 ## Release 直链
 
 ```sh
-dsh plugin --profile desktop add https://github.com/reina0721/dsh-bot/releases/download/v0.11.13/dsh-bot.tgz
+dsh plugin --profile desktop add https://github.com/reina0721/dsh-bot/releases/download/v0.11.14/dsh-bot.tgz
 ```
 
-追踪最新稳定版时将 URL 换为 `https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.tgz`。推荐固定版本以便重复安装。v0.11.13 已发布，这些固定链接可直接使用。
+追踪最新稳定版时将 URL 换为 `https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.tgz`。推荐固定版本以便重复安装。v0.11.14 已发布，这些固定链接可直接使用。
 
 ## 一键安装脚本
 
 从 [PowerShell 脚本](../scripts/install.ps1) 或 [Shell 脚本](../scripts/install.sh) 下载并查看内容，然后执行：
 
 ```powershell
-.\install.ps1 -Profile desktop -Version 0.11.13 -DshPath 'C:\path with spaces\dsh.cmd'
+.\install.ps1 -Profile desktop -Version 0.11.14 -DshPath 'C:\path with spaces\dsh.cmd'
 ```
 
 ```sh
-sh install.sh --profile desktop --version 0.11.13 --dsh '/path with spaces/dsh'
+sh install.sh --profile desktop --version 0.11.14 --dsh '/path with spaces/dsh'
 ```
 
-省略版本时安装最新稳定版；可传 `0.11.13` 或 `v0.11.13`。脚本解析最新 Release 到固定标签，下载同一版本的包与 SHA256SUMS，验证后安装，结束时清理临时下载。校验通过的包保留在 `$DSH_HOME/plugins-cache/dsh-bot/v<版本>/`，以维持 DSH 对本地安装包的路径引用；后续安装同版本时拒绝覆盖内容不同的缓存。不会安装 DSH、Node、QQ 网关或重启服务。
+省略版本时安装最新稳定版；可传 `0.11.14` 或 `v0.11.14`。脚本解析最新 Release 到固定标签，下载同一版本的包与 SHA256SUMS，验证后安装，结束时清理临时下载。校验通过的包保留在 `$DSH_HOME/plugins-cache/dsh-bot/v<版本>/`，以维持 DSH 对本地安装包的路径引用；后续安装同版本时拒绝覆盖内容不同的缓存。不会安装 DSH、Node、QQ 网关或重启服务。
 
 ## 下载与源码安装
 
