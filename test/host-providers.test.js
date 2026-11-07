@@ -111,7 +111,7 @@ test('host cleans up failed provider startup then falls back to core once with s
   }
 })
 
-test('host provider stop failures are contained without changing synchronous disposal or fallback', async t => {
+test('host uncertain provider stop retains failed ownership and suppresses fallback with synchronous disposal', async t => {
   for (const startFails of [false, true]) {
     await t.test(startFails ? 'fallback' : 'dispose', async t => {
       const { host, coreStart } = await boot(t)
@@ -120,7 +120,7 @@ test('host provider stop failures are contained without changing synchronous dis
         stop() { return Promise.reject(new Error('secret-stop-marker')) },
       }, { moduleId: 'builtin-test' })
       await host.ready
-      assert.equal(coreStart.mock.callCount(), startFails ? 1 : 0)
+      assert.equal(coreStart.mock.callCount(), 0, 'uncertain stop must never start a second scheduler')
       if (startFails) {
         const health = host.providerRegistry.health().items.find(item => item.name === 'reminders')
         assert.equal(health.state, 'failed')
@@ -331,4 +331,111 @@ test('host learning/media/proactivity provider toggles never restart reminder ow
   }
   assert.equal(coreStart.mock.callCount(), 0)
   assert.equal(coreStop.mock.callCount(), 0)
+})
+
+test('host actions: reminder restart holds ownership through STOP_PENDING and never starts fallback or replacement early', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { host, coreStart } = await boot(t, { builtin: true })
+  await host.ready
+  const old = host.providerRegistry.get('reminders')
+  const generation = host.modules.actions('builtin-reminders').expectedGeneration
+  let release, entered, stops = 0
+  const stopped = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  t.mock.method(old, 'stop', async () => { stops++; entered(); await gate })
+  const input = { moduleId: 'builtin-reminders', actionId: 'module.restart', expectedGeneration: generation, requestId: 'host-restart' }
+  host.modules.action(input)
+  await stopped
+  t.mock.timers.tick(10000)
+  assert.equal(host.modules.getOperation({ requestId: input.requestId }).operation.status, 'STOP_PENDING')
+  assert.equal(host.providerRegistry.get('reminders'), old)
+  assert.equal(host.modules.list().find(x => x.id === input.moduleId).runtimeGeneration, generation)
+  assert.equal(coreStart.mock.callCount(), 0)
+  assert.equal(host.providerRegistry.health().items.find(x => x.name === 'reminders').state, 'draining')
+  for (let i = 0; i < 5; i++) { host.modules.health(); host.modules.action(input); await host.syncReminderOwnership() }
+  assert.equal(stops, 1)
+  assert.equal(coreStart.mock.callCount(), 0)
+  release()
+  while (!host.modules.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  const result = host.modules.getOperation({ requestId: input.requestId }).operation
+  assert.equal(result.status, 'succeeded')
+  assert.notEqual(host.providerRegistry.get('reminders'), old)
+  assert.notEqual(result.resultRuntimeGeneration, generation)
+  assert.equal(coreStart.mock.callCount(), 0)
+  assert.equal(stops, 1)
+  assert.equal(host.providerRegistry.health().items.find(x => x.name === 'reminders').state, 'active')
+  t.mock.timers.reset()
+})
+
+test('host actions: failed reminder drain keeps owner/runtime, blocks new owners and never automatically retries', async t => {
+  const { host, coreStart } = await boot(t, { builtin: true })
+  await host.ready
+  const provider = host.providerRegistry.get('reminders')
+  let stops = 0
+  t.mock.method(provider, 'stop', () => { stops++; throw Error('private-stop-error') })
+  const input = { moduleId: 'builtin-reminders', actionId: 'module.restart', expectedGeneration: host.modules.actions('builtin-reminders').expectedGeneration, requestId: 'failed-host-restart' }
+  host.modules.action(input)
+  while (!host.modules.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  const result = host.modules.getOperation({ requestId: input.requestId }).operation
+  assert.equal(result.status, 'failed')
+  assert.equal(result.code, 'PROVIDER_STOP_FAILED')
+  assert.equal(host.modules.list().find(x => x.id === input.moduleId).runtimeGeneration, input.expectedGeneration)
+  assert.equal(host.modules.list().find(x => x.id === input.moduleId).status, 'error')
+  for (let i = 0; i < 5; i++) { await host.syncReminderOwnership(); host.modules.health(); host.modules.action(input) }
+  const unrelated = { moduleId: 'builtin-sample', actionId: 'module.enable', expectedGeneration: host.modules.actions('builtin-sample').expectedGeneration, requestId: 'unrelated-enable' }
+  host.modules.action(unrelated)
+  while (!host.modules.getOperation({ requestId: unrelated.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(host.modules.getOperation({ requestId: unrelated.requestId }).operation.status, 'succeeded')
+  assert.equal(stops, 1, 'unrelated reconciliation must not retry a failed drain')
+  assert.equal(coreStart.mock.callCount(), 0)
+  assert.equal(host.providerRegistry.get('reminders'), provider)
+  const owner = host.providerRegistry.health().items.find(x => x.name === 'reminders')
+  assert.equal(owner.state, 'failed')
+  assert.equal(owner.ownerRuntimeGeneration, input.expectedGeneration)
+})
+
+test('host actions: synchronous disposal during drain cancels replacement after the same cleanup finishes', async t => {
+  const { host } = await boot(t, { builtin: true })
+  await host.ready
+  const provider = host.providerRegistry.get('reminders')
+  const originalStop = provider.stop
+  let release, entered
+  const gate = new Promise(resolve => { release = resolve })
+  const stopping = new Promise(resolve => { entered = resolve })
+  t.mock.method(provider, 'stop', async options => { entered(); await gate; return originalStop(options) })
+  const input = { moduleId: 'builtin-reminders', actionId: 'module.restart', requestId: 'dispose-during-drain', expectedGeneration: host.modules.actions('builtin-reminders').expectedGeneration }
+  host.modules.action(input); await stopping
+  host.dispose()
+  release()
+  while (!host.modules.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(host.modules.getOperation({ requestId: input.requestId }).operation.status, 'cancelled')
+  assert.equal(host.providerRegistry.get('reminders'), null)
+})
+
+test('host actions: enabling reminders observes core drain as STOP_PENDING and waits for accepted core write', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { host, coreStart } = await boot(t)
+  await host.ready
+  host.setConfig({ ...host.getConfig(), access: { ownerQQ: '10001' }, cognition: { ...host.getConfig().cognition, reminders: { enabled: true } } })
+  let release, entered
+  const gate = new Promise(resolve => { release = resolve })
+  const sending = new Promise(resolve => { entered = resolve })
+  t.mock.method(host.cognition.services.outbound, 'deliver', async () => { entered(); await gate; return { ok: true } })
+  const row = host.cognition.services.reminders.add({ chatType: 'private', chatId: '10001', createdBy: '10001', text: 'accepted-core-write', everySeconds: 60 })
+  host.cognition.services.personaStore.put('reminder', row.id, { ...row, nextAt: 0 })
+  const flight = host.cognition.services.reminders.tick()
+  await sending
+  const input = { moduleId: 'builtin-reminders', actionId: 'module.enable', expectedGeneration: host.modules.actions('builtin-reminders').expectedGeneration, requestId: 'core-drain-enable' }
+  host.modules.action(input)
+  await new Promise(setImmediate)
+  t.mock.timers.tick(10000)
+  assert.equal(host.modules.getOperation({ requestId: input.requestId }).operation.status, 'STOP_PENDING')
+  assert.equal(host.providerRegistry.get('reminders'), null)
+  assert.equal(host.providerRegistry.health().items.find(x => x.name === 'reminders').owner, 'core')
+  release(); await flight
+  while (!host.modules.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(host.modules.getOperation({ requestId: input.requestId }).operation.status, 'succeeded')
+  assert.equal(host.cognition.services.personaStore.get('reminder', row.id).sentCount, 1)
+  assert.equal(coreStart.mock.callCount(), 1)
+  assert.equal(host.providerRegistry.health().items.find(x => x.name === 'reminders').owner, 'module')
 })

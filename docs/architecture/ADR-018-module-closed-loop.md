@@ -1,14 +1,15 @@
 # ADR-018：模块闭环 v2 健康、所有权与人工恢复契约
 
-- 状态：已批准，C03 已实现只读健康/遥测/Provider 所有权；人工恢复、操作注册表、系统闭环与 UI 待后续阶段实现（C02 仅文档）
+- 状态：C04 已实现固定动作、操作注册表与人工恢复；C03 健康/遥测/Provider 所有权保持；系统闭环（C05）与 UI（C07）未实现
 - 日期：2026-11-07
-- 基线：分支 `feat/closed-loop-v2`，C01 `5e0c6c4`
-- C03 实现状态：健康 GET（含 `?id=`）统一返回 `{ok,collectedAt,revision,items,summary}`；增加有界 reasons、lastError、dependencies、phase、scheduler/engine 聚合计数与停用后 telemetryGeneration 标签。未接入遥测保留 null；不包含 actions/restart 实现。提醒既有 best-effort stop 失败保留 failed owner，兼容回退行为未变，不声称已证实排空；完整停止/恢复保障仍属后续阶段。
+- 基线：分支 `feat/closed-loop-v2`，C03 `e444574`
+- C03 实现状态：健康 GET（含 `?id=`）统一返回 `{ok,collectedAt,revision,items,summary}`；增加有界 reasons、lastError、dependencies、phase、scheduler/engine 聚合计数与停用后 telemetryGeneration 标签。未接入遥测保留 null。
+- C04 实现状态：固定六项动作、异步操作查询与人工内置 restart 已实现；下文动作字段/128 条与 1 小时保留策略取代 C02 初稿。提醒停止失败保留 owner 并阻止 fallback/替换；同步宿主 dispose 仍维持既有最终撤销边界。
 - 前置：[ADR-010](ADR-010-provider-composition.md)、[ADR-012](ADR-012-builtin-reminders.md)、[ADR-014](ADR-014-module-webui.md)、[ADR-015](ADR-015-builtin-media-features.md)、[ADR-016](ADR-016-builtin-proactivity.md)、[ADR-017](ADR-017-builtin-learning.md)
 
 ## 决定与范围
 
-核心管理面提供只读健康快照与受限人工恢复。生命周期、业务健康、provider 所有权分别建模；任何一项都不能替代另外两项。新契约先于实现批准，本文的路由、字段和操作注册表均为后续实现约束。C02 不改生产代码、配置、存储、权限、版本或既有恢复入口。
+核心管理面提供只读健康快照与受限人工恢复。生命周期、业务健康、provider 所有权分别建模；任何一项都不能替代另外两项。C02 先批准契约；C03 实现只读健康，C04 实现受限人工动作。C04 不增加业务配置、存储迁移、权限、版本、系统闭环 timer 或 UI。
 
 | 维度 | 唯一事实来源 | 表达什么 |
 | --- | --- | --- |
@@ -76,32 +77,37 @@ ProviderOwnership = {
 
 ## 只读健康与缓存遥测
 
-拟新增 `GET /onebot-qq/api/modules/health?id=<moduleId>`，指定 id 返回 `{ok:true,item}`，省略 id 返回 `{ok:true,items}`。未知 id 返回固定 `MODULE_NOT_FOUND`。快照由核心在 setup/stop、调度、固定端口接纳/完成工作、provider 交接时维护；外部缺遥测时显示 unknown/null，不增加外部健康执行权限。
+已实现 `GET /onebot-qq/api/modules/health?id=<moduleId>`，指定或省略 id 均返回 `{ok:true,collectedAt,revision,items,summary}`。未知 id 返回固定 `MODULE_NOT_FOUND`。快照由核心在 setup/stop、调度、固定端口接纳/完成工作、provider 交接时维护；外部缺遥测时显示 unknown/null，不增加外部健康执行权限。
 
 GET 必须无副作用：只复制有界缓存与 kernel/owner 元数据，不扫描目录、不 import、不调用模块/provider 的 `status/stats/start/stop` 或任意 getter/探针，不访问网络/LLM/网关，不读取配置秘密或业务正文，不排 timer、不写存储、不补偿旧状态。缓存缺失直接 unknown；需要更新的事件由其原 owner 主动报告，不能为健康建立另一套业务 timer。只读刷新和 UI 轮询永不触发恢复。
 
 ## 固定动作、操作注册表与 requestId
 
-本 ADR 新增动作 allowlist **只有 `restart`**，且只用于允许人工重启的受信内置模块。核心静态表将 action 映射到确定的 kernel 操作；模块 manifest、WebUI surfaces、HTTP body 均不能注册/命名函数、传 JS/URL/路径或任意动作参数。外部重载与启停继续使用原入口。业务 run/tick、学习 retry、提醒发送、配置保存均不属于 restart action。
+`src/modules/actions.js` 固定 allowlist 为 `module.enable`、`module.disable`、`module.restart`、`module.reload`、`proactivity.runOnce`、`learning.runPending`。执行器在内核编译期绑定；HTTP 只提供下面列出的数据字段，不接受 payload、URL、路径、provider 名称/方法或任意参数。manifest 不得声明 `actions`；外部仅能启停/重载，不能 restart 或 run。
 
-拟新增管理 API（仍沿用 HTTP 200 + JSON `ok/code/message`）：
+管理 API 沿用 HTTP 200 + JSON `ok/code/message`：
 
 | 方法与路径 | 请求/响应契约 |
 | --- | --- |
-| `POST /onebot-qq/api/modules/action` | 精确 `{id,action:'restart',requestId,runtimeGeneration}`；接纳返回 `{ok:true,operation}`，只代表已登记 |
-| `GET /onebot-qq/api/modules/operations?id=<operationId>` | `{ok:true,operation}`，读取缓存，不驱动执行；未知为 `MODULE_OPERATION_NOT_FOUND` |
+| `GET /onebot-qq/api/modules/actions?id=<moduleId>` | `{ok,moduleId,expectedGeneration,expectedPersonaId,expectedPersonaGeneration,items:[{actionId,available,reasonCode}]}`；只查询资格，不执行动作 |
+| `POST /onebot-qq/api/modules/action` | 精确 `{moduleId,actionId,expectedGeneration,requestId,expectedPersonaId?,expectedPersonaGeneration?}`；接纳返回 `{ok:true,operation}`，只表示已登记 |
+| `GET /onebot-qq/api/modules/operation?id=<operationId>` | `{ok:true,operation}`；也可仅用 `?requestId=` 查询；读取不驱动执行 |
 
-`requestId` 为调用方生成的 1–128 字符 ASCII 标识（字母/数字/`_`/`-`），非空；id 为合法模块 ID；重启必须携带当前非空 `runtimeGeneration`。未知字段、动作、无效输入在副作用前拒绝为 `MODULE_ACTION_INVALID`；不适用返回 `MODULE_ACTION_UNAVAILABLE`；过期代次返回 `MODULE_RUNTIME_CONFLICT`。客户端不可仅靠禁用按钮执行并发控制。
+`requestId` 为 1–128 字符 ASCII 字母/数字/`_`/`-`。`expectedGeneration` 使用 actions GET 返回的凭证：存在 runtime 时为 runtimeGeneration，否则为目录 generation；UI grant 单独改变目录 generation 不会让已运行实例的动作失效。新动作必须匹配当前凭证。可选人格 ID 与非负整数 scopeGeneration 在接纳和进入队列后检查；run 即使未显式携带也捕获当前人格范围，排队时切换即取消，业务端口继续约束执行中的迟到结果。未运行目标的 null 凭证不能用于绕过检查。
 
-核心进程内 operation registry 保存 `{id,requestId,moduleId,action,runtimeGeneration,status,phase,code,createdAt,updatedAt,completedAt,resultRuntimeGeneration}`，`status` 为 `queued/running/succeeded/failed/interrupted`，`phase` 为 `queued/draining/starting/done`；未完成时间/结果/错误码为 null。operation 不包含异常正文、配置或业务内容。每个 operation 的目标和输入不可变，终态不可因迟到回调逆转。
+未知字段/动作/无效输入在副作用前返回 `MODULE_ACTION_INVALID`；未知目标为 `MODULE_NOT_FOUND`，资格不符为 `MODULE_ACTION_UNAVAILABLE`，代次过期为 `MODULE_RUNTIME_CONFLICT`，人格过期为 `MODULE_PERSONA_CONFLICT`，闭包冲突为 `MODULE_ACTION_BUSY`。资格遵循 enabled/disabled、loaded/error/blocked、外部清单上限、认知/业务开关与暂停；run 仍经过引擎的候选、任务、预算、quiet/backoff、access/delivery 等既有闸门。
 
-登记与 requestId 去重必须原子完成且早于排队。同一进程内全局 requestId + 相同输入返回同一 operation（包括进行中和失败），不再次执行；相同 requestId 携带不同 id/action/runtimeGeneration 返回 `MODULE_REQUEST_CONFLICT`。先命中已登记请求，再检查当前代次，确保重启完成后的网络重提仍返回原 operation。新的重试需要新 requestId。操作与既有启停/重载共用 kernel 串行队列，依赖闭包不得并发拆卸。
+operation 只包含固定输入、`id/status/phase/code/createdAt/updatedAt/completedAt/result/resultRuntimeGeneration`；`result` 为 `{ok,code}`，不包含业务结果、异常正文、配置或秘密。状态为 `queued/running/succeeded/failed/cancelled/STOP_PENDING`，phase 为 `queued/running/draining/starting/done`。忙碌、跳过、无任务、任一失败与不可用均不能记为成功；代次/人格在队列中失效为 cancelled。终态不可由迟到回调反转。
 
-注册表最多保留 1000 条，当前进程内不驱逐已接纳项以免 requestId 意外复用；达到上限拒绝新请求为 `MODULE_OPERATION_LIMIT`，既有查询/重复请求继续可用。注册表不持久化，进程重启后消失，UI 将失联操作显示为未知/中断并重新读取实际状态；不得自动重发。该幂等契约不跨进程，也不提供 exactly-once。
+登记、全局 requestId 去重及闭包预留在同一同步步骤完成。相同输入重提返回原 operation（包括失败/完成），先去重再检查当前代次；同 requestId 不同字段返回 `MODULE_REQUEST_CONFLICT`。每模块只有一个活动 operation；生命周期预留完整传递下游，和内核串行队列共用执行路径，进入队列时重新检查代次/资格/闭包。run 的网络等待不占内核生命周期队列，但其模块预留持续到 operation 终结。
+
+注册表最多保留 **128** 条，包括 active 与 terminal；terminal 完成后保留 **1 小时**，到期查询/接纳时删除，不设清理 timer，不提前驱逐。容量已满返回 `MODULE_OPERATION_LIMIT`，原查询/重复请求仍可用。active 包括 STOP_PENDING 永不驱逐。幂等期为当前进程内保留期，不跨进程、不跨保留期，也不承诺 exactly-once；过期后 requestId 可复用。手动重试需要新 requestId，进程中断不续跑。
+
+既有 toggle/reload/run HTTP 共用动作 helper 并保留 `{ok,item}`、`{ok,result}`、`{ok,results}` 响应形状；run 的业务 busy/skip/failed 原结果仍原样返回，而 operation 记为非成功。新 learning action 固定最多运行一个 pending，旧 learning run 仍支持有界 max 1–50。首次发现尚未进入目录的外部模块仍走既有 reload/安装 helper；已有目标的 HTTP 操作进入注册表。重复同状态 toggle 直接返回当前模块。底层内核的内部启停/重载方法保留既有串行语义，并拒绝侵入已预留闭包。
 
 ## 人工 restart 与 10 秒 STOP_PENDING
 
-restart 使用已加载的内置代码重新 setup，不重新 import 或改变持久化 enabled。只接受 enabled、loaded、具有当前 runtime、无依赖错误且核心静态策略允许的内置模块；不是安装、代码更新、修复 error/blocked 或启用 disabled 的快捷方式。停止/启动过程中再次检查状态与代次。原有 error 恢复仍由既有人工启停入口处理。受影响范围为目标及其运行中的传递下游；不得自动启用原先关闭的模块或依赖。
+restart 使用已加载的内置代码重新 setup，不重新 import 或改变持久化 enabled。只接受 enabled、loaded、具有当前 runtime、无依赖错误且核心静态策略允许的内置模块；不是安装、代码更新、修复 error/blocked 或启用 disabled 的快捷方式。停止/启动过程中再次检查状态与代次。error 恢复可用人工 enable；无法证实提醒旧 owner 停止时继续 fail closed，需在宿主运维边界处理。受影响范围为目标及其运行中的传递下游；不得自动启用原先关闭的模块或依赖。
 
 顺序必须为：
 
@@ -110,20 +116,22 @@ restart 使用已加载的内置代码重新 setup，不重新 import 或改变�
 3. provider 确认排空后才撤销其余 runtime API、清理命令/hooks/disposers、排空存储并移除注册；旧 owner 未释放前不交给 fallback 或新实例。
 4. 全部必要停止完成后按依赖正序 setup 目标与原先运行且仍可运行的下游。新实例换 runtimeGeneration；失败按既有 error/blocked 规则隔离，重新读取健康和所有权后才能报告恢复结果。
 
-提醒协调器必须参与同一恢复操作；拆卸时的临时注销通知不能在步骤 3/4 之间抢先启动 core fallback。只有恢复选定的 owner 或失败后的正常回退可以接管，且仍须先确认旧 owner 已释放。这里是 v2 人工 restart 的安全前置条件；ADR-012 对错误第三方 provider 的尽力停止限制仍存在，不能把旧实现的 best-effort 结果报告成已证明排空。
+提醒协调器必须参与同一恢复操作；拆卸时的临时注销通知不能在步骤 3/4 之间抢先启动 core fallback。只有恢复选定的 owner 或失败后的正常回退可以接管，且仍须先确认旧 owner 已释放。C04 通过宿主提醒协调器的恢复保护参与同一操作，等待已在进行的交接，再冻结通知驱动的交接；停止失败保留 failed owner，任何后续所有权同步都不会自动重试或启动第二调度器。setup 完成还需确认受影响 provider 实际 active/代次一致才能报成功。任意本地外部代码不能被进程内 API 彻底隔离；错误第三方 stop 的拒绝仍不能证明其已排空。
 
-从进入 draining 起计时，10 秒仍有未完成 drain，operation 保持 `running/phase:draining/code:STOP_PENDING`，供管理查询与 UI 显示“停止尚未完成”；POST 已返回登记结果，不必保持 HTTP 等待。此状态不是 succeeded、failed 或已取消。超时不等于停止：不强行撤销提醒写回仓库、不提前启动新实例/fallback、不释放该闭包的串行保护，也不重复 stop。后台仅等待同一 drain；最终完成后继续原 operation，拒绝则固定失败并保持故障/所有权事实。相同 requestId 查询同一 pending 操作；冲突的新恢复请求不得并发进入。挂死的 drain 可能一直 pending，最终人工处置在原宿主运维边界完成。
+从进入 draining 起计时，10 秒仍有未完成 drain，operation 进入非终态 `STOP_PENDING/phase:draining/code:STOP_PENDING`，供管理查询与 UI 显示“停止尚未完成”；POST 已返回登记结果，不必保持 HTTP 等待。此状态不是 succeeded、failed 或已取消。超时不等于停止：不强行撤销提醒写回仓库、不提前启动新实例/fallback、不释放该闭包的串行保护，也不重复 stop。后台仅等待同一 drain；最终完成后继续原 operation，拒绝则固定失败并保持故障/所有权事实。相同 requestId 查询同一 pending 操作；冲突的新恢复请求不得并发进入。挂死的 drain 可能一直 pending，最终人工处置在原宿主运维边界完成。
 
 没有自动 restart、定时重启、退避重启、失败计数触发循环或健康读取触发修复。restart 不保证收回已接纳的外部请求、不重发消息、不补跑提醒/主动/学习历史。同步宿主 dispose 继续遵循既有最终撤销/禁止写回约定，不为 Web 操作把关库无限延迟；进程中断也不自动续跑 operation。
 
 ## 外部恢复与 UI 边界
 
-外部模块继续使用现有 toggle/reload、清单上限、依赖图、配置 revision 和授权绑定；不增加外部 restart、provider 权限、健康探针导入或特殊自动修复。原错误恢复能力及信任层级不变。
+外部模块通过固定 toggle/reload helper，保留清单上限、依赖图、配置 revision 和授权绑定；不增加外部 restart、provider 权限、健康探针导入或特殊自动修复。原错误恢复能力及信任层级不变。
 
-核心模块详情分别展示 lifecycle、health、实际 owner/fallback 和 operation。核心 action 按 allowlist/服务端可用性呈现，接纳后轮询 operation 再刷新健康；禁止把 POST `ok:true` 当作已恢复。未知/null 显示“未观察/不适用”，不得显示成零故障。新请求超时先按相同 requestId 确认，不能自动生成新 id 重启。
+后续 C07 核心模块详情应分别展示 lifecycle、health、实际 owner/fallback 和 operation。C04 未修改客户端，也未新增 UI action bridge。核心 action 按 allowlist/服务端可用性呈现，接纳后轮询 operation 再刷新健康；禁止把 POST `ok:true` 当作已恢复。未知/null 显示“未观察/不适用”，不得显示成零故障。新请求超时先按相同 requestId 确认，不能自动生成新 id 重启。
 
 沿用 ADR-014：只有核心客户端调用管理 API；受信编译期 React preview 保持纯只读，不获得请求/操作执行权；外部没有同源 React、宿主 exports 或 action bridge。隔离 iframe 的 ready/resize/notify 桥不新增健康查询、restart、配置保存或任意 HTTP 代理。管理面继续使用既有 DSH 访问边界，不新增 DSH slot、Agent 工具或聊天恢复命令。
 
-## 后续实现验收约束
+## C04 验证与后续边界
 
-后续阶段应验证代次隔离、null 与零值、读取无 I/O/导入/探针、注册与实际 owner/fallback 差异、静态动作拒绝、requestId 去重/冲突/容量、依赖逆序排空/正序恢复、10 秒 STOP_PENDING 后无双 owner、迟到回调与外部恢复/UI 信任边界。本次 C02 只校验文档与本地包，不新增实现或测试，也不声称这些能力已经可用。
+已覆盖固定动作/输入拒绝、外部清单不能声明动作、代次/人格拒绝、requestId 去重/冲突、128 条容量与一小时 terminal 清理、active 保留、闭包逆序 drain/正序 setup、导入一次、配置/存储保留、失败隔离、提醒接纳与捕获写回分离、STOP_PENDING 后无双 owner、主动 token/学习 lease 撤销、既有 HTTP 形状和动作 E2E。
+
+没有 C05 系统闭环、自动 restart/retry、恢复 timer 或健康触发补偿；没有 C07 UI、外部 provider/执行权限、重放发送或历史补跑。registry 为进程内有界记录；超长 drain 可永久占据闭包和生命周期队列，10 秒不是取消或强制释放。停止失败后不伪装成功；未验证真实 QQ、远程模型/来源或浏览器。C03 健康快照的 actions 字段仍为空，C04 资格由独立 actions API 提供。

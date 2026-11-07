@@ -219,3 +219,19 @@ test('proactivity health records healthy policy skips and captured failures', as
   assert.equal(read().engine.inFlight, 0)
   assert.equal(read().lifecycle, 'loaded')
 })
+
+test('C04 manual restart revokes old proactivity token before replacement while old model is unresolved', async t => {
+  const h = await moduleHarness(t)
+  const gate = deferred(), entered = deferred()
+  h.services.llm.complete = async () => { entered.resolve(); await gate.promise; return { ok: true, text: 'stale-model-result' } }
+  const old = h.providers.get('proactivity'), work = old.tick()
+  await entered.promise
+  const input = { moduleId: 'builtin-proactivity', actionId: 'module.restart', expectedGeneration: h.kernel.actions('builtin-proactivity').expectedGeneration, requestId: 'token-recovery' }
+  h.kernel.action(input)
+  while (!h.kernel.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(h.kernel.getOperation({ requestId: input.requestId }).operation.status, 'succeeded')
+  assert.notEqual(h.providers.get('proactivity'), old)
+  gate.resolve()
+  assert.equal((await work).reason, 'MODULE_DISABLED')
+  assert.equal(h.calls.length, 0); assert.equal(h.store.count('decision'), 0)
+})

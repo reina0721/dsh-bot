@@ -386,3 +386,66 @@ test('final reminder boundary: all/capture stay persona-confined on both backend
     assert.throws(() => binding.section('cognition.reminders'), /已停止/)
   })
 })
+
+test('reminder repository: closed admission rejects new captures while accepted persona writes drain, then all leases revoke', () => {
+  const base = createStore({ file: ':memory:' })
+  let persona = 'self', accepting = true, live = true
+  const scoped = createPersonaScopedStore({ base, getPersonaId: () => persona })
+  const repository = createReminderRepository({ store: scoped,
+    assertActive() { if (!accepting || !live) throw Error('admission closed') },
+    assertDrain() { if (!live) throw Error('drain ended') },
+  })
+  repository.put(row())
+  const accepted = repository.capture()
+  accepting = false; persona = 'other'
+  assert.throws(() => repository.capture(), /admission closed/)
+  assert.throws(() => repository.put(row(2)), /admission closed/)
+  assert.equal(accepted.isCurrent(), false)
+  assert.equal(accepted.get(row().id).sentCount, 0)
+  accepted.update(row().id, { status: 'sent', sentCount: 1 })
+  persona = 'self'
+  assert.equal(scoped.get('reminder', row().id).status, 'sent')
+  live = false
+  assert.throws(() => accepted.get(row().id), /drain ended/)
+  assert.throws(() => accepted.capture(), /drain ended/)
+  base.close()
+})
+
+test('C04 kernel restart closes repository admission while an accepted provider write drains before replacement', async t => {
+  const { createProviderRegistry } = await import('../src/extensions/providers.js')
+  const providers = createProviderRegistry()
+  const base = createStore({ file: ':memory:' })
+  const root = await mkdtemp(join(tmpdir(), 'dsh-c04-drain-'))
+  const scoped = createPersonaScopedStore({ base, getPersonaId: () => 'self' })
+  let current, captured, release, entered, setups = 0
+  const gate = new Promise(resolve => { release = resolve })
+  const stopping = new Promise(resolve => { entered = resolve })
+  const kernel = createModuleKernel({ dataDir: root, personaStore: scoped, providerRegistry: providers,
+    registry: [{ ...builtin('drain', api => {
+      current = api.reminderRepository; setups++
+      if (setups === 1) { current.put(row()); captured = current.capture() }
+      api.providers.register('reminders', { start() {}, async stop() {
+        if (setups !== 1) return
+        entered(); await gate
+        captured.update(row().id, { status: 'sent', sentCount: 1 })
+      } })
+      providers.publishHealth('reminders', { owner: 'module', ownerModuleId: api.id, ownerRuntimeGeneration: providers.registration('reminders').runtimeGeneration, state: 'active' })
+    }, { permissions: ['reminders:service', 'providers:register'] }), provides: ['reminders'] }],
+  })
+  t.after(async () => { await kernel.dispose(); base.close(); await rm(root, { recursive: true, force: true }) })
+  await kernel.start()
+  const old = current
+  const input = { moduleId: 'builtin-drain', actionId: 'module.restart', expectedGeneration: kernel.actions('builtin-drain').expectedGeneration, requestId: 'accepted-write' }
+  kernel.action(input); await stopping
+  assert.throws(() => old.capture(), /停止|结束/)
+  assert.throws(() => old.put(row(2)), /停止|结束/)
+  assert.equal(captured.get(row().id).status, 'active')
+  assert.equal(setups, 1)
+  release()
+  while (!kernel.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(kernel.getOperation({ requestId: input.requestId }).operation.status, 'succeeded')
+  assert.equal(setups, 2)
+  assert.equal(current.get(row().id).status, 'sent')
+  assert.equal(current.get(row().id).sentCount, 1)
+  assert.throws(() => captured.get(row().id), /停止/)
+})

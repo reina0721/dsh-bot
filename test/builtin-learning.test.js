@@ -213,3 +213,22 @@ test('learning health records no-task/disabled idle and captured research failur
   assert.equal(read().engine.inFlight, 0)
   assert.equal(read().lifecycle, 'loaded')
 })
+
+test('C04 manual restart revokes learning lease before replacement; late model cannot publish', async t => {
+  const h = await moduleHarness(t)
+  h.seed()
+  const gate = deferred(), entered = deferred()
+  h.services.llm = { async completeJson() { entered.resolve(); await gate.promise; return { ok: true, json: { claim: 'late' } } } }
+  const old = h.providers.get('learning'), work = old.runPending()
+  await entered.promise
+  const input = { moduleId: 'builtin-learning', actionId: 'module.restart', expectedGeneration: h.kernel.actions('builtin-learning').expectedGeneration, requestId: 'lease-recovery' }
+  h.kernel.action(input)
+  while (!h.kernel.getOperation({ requestId: input.requestId }).operation.completedAt) await new Promise(setImmediate)
+  assert.equal(h.kernel.getOperation({ requestId: input.requestId }).operation.status, 'succeeded')
+  assert.notEqual(h.providers.get('learning'), old)
+  assert.equal(h.store.get('learning_task', 't').status, 'pending')
+  h.services.llm = null
+  assert.equal((await h.providers.get('learning').runPending())[0].ok, true)
+  gate.resolve(); await work
+  assert.equal(h.store.count('knowledge_claim'), 1)
+})

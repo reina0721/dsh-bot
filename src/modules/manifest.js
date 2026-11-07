@@ -4,6 +4,7 @@ const PERMISSIONS = new Set(['events', 'commands', 'commands:override', 'send:te
 
 export function validateManifest(manifest, { builtin = false, directoryName } = {}) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('module.json 必须是对象')
+  if (Object.hasOwn(manifest, 'actions')) throw new Error('模块动作仅由核心固定注册，清单不能声明 actions')
   const id = String(manifest.id || '')
   if (!ID_RE.test(id)) throw new Error('manifest.id 不合法')
   if (builtin !== id.startsWith('builtin-')) throw new Error(builtin ? '内置模块 id 必须以 builtin- 开头' : 'builtin- 是内置模块保留前缀')

@@ -1434,3 +1434,55 @@ test('builtin reminders catalog, command ownership and disable fallback share re
   assert.ok(handle.providerRegistry.get('reminders'))
   assert.equal((await command('/reminders')).reply, '当前聊天没有活跃提醒。')
 })
+
+test('e2e: C04 fixed module actions, requestId, stale generations/persona, external boundaries and legacy shapes', async t => {
+  const { fake, handle, dir } = await boot(t)
+  const catalog = await getJson(fake, '/modules/actions?id=builtin-typing')
+  assert.equal(catalog.items.find(x => x.actionId === 'module.restart').available, true)
+  assert.equal(catalog.items.find(x => x.actionId === 'module.reload').available, false)
+  const input = { moduleId: catalog.moduleId, actionId: 'module.restart', expectedGeneration: catalog.expectedGeneration, requestId: 'e2e-restart', expectedPersonaId: catalog.expectedPersonaId, expectedPersonaGeneration: catalog.expectedPersonaGeneration }
+  for (const patch of [{ actionId: 'stop' }, { url: 'https://example.org' }, { payload: {} }]) {
+    const rejected = await fake.call(API + '/modules/action', { ...input, ...patch }, { method: 'POST' })
+    assert.equal(rejected.json.code, 'MODULE_ACTION_INVALID')
+  }
+  assert.equal((await fake.call(API + '/modules/action', { ...input, expectedGeneration: 'stale' }, { method: 'POST' })).json.code, 'MODULE_RUNTIME_CONFLICT')
+  assert.equal((await fake.call(API + '/modules/action', { ...input, expectedPersonaGeneration: catalog.expectedPersonaGeneration + 1 }, { method: 'POST' })).json.code, 'MODULE_PERSONA_CONFLICT')
+  const accepted = await postJson(fake, '/modules/action', input)
+  const result = await waitFor(async () => {
+    const response = await getJson(fake, '/modules/operation?requestId=e2e-restart')
+    return response.operation.completedAt ? response.operation : null
+  }, { label: 'manual restart completed' })
+  assert.equal(result.status, 'succeeded')
+  assert.notEqual(result.resultRuntimeGeneration, catalog.expectedGeneration)
+  assert.equal((await postJson(fake, '/modules/action', input)).operation.id, accepted.operation.id)
+  assert.equal((await getJson(fake, '/modules/operation?id=' + accepted.operation.id)).operation.id, accepted.operation.id)
+  assert.equal((await fake.call(API + '/modules/action', { ...input, actionId: 'module.disable' }, { method: 'POST' })).json.code, 'MODULE_REQUEST_CONFLICT')
+  assert.equal((await fake.call(API + '/modules/operation?id=missing', undefined, { method: 'GET' })).json.code, 'MODULE_OPERATION_NOT_FOUND')
+  assert.equal((await fake.call(API + '/modules/actions?id=missing', undefined, { method: 'GET' })).json.code, 'MODULE_NOT_FOUND')
+  const external = join(dir, 'modules', 'external-actions')
+  await mkdir(external, { recursive: true })
+  await writeFile(join(external, 'module.json'), JSON.stringify({ id: 'external-actions', entry: 'index.mjs' }))
+  await writeFile(join(external, 'index.mjs'), 'export function setup() {}')
+  await postJson(fake, '/modules/reload', { id: 'external-actions' })
+  const ext = await getJson(fake, '/modules/actions?id=external-actions')
+  assert.equal(ext.items.filter(x => x.available).map(x => x.actionId).join(','), 'module.disable,module.reload')
+  for (const actionId of ['module.restart', 'proactivity.runOnce', 'learning.runPending']) {
+    assert.equal((await fake.call(API + '/modules/action', { moduleId: ext.moduleId, expectedGeneration: ext.expectedGeneration, actionId, requestId: actionId.replace('.', '-') }, { method: 'POST' })).json.code, 'MODULE_ACTION_UNAVAILABLE')
+  }
+  assert.equal((await postJson(fake, '/modules/toggle', { id: ext.moduleId, enabled: false })).item.status, 'disabled')
+  assert.equal((await postJson(fake, '/modules/toggle', { id: ext.moduleId, enabled: true })).item.status, 'loaded')
+  assert.ok(Object.hasOwn(await postJson(fake, '/cognition/proactivity/run', {}), 'result'))
+  assert.ok(Object.hasOwn(await postJson(fake, '/cognition/learning/run', {}), 'results'))
+  assert.equal((await getJson(fake, '/modules/actions?id=builtin-proactivity')).items.find(x => x.actionId === 'proactivity.runOnce').available, false)
+  await patchConfig(fake, { cognition: { enabled: true, learning: { enabled: true } } })
+  const learning = await getJson(fake, '/modules/actions?id=builtin-learning')
+  const run = { moduleId: learning.moduleId, expectedGeneration: learning.expectedGeneration, actionId: 'learning.runPending', requestId: 'learning-empty' }
+  await postJson(fake, '/modules/action', run)
+  const empty = await waitFor(async () => {
+    const value = (await getJson(fake, '/modules/operation?requestId=learning-empty')).operation
+    return value.completedAt ? value : null
+  }, { label: 'learning no-task result' })
+  assert.equal(empty.status, 'failed'); assert.equal(empty.result.code, 'NO_TASK')
+  assert.deepEqual((await postJson(fake, '/cognition/learning/run', { max: 2 })).results, [])
+  assert.equal(handle.modules.getOperation({ requestId: 'e2e-restart' }).operation.status, 'succeeded')
+})

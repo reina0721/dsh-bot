@@ -100,7 +100,9 @@ export function apply(ctx, rowConfig) {
     setConfig,
     media,
   })
+  const reminderControl = {}
   const modules = createModuleKernel({
+    reminderControl,
     media, stickers,
     providerRegistry,
     access,
@@ -304,6 +306,7 @@ export function apply(ctx, rowConfig) {
   let ownerRevision = -1
   let failedRevision = -1
   let ownership = Promise.resolve()
+  let reminderRecovery = false
   async function stopReminderProvider(provider = reminderProvider) {
     if (!provider) return
     publishReminder('draining')
@@ -320,7 +323,7 @@ export function apply(ctx, rowConfig) {
 
   function syncReminderOwnership() {
     const work = async () => {
-      if (disposed || !modulesSettled) return
+      if (disposed || !modulesSettled || reminderRecovery || uncertainReminderStop) return
       for (;;) {
         const revision = providerRevision
         const selected = providerRegistry.get('reminders')
@@ -328,6 +331,7 @@ export function apply(ctx, rowConfig) {
         if (reminderProvider && (reminderProvider !== desired || ownerRevision !== revision)) {
           const previous = reminderProvider
           await stopReminderProvider(previous)
+          if (uncertainReminderStop) return
           reminderProvider = null
           if (disposed) return
           continue
@@ -362,7 +366,7 @@ export function apply(ctx, rowConfig) {
           reminderProvider = null
           failedProvider = desired
           failedRevision = revision
-          if (disposed) return
+          if (disposed || uncertainReminderStop) return
           continue
         }
         // Synchronous teardown can occur during an asynchronous start.
@@ -375,6 +379,30 @@ export function apply(ctx, rowConfig) {
     ownership = ownership.then(work, work)
     return ownership
   }
+  Object.assign(reminderControl, {
+    async begin() {
+      reminderRecovery = true
+      try {
+        await ownership
+        if (uncertainReminderStop) throw Object.assign(new Error('PROVIDER_STOP_FAILED'), { code: 'PROVIDER_STOP_FAILED' })
+        if (coreRemindersActive) {
+          publishReminder('draining', { owner: 'core' })
+          try { await cognition.stopReminders() }
+          catch { uncertainReminderStop = true; publishReminder('failed', { owner: 'core' }, 'PROVIDER_STOP_FAILED'); throw Object.assign(new Error('PROVIDER_STOP_FAILED'), { code: 'PROVIDER_STOP_FAILED' }) }
+          coreRemindersActive = false
+          publishReminder('unowned', null)
+        }
+      } catch (error) { reminderRecovery = false; throw error }
+    },
+    async stop(provider) {
+      if (provider !== reminderProvider) return false
+      await stopReminderProvider(provider)
+      if (uncertainReminderStop) throw Object.assign(new Error('PROVIDER_STOP_FAILED'), { code: 'PROVIDER_STOP_FAILED' })
+      reminderProvider = null
+      return true
+    },
+    async end() { reminderRecovery = false; await syncReminderOwnership() },
+  })
   const unsubscribeProviders = providerRegistry.subscribe(({ name }) => {
     if (name !== 'reminders') return
     providerRevision++

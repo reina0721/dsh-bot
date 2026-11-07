@@ -2,6 +2,10 @@
 
 ## Unreleased（未发布）
 
+- C04：固定 allowlist 的 module.enable/disable/restart/reload、proactivity.runOnce、learning.runPending；新增 `/modules/actions?id=`、`POST /modules/action`、`/modules/operation?id=` 或 `?requestId=`。严格字段、代次/可选人格凭证、全局 requestId 去重/冲突、每模块/依赖闭包互斥；128 条进程内记录，terminal 保留 1 小时，active 永不驱逐，满额拒绝，无自动重试。
+- 内置 restart 复用缓存导入和唯一 setup 路径，逆序停止/排空、正序恢复原运行闭包，保留 enabled/config/storage/grants；新 generation 隔离旧引用。提醒分离新接纳与已捕获仓库排空，宿主参与交接冻结；主动 token/学习 lease 先撤销。10 秒 STOP_PENDING 仅观察同一 drain，保留 runtime/owner/闭包，不取消清理、不提前启动替换或 fallback。停止不确定时保留 failed owner，禁止双调度器；失败不报恢复成功。
+- 既有 toggle/reload/run HTTP 共用动作 helper 并保留响应形状；外部仅 toggle/reload，manifest 不得声明 actions。补充 action/module/provider/reminder/token/lease/E2E 回归和 ADR-018 实现状态；无 C05 系统闭环、C07 UI、版本/依赖/数据迁移。操作幂等仅限当前进程保留期；永久 drain 可阻塞生命周期队列，失败 owner 可能需宿主运维处理；真实 QQ/网络/模型/浏览器未验证。
+
 - C03：新增 generation-bound 模块健康缓存与只读 `/modules/health`（含 `?id=`，统一返回 `items/summary/collectedAt/revision`），runtimeGeneration 独立于 UI generation；旧报告与迟到调度结果不能污染新实例，停用后保留带 telemetryGeneration 的快照。
 - 保留 lifecycle 原语义；健康区分未观察、正常/合法空闲、降级、业务故障与停止。原因码来自固定白名单，最多 8 条；错误仅投影固定码/宿主时间/代次。未接入或不适用遥测为 null，不猜测为零；调度与已接入的引擎/命令/事件/配置/输入状态/回复规划回调分别记录有界计数。
 - Provider 注册与实际所有权分离；提醒宿主发布交接/排空/失败及 core fallback，另三个 provider 仅报告模块激活，无核心回退。健康 GET 只复制内存元数据，不运行模块/provider 探针、不读文件/配置、不排队等待 stop、不触发恢复。现有提醒尽力停止失败保留 failed owner，不能视为已证实排空；本阶段不改变其兼容回退行为。

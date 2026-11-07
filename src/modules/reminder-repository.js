@@ -55,7 +55,7 @@ function validate(row) {
 // 只输出核心业务字段；底层 kind/updatedAt 等元数据不进入模块。
 const project = row => row ? structuredClone(Object.fromEntries(FIELDS.map(key => [key, row[key]]))) : null
 
-export function createReminderRepository({ store, assertActive }) {
+export function createReminderRepository({ store, assertActive, assertDrain = assertActive }) {
   function ready(actual, minimum, maximum = minimum) {
     assertActive()
     if (actual < minimum || actual > maximum) throw new Error('提醒仓库参数不合法')
@@ -76,7 +76,7 @@ export function createReminderRepository({ store, assertActive }) {
       return access(() => {
         const kind = store.scopedKind?.('reminder') || 'reminder'
         const target = store.base || store
-        const bound = createReminderRepository({ assertActive, store: {
+        const bound = createReminderRepository({ assertActive: assertDrain, assertDrain, store: {
           get: (_, id) => target.get(kind, id),
           put: (_, ...args) => target.put(kind, ...args),
           list: (_, options) => target.list(kind, options),
@@ -85,10 +85,12 @@ export function createReminderRepository({ store, assertActive }) {
           tx: work => target.tx(work),
         } })
         const captured = Object.freeze({ ...bound, capture() {
-          ready(arguments.length, 0)
+          assertDrain()
+          if (arguments.length) throw new Error('提醒仓库参数不合法')
           return captured
         }, isCurrent() {
-          ready(arguments.length, 0)
+          assertDrain()
+          if (arguments.length) throw new Error('提醒仓库参数不合法')
           return access(() => !store.scopedKind || store.scopedKind('reminder') === kind)
         } })
         return captured

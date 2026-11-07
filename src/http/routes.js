@@ -206,6 +206,12 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   if (modules) {
     route('GET', '/modules/health', req => modules.health(queryOf(req).id))
+    route('GET', '/modules/actions', req => modules.actions(queryOf(req).id))
+    route('GET', '/modules/operation', req => modules.getOperation(queryOf(req)))
+    route('POST', '/modules/action', async req => {
+      try { return modules.action(await readBody(req, 2048)) }
+      catch (error) { return { ok: false, code: /^MODULE_/.test(error.code || '') ? error.code : 'MODULE_ACTION_INVALID', message: '模块动作未接纳' } }
+    })
     const configAnswer = async (work) => {
       try {
         const { id, schema, values, revision } = await work()
@@ -243,13 +249,13 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     route('POST', '/modules/reload', async (req) => {
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
-      try { return { ok: true, item: await modules.reload(String(body.id)) } }
+      try { return { ok: true, item: await (modules.list().some(item => item.id === body.id) ? modules.performLegacyAction(String(body.id), 'module.reload') : modules.reload(String(body.id))) } }
       catch (error) { if (error.code?.startsWith('MODULE_')) return { ok: false, code: error.code, message: error.message }; throw error }
     })
     route('POST', '/modules/toggle', async (req) => {
       const body = await readBody(req)
       if (!body?.id || typeof body.enabled !== 'boolean') throw new Error('需要 id 与 enabled(boolean)')
-      try { return { ok: true, item: await modules.setEnabled(String(body.id), body.enabled) } }
+      try { return { ok: true, item: await modules.performLegacyAction(String(body.id), body.enabled ? 'module.enable' : 'module.disable') } }
       catch (error) { if (error.code?.startsWith('MODULE_')) return { ok: false, code: error.code, message: error.message }; throw error }
     })
   }
@@ -601,7 +607,10 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       return { ok: true, belief: cognition.correctBelief(String(body.id), body.patch || {}) }
     })
     route('GET', '/cognition/proactivity', async () => ({ ok: true, stats: cognition.proactivityStats() }))
-    route('POST', '/cognition/proactivity/run', async () => ({ ok: true, result: await cognition.runProactivity() }))
+    route('POST', '/cognition/proactivity/run', async () => {
+      try { return { ok: true, result: await (modules ? modules.performLegacyAction('builtin-proactivity', 'proactivity.runOnce') : cognition.runProactivity()) } }
+      catch (error) { return { ok: true, result: { ok: false, reason: error.code || 'MODULE_ACTION_FAILED' } } }
+    })
     route('POST', '/cognition/skill/use', async (req) => {
       const body = await readBody(req)
       return { ok: true, skill: cognition.skillUse(String(body?.name || ''), body?.success === true ? true : body?.success === false ? false : null) }
@@ -620,7 +629,8 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     })
     route('POST', '/cognition/learning/run', async (req) => {
       const body = await readBody(req)
-      return { ok: true, results: await cognition.runLearning({ max: body?.max || 1 }) }
+      try { return { ok: true, results: await (modules ? modules.performLegacyAction('builtin-learning', 'learning.runPending', body?.max || 1) : cognition.runLearning({ max: body?.max || 1 })) } }
+      catch (error) { return { ok: true, results: { ok: false, reason: error.code || 'MODULE_ACTION_FAILED' } } }
     })
     route('POST', '/cognition/learning/task/retry', async (req) => {
       const body = await readBody(req)
