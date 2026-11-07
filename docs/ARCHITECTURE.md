@@ -2,6 +2,10 @@
 
 > 本文件描述当前模块边界与接口契约。接口变更需同步更新本文、测试及用户文档。
 
+WebUI Phase 1 已实现 [ADR-014](architecture/ADR-014-module-webui.md)：`src/modules/webui.js` 校验内置 ui / 外部 manifest webui.version:1，内核只读 UI 目录暴露 generation、uiRevision 与元数据，`GET /onebot-qq/api/modules/ui` 不扫描目录、导入代码或读取配置值。信任分为核心、受信内置、外部声明式、未来外部沙箱；禁止外部同源 React。五个内部 module.* hook 每模块各一个、总数最多五个，order -100～100；仅 status/schema 占位，无 UI capability 授予。
+
+核心 ModulesPage 并行读取模块列表和 UI 目录，按 generation/revision/status 核对后显示标题/状态/信任与 surface 占位，未知/无效/过期条目安全回退，关闭模块可见。reply-delivery/typing/reminders 标记 legacy-core，sample 标记 module-file；配置入口和存储 key 保留，未来编辑归属模块页。现有 DSH sidebar.panellist/main 两个注册保持，无模块级 DSH 注册、配置迁移、组件执行、iframe、外部沙箱或新增依赖。
+
 ## 1. 目标
 
 为 DSH 构造一个 QQ 接入插件：通过 **OneBot v11** 协议连接 **NapCat / SnowLuma / Lagrange /

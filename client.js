@@ -7349,6 +7349,25 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [busy, setBusy] = useState('')
       const [editor, setEditor] = useState(null)
       const [configError, setConfigError] = useState('')
+      const [uiCatalog, setUiCatalog] = useState(null)
+      const [uiError, setUiError] = useState('')
+      const [detailId, setDetailId] = useState('')
+
+      const uiFor = (item) => {
+        const ui = safeArray(uiCatalog?.items).find((row) => row?.moduleId === item.id)
+        if (uiCatalog?.version !== 1 || !ui || typeof item.generation !== 'string' || ui.generation !== item.generation || ui.uiRevision !== item.uiRevision || ui.status !== item.status) return null
+        const source = item.builtin ? 'builtin' : 'external'
+        if (ui.trust !== source || ui.source !== source || !Array.isArray(ui.surfaces) || ui.surfaces.length > 5) return null
+        const hooks = new Set(), ids = new Set()
+        for (const surface of ui.surfaces) {
+          if (!surface || typeof surface.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(surface.id) || ids.has(surface.id) || hooks.has(surface.hook)) return null
+          if (Object.keys(surface).some((key) => !['id', 'hook', 'renderer', 'order'].includes(key))) return null
+          if (!['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'].includes(surface.hook) || !['status', 'schema'].includes(surface.renderer)) return null
+          if (!Number.isInteger(surface.order) || surface.order < -100 || surface.order > 100) return null
+          ids.add(surface.id); hooks.add(surface.hook)
+        }
+        return ui
+      }
 
       const readModuleConfig = async (id) => {
         const result = safeObject(await get('/modules/config?id=' + encodeURIComponent(id)))
@@ -7386,10 +7405,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const refresh = useCallback(async () => {
         setLoading(true)
         setError('')
+        setUiCatalog(null)
+        setUiError('')
         try {
-          const result = safeObject(await get('/modules'))
+          const [modulesResult, uiResult] = await Promise.allSettled([get('/modules'), get('/modules/ui')])
+          if (modulesResult.status === 'rejected') throw modulesResult.reason
+          const result = safeObject(modulesResult.value)
           if (result.ok === false) setError(String(result.message || '模块列表加载失败'))
           else setItems(safeArray(result.items))
+          if (uiResult.status === 'fulfilled' && uiResult.value?.ok === true && uiResult.value?.version === 1 && Array.isArray(uiResult.value.items)) setUiCatalog(uiResult.value)
+          else setUiError('UI 目录暂不可用，模块操作仍可使用。')
         } catch (error) { setError(String(error.message || '模块列表加载失败')) }
         finally { setLoading(false) }
       }, [])
@@ -7426,15 +7451,18 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h('div', { className: 'ob-row' }, h(Badge, { tone: 'muted' }, '内置 ' + items.filter((item) => item.builtin).length), h(Badge, { tone: 'muted' }, '外部 ' + items.filter((item) => !item.builtin).length)),
         ),
         error ? h(Banner, { tone: 'err', message: error, actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: refresh }, '重试')] }) : null,
+        uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
         items.length
           ? h('div', { className: 'ob-grid two' }, items.map((item) => {
               const permissions = safeArray(item.permissions)
               const tone = item.status === 'loaded' ? 'ok' : (item.status === 'error' || item.status === 'blocked') ? 'err' : 'muted'
+              const ui = uiFor(item)
               return h(Panel, {
                 key: item.id,
                 title: String(item.name || item.id),
                 description: String(item.description || item.id),
                 actions: h('div', { className: 'ob-row' },
+                  h(Btn, { small: true, kind: 'secondary', onClick: () => setDetailId(detailId === item.id ? '' : item.id) }, detailId === item.id ? '收起详情' : '详情'),
                   item.builtin && item.source === 'builtin' && item.hasConfig ? h(Btn, { small: true, kind: 'secondary', busy: busy === item.id + ':config', disabled: Boolean(busy), onClick: () => openConfig(item) }, '配置') : null,
                   item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
                   h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
@@ -7451,6 +7479,17 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 !item.canToggle && !item.builtin ? h('p', { className: 'ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
                 item.error ? h('p', { className: 'ob-field-error', style: { marginTop: '12px' } }, String(item.error)) : null,
                 item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
+                detailId === item.id ? h('section', { className: 'ob-stack', 'aria-label': '模块详情', style: { marginTop: '16px' } },
+                  h('h3', null, String(item.name || item.id)),
+                  h('div', { className: 'ob-row' },
+                    h(Badge, { tone }, String(item.status || 'unknown')),
+                    h(Badge, { tone: item.builtin ? 'brand' : 'muted' }, item.builtin ? '内置受信任' : '外部声明式（无执行权限）'),
+                  ),
+                  h('p', { className: 'ob-muted ob-small' }, '模块 UI 占位：配置编辑尚未迁入详情。'),
+                  !ui || ui.uiWarning || !ui.surfaces.length
+                    ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
+                    : h('ul', null, ui.surfaces.map((surface) => h('li', { key: surface.id }, surface.hook + ' · ' + surface.renderer + ' · ' + surface.id + '（占位）'))),
+                ) : null,
                 item.builtin && item.source === 'builtin' && item.hasConfig && editor?.id === item.id ? h('section', { className: 'ob-stack', 'aria-label': '模块配置', style: { marginTop: '16px' } },
                   h('p', { className: 'ob-muted ob-small' }, '模块配置 · revision ' + editor.revision),
                   configError ? h(Banner, { tone: 'err', message: configError }) : null,

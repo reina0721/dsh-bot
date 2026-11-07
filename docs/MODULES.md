@@ -11,6 +11,12 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
+## WebUI Phase 1 当前状态
+
+新增只读 UI 描述目录与现有「模块」页内的「详情」骨架，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，仅 status/schema renderer。拒绝未知字段/能力、重复 ID/hook、componentKey/sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不 rescan、不读配置值；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
+
+四内置均有详情/配置占位。reply-delivery、typing、reminders 使用 `legacy-core`（available:false），sample 使用 `module-file`（available:true）；均为 schemaVersion:1 元数据。原全局配置入口与 sample 行内编辑保持，未来模块页承接配置 UI 时保留存储 key。关闭模块仍显示详情；UI 目录缺失/无效/跨 generation 或 revision 时安全回退。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；没有新入口、React 组件执行或外部沙箱。
+
 ## 最终边界（Phase 14）
 
 架构程序以四个现有内置模块收束：reply delivery、typing、reminders 默认启用，sample 默认关闭。外部模块不能获得 provider/服务所有权、交付规划、turn 生命周期、输入状态写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖或内部 delivery/access 端口；来源由加载器赋值，清单 source/builtin 无法授权。部分权限声明在导入前拒绝，其余在注册/调用时拒绝或不暴露属性；单独声明不会赋予能力，普通外部 API 保持。11 项权限的双组拒绝矩阵、提醒人格隔离/安全错误和单所有者交接证据见 [最终验收](architecture/MODULE-ACCEPTANCE.md)。
@@ -334,12 +340,13 @@ config: {
 | 路由 | 响应/行为 |
 |---|---|
 | `GET /modules` | `{ok:true,items,summary:{builtin,external}}`；summary 是目录数量，包含关闭/错误项 |
+| `GET /modules/ui` | `{ok:true,version:1,catalogRevision,items}`；每项含 moduleId/source/trust/generation/uiRevision/status、config 绑定元数据、surfaces、空 requestedCapabilities/grantedCapabilities、uiWarning，不含配置值或文件路径 |
 | `POST /modules/reload {id}` | 外部返回 `{ok:true,item}`；内置返回 `{ok:false,code:"MODULE_BUILTIN_RELOAD",message}` |
 | `POST /modules/toggle {id,enabled}` | 两种来源均支持；清单上限返回 `MODULE_MANIFEST_DISABLED`，状态保存失败返回 `MODULE_STATE_WRITE_FAILED` |
 | `GET /modules/config?id=<id>` | 仅声明配置的内置模块：`{ok:true,id,schema,values,revision}` |
 | `POST /modules/config {id,values,revision}` | 校验、原子保存、通知后返回与 GET 相同形状；过期返回 `MODULE_CONFIG_CONFLICT` |
 
-公开记录保留 id/name/version/description/permissions/enabled/status/error/loadedAt，新增 source/builtin/apiVersion/requires/canReload/canToggle/hasConfig/configWarning，不返回绝对路径。配置错误统一 `{ok:false,code,message}`：字段/revision 无效为 `MODULE_CONFIG_INVALID`，不可用为 `MODULE_CONFIG_UNAVAILABLE`，写入失败为 `MODULE_CONFIG_WRITE_FAILED`；消息不含存储绝对路径。status 可为 disabled/loading/loaded/error/blocked；动作 `ok:true` 表示请求处理完成，仍需检查 item.status 是否实际 loaded。
+公开记录保留 id/name/version/description/permissions/enabled/status/error/loadedAt，新增 source/builtin/apiVersion/requires/canReload/canToggle/hasConfig/configWarning，以及用于匹配 UI 目录的 generation/uiRevision，不返回绝对路径。配置错误统一 `{ok:false,code,message}`：字段/revision 无效为 `MODULE_CONFIG_INVALID`，不可用为 `MODULE_CONFIG_UNAVAILABLE`，写入失败为 `MODULE_CONFIG_WRITE_FAILED`；消息不含存储绝对路径。status 可为 disabled/loading/loaded/error/blocked；动作 `ok:true` 表示请求处理完成，仍需检查 item.status 是否实际 loaded。
 
 面板显示来源徽章、数量、依赖和 blocked/error，按 canReload/canToggle 控制按钮；内置隐藏重载，外部清单关闭时提示先编辑并重载。刷新重新读取列表，操作后按返回状态提示结果。没有安装、卸载或删除路由。
 

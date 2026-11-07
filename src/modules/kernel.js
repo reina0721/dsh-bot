@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url'
 import { ID_RE, validateManifest } from './manifest.js'
 import { analyzeDependencies, dependentClosure } from './dependencies.js'
 import { builtinRegistry } from './registry.js'
+import { buildModuleUiCatalog, loadWebuiDescriptor } from './webui.js'
 import { createModulePersonaStore } from './persona-store.js'
 import { createReminderRepository } from './reminder-repository.js'
 import { createLegacyConfig } from './legacy-config.js'
@@ -67,6 +68,8 @@ function publicRecord(record) {
     status: record.status,
     error: record.error,
     loadedAt: record.loadedAt,
+    generation: record.generation,
+    uiRevision: record.uiRevision || 'none',
   }
 }
 
@@ -136,11 +139,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     await access(entryPath, constants.R_OK)
     const realEntry = await realpath(entryPath)
     if (!inside(realModuleDir, realEntry)) throw new Error('manifest.entry 不能通过符号链接离开模块目录')
-    return { ...manifest, source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry }
+    return { ...manifest, ...loadWebuiDescriptor(raw.webui, { source: 'external' }), source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry }
   }
 
   function makeRecord(manifest) {
-    return { ...manifest, enabled: effectiveEnabled(manifest), status: 'disabled', error: '', loadedAt: null, runtime: null, storage: null }
+    return { ...manifest, generation: randomUUID(), enabled: effectiveEnabled(manifest), status: 'disabled', error: '', loadedAt: null, runtime: null, storage: null }
   }
 
   function errorRecord(id, error, previous = null) {
@@ -149,6 +152,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       permissions: previous?.permissions || [], requires: [], apiVersion: previous?.apiVersion || 1,
       source: 'external', builtin: false, valid: false, manifestEnabled: false,
       enabled: false, status: 'error', error: safeMessage(error), loadedAt: null, runtime: null,
+      generation: randomUUID(), ui: null, uiRevision: 'none', uiWarning: '',
     }
   }
 
@@ -503,7 +507,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   async function loadRecord(record) {
-    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
+    record.generation = randomUUID()
+    const runtime = { generation: record.generation, active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
     record.runtime = runtime
     record.status = 'loading'
     try {
@@ -571,6 +576,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (records.has(manifest.id)) throw new Error('内置注册表 id 重复')
       if (typeof descriptor.load !== 'function') throw new Error('内置注册表缺少 lazy loader')
       const record = makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
+        ...loadWebuiDescriptor(descriptor.ui, { source: 'builtin' }),
         configSchema: descriptor.config === undefined ? null : validateConfigSchema(descriptor.config),
         defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) })
       await loadModuleConfig(record)
@@ -599,6 +605,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
 
   function list() {
     return [...records.values()].map(publicRecord).sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  function uiCatalog() {
+    return buildModuleUiCatalog(records.values())
   }
 
   function checkAction(id) {
@@ -732,6 +742,6 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
-  return { start, list, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
+  return { start, list, uiCatalog, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
 }
 

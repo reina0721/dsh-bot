@@ -1791,7 +1791,94 @@ test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上
   try {
     const header = panels.find((node) => node.props.title === '模块目录')
     await control(header.props.actions, '刷新').props.onClick()
-    assert.deepEqual(calls, [[panel.API_PREFIX + '/modules', 'GET']])
+    assert.deepEqual(calls, [[panel.API_PREFIX + '/modules', 'GET'], [panel.API_PREFIX + '/modules/ui', 'GET']])
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage WebUI: disabled module detail is core-owned, bounded placeholders and trust', async () => {
+  const item = { id: 'disabled', name: '声明式模块', source: 'external', builtin: false, status: 'disabled', generation: 'current', uiRevision: 'revision', enabled: false, canToggle: true }
+  const ui = { moduleId: item.id, source: 'external', trust: 'external', generation: item.generation, uiRevision: item.uiRevision, status: item.status, surfaces: [
+    { id: 'detail', hook: 'module.detail', renderer: 'status', order: 0 },
+    { id: 'config', hook: 'module.config', renderer: 'schema', order: 1 },
+  ], uiWarning: '' }
+  const session = { values: [[item], false, '', ''], index: 0 }, calls = []
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
+  const actions = (title) => treeNodes(render()).find((node) => node.props?.title === title).props.actions
+  const original = globalThis.fetch
+  globalThis.fetch = async (path, options) => {
+    calls.push([path, options.method])
+    return { ok: true, json: async () => ({ ok: true, version: 1, items: path.endsWith('/modules/ui') ? [ui] : [item] }) }
+  }
+  try {
+    await control(actions('模块目录'), '刷新').props.onClick()
+    control(actions(item.name), '详情').props.onClick()
+    const tree = render(), detail = treeNodes(tree).find((node) => node.props?.['aria-label'] === '模块详情')
+    assert.ok(detail)
+    assert.match(JSON.stringify(detail), /声明式模块|disabled/)
+    assert.match(JSON.stringify(detail), /外部声明式（无执行权限）/)
+    assert.match(JSON.stringify(detail), /module.detail · status · detail（占位）/)
+    assert.match(JSON.stringify(detail), /module.config · schema · config（占位）/)
+    assert.match(JSON.stringify(detail), /配置编辑尚未迁入详情/)
+    assert.equal(treeNodes(detail).some((node) => ['iframe', 'script', 'input'].includes(node.type) || node.type?.name === 'FieldRow'), false)
+    assert.deepEqual(calls, [[panel.API_PREFIX + '/modules', 'GET'], [panel.API_PREFIX + '/modules/ui', 'GET']])
+    control(actions(item.name), '收起详情').props.onClick()
+    assert.ok(!treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块详情'))
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage WebUI: unknown/invalid/stale/absent UI falls back without hiding module', async () => {
+  const item = { id: 'builtin-test', name: '受信模块', source: 'builtin', builtin: true, status: 'disabled', generation: 'new', uiRevision: 'new', enabled: false, canToggle: true }
+  const base = { moduleId: item.id, source: 'builtin', trust: 'builtin', status: item.status, generation: 'new', uiRevision: 'new', surfaces: [{ id: 'detail', hook: 'module.detail', renderer: 'status', order: 0 }] }
+  const cases = [
+    { ok: true, version: 2, items: [base] }, { ok: true, version: 1, items: [] },
+    ...[
+      { generation: 'old' }, { uiRevision: 'old' }, { status: 'loaded' }, { trust: 'external' },
+      { surfaces: [{ ...base.surfaces[0], renderer: 'builtin-react' }] },
+      { surfaces: [{ ...base.surfaces[0], hook: 'sidebar.panellist' }] },
+      { surfaces: [{ ...base.surfaces[0], componentKey: 'malicious' }] },
+      { surfaces: [{ ...base.surfaces[0], order: 101 }] },
+      { surfaces: Array(6).fill(base.surfaces[0]) },
+      { surfaces: [base.surfaces[0], { ...base.surfaces[0], id: 'duplicate-hook' }] },
+      { surfaces: [] }, { uiWarning: 'MODULE_UI_INVALID' },
+    ].map((patch) => ({ ok: true, version: 1, items: [{ ...base, ...patch }] })),
+  ]
+  const original = globalThis.fetch
+  try {
+    for (const response of cases) {
+      const session = { values: [[item], false, '', ''], index: 0 }
+      const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
+      const actions = (title) => treeNodes(render()).find((node) => node.props?.title === title).props.actions
+      globalThis.fetch = async (path) => ({ ok: true, json: async () => path.endsWith('/modules/ui') ? response : { ok: true, items: [item] } })
+      await control(actions('模块目录'), '刷新').props.onClick()
+      control(actions(item.name), '详情').props.onClick()
+      const detail = treeNodes(render()).find((node) => node.props?.['aria-label'] === '模块详情')
+      assert.match(JSON.stringify(detail), /内置受信任/)
+      assert.match(JSON.stringify(detail), /UI 描述不可用或未声明/)
+      assert.equal(treeNodes(detail).filter((node) => node.type === 'li').length, 0)
+      assert.ok(control(actions(item.name), '启用'))
+    }
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage WebUI: UI request failure preserves list, toggles and safe detail', async () => {
+  const item = { id: 'external', source: 'external', status: 'disabled', enabled: false, canToggle: true }
+  const session = { values: [[item], false, '', ''], index: 0 }, calls = []
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
+  const actions = (title) => treeNodes(render()).find((node) => node.props?.title === title).props.actions
+  const original = globalThis.fetch
+  globalThis.fetch = async (path, options) => {
+    calls.push(path)
+    if (path.endsWith('/modules/ui')) throw Error('UI offline')
+    return { ok: true, json: async () => options.method === 'POST' ? { ok: true, item: { ...item, status: 'loaded' } } : { ok: true, items: [item] } }
+  }
+  try {
+    await control(actions('模块目录'), '刷新').props.onClick()
+    assert.match(JSON.stringify(render()), /UI 目录暂不可用/)
+    control(actions(item.id), '详情').props.onClick()
+    assert.match(JSON.stringify(render()), /UI 描述不可用或未声明/)
+    await control(actions(item.id), '启用').props.onClick()
+    assert.ok(calls.includes(panel.API_PREFIX + '/modules/toggle'))
+    assert.equal(session.values[2], '')
   } finally { globalThis.fetch = original }
 })
 

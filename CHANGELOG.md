@@ -1,5 +1,9 @@
 # 变更记录
 
+## 未发布（Unreleased）
+
+- 模块 WebUI Phase 1：新增 ADR-014、严格 v1 UI 描述契约与只读 `/modules/ui` 目录（信任/生命周期 generation/UI revision/配置归属元数据），四内置声明 detail/config 占位；外部显式 opt-in 仅允许 status/schema，未知/超限描述固定告警且不阻止有效后端。现有模块页增加核心详情/信任/状态/surface 占位与安全回退，保留启停、重载和 sample 行内配置。补充契约、HTTP/E2E、面板回归；无配置迁移、外部 UI 执行、沙箱、新 DSH 入口、依赖或版本变化，仅本地验证与提交，无推送/部署/tag/release。
+
 ## 0.11.10（2026-11-07，Windows 原子替换测试修复）
 
 - 修复 Windows CI 的模块配置并发测试：不再在写入期间保持配置文件只读句柄；Windows 不允许 rename 覆盖仍打开的文件，导致测试误报两次写入失败。

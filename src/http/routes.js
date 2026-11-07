@@ -203,6 +203,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       })
       send(res, 405, { ok: false, code: 'MODULE_CONFIG_INVALID', message: '只支持 GET 或 POST' })
     })
+    route('GET', '/modules/ui', () => ({ ok: true, ...modules.uiCatalog() }))
     route('GET', '/modules', async () => {
       const items = modules.list()
       return { ok: true, items, summary: { builtin: items.filter((item) => item.builtin).length, external: items.filter((item) => !item.builtin).length } }
