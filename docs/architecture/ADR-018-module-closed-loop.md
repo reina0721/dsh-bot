@@ -57,6 +57,8 @@ ProviderOwnership = {
 }
 ```
 
+受信任内置模块成功 setup 是已观察到的健康空闲，启动报告不增加业务运行/成功计数；媒体操作单独记录成功/失败。未埋点外部模块仍为 unknown，停止仍为 stopped。
+
 `health` 含义固定：`unknown` 为尚无足够遥测；`healthy` 为已观察正常或合法空闲；`degraded` 为部分能力受限（如预期 provider 未接管）；`unhealthy` 为已观察业务故障；`stopped` 为确认没有活动 runtime。`error/blocked` 可以没有 runtime，界面仍必须展示 lifecycle 故障，不能只显示 stopped。不能根据一段时间无成功、业务关闭或一个 timer 存在就推断失败或正常；健康阈值只能来自各受信适配器的固定规则。
 
 `null` 表示未知、未观察或不适用，不能转换为 `0`、`false`、空字符串或当前时间。`inFlight:0` 表示明确观察到零；`timerScheduled:false` 表示确认无 timer；`nextRunAt:null` 不证明调度已停。未运行时 `runtimeGeneration:null`；已确认停止为 `health:stopped`，但没有 telemetry 来源的字段仍为 null。无 provider 的模块为 `providers:[]`，不虚构槽位。时间戳只在实际事件时更新，GET 不刷新 `observedAt`。公共故障码来自核心固定白名单（例如 `MODULE_DISABLED`、`DEPENDENCY_BLOCKED`、`PROVIDER_UNAVAILABLE`、`BUSINESS_DISABLED`、`STOP_PENDING`），未知错误归一为固定 `MODULE_HEALTH_UNKNOWN`；不返回原异常文本/堆栈、路径或内容。
@@ -97,11 +99,17 @@ GET 必须无副作用：只复制有界缓存与 kernel/owner 元数据，不�
 
 未知字段/动作/无效输入在副作用前返回 `MODULE_ACTION_INVALID`；未知目标为 `MODULE_NOT_FOUND`，资格不符为 `MODULE_ACTION_UNAVAILABLE`，代次过期为 `MODULE_RUNTIME_CONFLICT`，人格过期为 `MODULE_PERSONA_CONFLICT`，闭包冲突为 `MODULE_ACTION_BUSY`。资格遵循 enabled/disabled、loaded/error/blocked、外部清单上限、认知/业务开关与暂停；run 仍经过引擎的候选、任务、预算、quiet/backoff、access/delivery 等既有闸门。
 
-operation 只包含固定输入、`id/status/phase/code/createdAt/updatedAt/completedAt/result/resultRuntimeGeneration`；`result` 为 `{ok,code}`，不包含业务结果、异常正文、配置或秘密。状态为 `queued/running/succeeded/failed/cancelled/STOP_PENDING`，phase 为 `queued/running/draining/starting/done`。忙碌、跳过、无任务、任一失败与不可用均不能记为成功；代次/人格在队列中失效为 cancelled。终态不可由迟到回调反转。
+operation 只包含固定输入、`id/status/phase/code/createdAt/updatedAt/completedAt/result/resultRuntimeGeneration`；`result` 为 `{ok,code}`，不包含业务结果、异常正文、配置或秘密。状态为 `queued/running/succeeded/failed/cancelled/interrupted/STOP_PENDING`，phase 为 `queued/running/draining/starting/done`。忙碌、跳过、无任务、任一失败与不可用均不能记为成功；代次/人格在队列中失效为 cancelled。终态不可由迟到回调反转。
 
 登记、全局 requestId 去重及闭包预留在同一同步步骤完成。相同输入重提返回原 operation（包括失败/完成），先去重再检查当前代次；同 requestId 不同字段返回 `MODULE_REQUEST_CONFLICT`。每模块只有一个活动 operation；生命周期预留完整传递下游，和内核串行队列共用执行路径，进入队列时重新检查代次/资格/闭包。run 的网络等待不占内核生命周期队列，但其模块预留持续到 operation 终结。
 
-注册表最多保留 **128** 条，包括 active 与 terminal；terminal 完成后保留 **1 小时**，到期查询/接纳时删除，不设清理 timer，不提前驱逐。容量已满返回 `MODULE_OPERATION_LIMIT`，原查询/重复请求仍可用。active 包括 STOP_PENDING 永不驱逐。幂等期为当前进程内保留期，不跨进程、不跨保留期，也不承诺 exactly-once；过期后 requestId 可复用。手动重试需要新 requestId，进程中断不续跑。
+注册表最多保留 **128** 条，包括 active 与 terminal；terminal 完成后保留 **1 小时**，到期查询/接纳时删除，不设清理 timer，不提前驱逐。容量已满返回 `MODULE_OPERATION_LIMIT`，原查询/重复请求仍可用。active 包括 STOP_PENDING 永不驱逐。审计将 requestId 去重扩展到同一数据目录重启后的保留期，但不跨保留期、不支持多个进程共享目录，也不承诺 exactly-once；过期后 requestId 可复用。手动重试需要新 requestId，进程中断不续跑。
+
+审计文件为 `modules/operations.json`，v1 原子快照最多 128 条 / 256 KiB；只保存上述固定元数据，不保存执行器、业务正文或原异常。同步接纳先以 0600 临时文件写入、fsync 文件后原子 rename，再预留/排执行；执行前再次保存 running。写盘失败拒绝接纳（`MODULE_AUDIT_WRITE_FAILED`）或在副作用前失败，不能退回纯内存执行。完成/失败/取消、drain/STOP_PENDING 记录同一审计；完成后写盘失败只记录固定日志，不回滚已发生 I/O、不重发，重启可能只能看到 interrupted。未做目录 fsync，不承诺操作系统断电后的持久性。
+
+内核构造时读取/校验审计，所有遗留 queued/running/STOP_PENDING 一律转为终态 `interrupted/phase:done/code:PROCESS_RESTART` 并在接纳新动作前落盘。相同 requestId/输入返回原 ID 与中断结果，绝不调用旧 executor、补发或自动恢复；新请求仍校验当前 runtime。已终结项保留原 ID、代次、固定结果码与时间戳。读取只过滤过期项，物理清理在下次启动/动作写入快照时完成，无新清理 timer。损坏/超限/不可读审计以 `MODULE_AUDIT_READ_FAILED` 关闭内核构造，不能静默清空去重历史；须由运维在停止宿主并保存证据后处理，清除会丢失去重保护。
+
+审计不改变活进程的 drain：挂死 STOP_PENDING 仍保留原 owner 和闭包、没有 force-recovery API、没有自动重启/续跑。进程停止由原宿主运维边界处理；单数据目录必须仅一个宿主进程，无跨进程锁/活跃 owner 交接。重启只终结操作审计，配置启用的模块仍按正常启动策略激活；这不是恢复原 operation。
 
 既有 toggle/reload/run HTTP 共用动作 helper 并保留 `{ok,item}`、`{ok,result}`、`{ok,results}` 响应形状；run 的业务 busy/skip/failed 原结果仍原样返回，而 operation 记为非成功。新 learning action 固定最多运行一个 pending，旧 learning run 仍支持有界 max 1–50。首次发现尚未进入目录的外部模块仍走既有 reload/安装 helper；已有目标的 HTTP 操作进入注册表。重复同状态 toggle 直接返回当前模块。底层内核的内部启停/重载方法保留既有串行语义，并拒绝侵入已预留闭包。
 

@@ -2881,3 +2881,20 @@ test('C07 task-specific controls never report nested disabled/null/failed task r
     }
   } finally { globalThis.fetch = original }
 })
+
+test('operation restart interruption is terminal: polling stops without retry or success', async () => {
+  const original = globalThis.fetch
+  let reads = 0, waits = 0
+  globalThis.fetch = async (_path, init) => {
+    assert.equal(init.method, 'GET')
+    reads++
+    return { ok: true, json: async () => ({ ok: true, operation: { id: 'interrupted-op', status: 'interrupted', phase: 'done', code: 'PROCESS_RESTART', result: { ok: false, code: 'PROCESS_RESTART' } } }) }
+  }
+  try {
+    const operation = await panel.pollModuleOperation({ id: 'interrupted-op', status: 'running' }, { wait: async () => { waits++; if (waits > 1) throw Error('polled a terminal operation') } })
+    assert.equal(operation.status, 'interrupted')
+    assert.equal(panel.operationSucceeded(operation), false)
+    assert.equal(reads, 1)
+    assert.equal(waits, 1)
+  } finally { globalThis.fetch = original }
+})

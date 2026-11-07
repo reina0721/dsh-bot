@@ -410,3 +410,28 @@ test('Bilibili transport revokes late network results and rejects declared overs
   const oversized = createBilibiliTransport({ fetchImpl: async () => new Response('{}', { headers: { 'content-length': String(MAX_BILIBILI_RESPONSE_BYTES + 1) } }) })
   await assert.rejects(oversized.popular(), /无效数据/)
 })
+
+
+test('media health: setup idle, sync share and remote failure/success have bounded telemetry', async t => {
+  let fail = true
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (fail) throw Error('PRIVATE_REMOTE_ERROR')
+    return Response.json({ code: 0, data: { list: [] } })
+  })
+  const h = await harness(t)
+  const read = () => h.kernel.health('builtin-media-features').items[0]
+  const provider = h.providers.get('mediaFeatures')
+  assert.equal(read().health, 'healthy')
+  assert.equal(read().engine.runs, null)
+  assert.equal(provider.bilibili.share(BV).bvid, BV)
+  assert.equal(read().engine.succeeded, 1)
+  await assert.rejects(provider.bilibili.hot())
+  assert.equal(read().health, 'degraded')
+  assert.equal(read().reasonCode, 'MEDIA_OPERATION_FAILED')
+  assert.equal(read().engine.failed, 1)
+  fail = false
+  await provider.bilibili.hot()
+  assert.equal(read().health, 'healthy')
+  assert.equal(read().engine.inFlight, 0)
+  assert.doesNotMatch(JSON.stringify(read()), /PRIVATE_REMOTE_ERROR/)
+})

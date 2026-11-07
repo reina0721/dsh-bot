@@ -7,6 +7,7 @@ import { access, lstat, mkdir, readFile, readdir, realpath, rename, stat, unlink
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { createActionAudit } from './action-audit.js'
 import { createModuleActions, moduleActionError } from './actions.js'
 import { createModuleHealth, observeHealth, projectModuleHealth, validateHealthReport, increment, PROVIDER_NAMES, createProviderHealth } from './health.js'
 import { ID_RE, validateManifest } from './manifest.js'
@@ -708,7 +709,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (cleanup) runtime.disposers.push(cleanup)
       record.status = 'loaded'
       record.health.phase = 'active'
-      if (record.health.reasonCode === 'MODULE_LOADING') observeHealth(record.health, { state: 'unknown' })
+      // Successful trusted setup is an idle observation, not a completed business run.
+      if (record.health.reasonCode === 'MODULE_LOADING') observeHealth(record.health, { state: record.builtin ? 'healthy' : 'unknown' })
       touchHealth()
       record.error = ''
       record.loadedAt = Date.now()
@@ -945,6 +947,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return c?.enabled && !c.paused && c[name]?.enabled && cognition?.state?.ready ? null : 'MODULE_ACTION_UNAVAILABLE'
   }
   const actions = createModuleActions({
+    audit: createActionAudit({ file: join(root, 'operations.json') }),
+    onAuditError: code => log.warn?.(code),
     getModule: getActionModule, getPersona: getActionPersona, eligibility,
     affected: (id, actionId) => actionId.startsWith('module.') ? dependentClosure(records, [id]) : [id],
     execute: (input, context) => serialize(async () => {

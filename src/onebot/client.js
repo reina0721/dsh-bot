@@ -25,6 +25,10 @@ export class OneBotError extends Error {
 const DEFAULT_RECONNECT = { enabled: true, minDelayMs: 2000, maxDelayMs: 30000, factor: 2, jitterRatio: 0.2 }
 const DEFAULT_TIMEOUTS = { callMs: 30000, connectMs: 10000, verifyMs: 10000, probeMs: 3000, maxRetries: 3, retryDelaysMs: [1000, 3000, 5000] }
 
+// A transport failure can occur after acceptance. Sends must never be replayed,
+// including HTTP-to-WS fallback or an explicit retries option.
+const isSend = action => action.startsWith('send_')
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
@@ -147,7 +151,7 @@ export function createOneBotClient({ endpoint, onEvent, onState, log, options })
         return await httpCall(action, params, timeoutMs)
       } catch (error) {
         if (error instanceof OneBotError && !error.transport) throw error
-        if (ws && ws.readyState === 1) return callWs(action, params, timeoutMs)
+        if (!isSend(action) && ws && ws.readyState === 1) return callWs(action, params, timeoutMs)
         throw error
       }
     }
@@ -155,7 +159,7 @@ export function createOneBotClient({ endpoint, onEvent, onState, log, options })
   }
 
   /**
-   * 调用一个 OneBot action。网络层失败按配置重试；业务错误不重试。
+   * 调用一个 OneBot action。读取调用的网络层失败按配置重试；发送不重试/切换传输，业务错误不重试。
    * @param {string} action
    * @param {object} [params]
    * @param {{ timeoutMs?: number, retries?: number }} [opts]
@@ -168,7 +172,7 @@ export function createOneBotClient({ endpoint, onEvent, onState, log, options })
     const { timeouts } = opts()
     const timeout = Number(timeoutMs) || timeouts.callMs
     const retryDelays = Array.isArray(timeouts.retryDelaysMs) && timeouts.retryDelaysMs.length ? timeouts.retryDelaysMs : DEFAULT_TIMEOUTS.retryDelaysMs
-    const maxRetries = retries === undefined ? Math.max(0, Math.min(retryDelays.length, Number(timeouts.maxRetries) || 0)) : retries
+    const maxRetries = isSend(action) ? 0 : retries === undefined ? Math.max(0, Math.min(retryDelays.length, Number(timeouts.maxRetries) || 0)) : retries
     stats.calls += 1
     let lastError = null
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {

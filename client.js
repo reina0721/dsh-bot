@@ -5414,7 +5414,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       'builtin-reminders': [{ label: '提醒数据', target: { tab: 'modules', moduleId: 'builtin-reminders', anchor: 'reminders' } }],
     })
     const ACTION_LABELS = Object.freeze({ 'module.enable': '启用', 'module.disable': '停用', 'module.restart': '重启', 'module.reload': '重载', 'proactivity.runOnce': '执行一次主动行为', 'learning.runPending': '运行待处理' })
-    const operationTerminal = operation => ['succeeded', 'failed', 'cancelled'].includes(operation?.status)
+    const operationTerminal = operation => ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(operation?.status)
     const operationSucceeded = operation => operation?.status === 'succeeded' && operation?.result?.ok === true
     const observedValue = value => value == null ? '未观察' : typeof value === 'boolean' ? (value ? '是' : '否') : String(value)
     function destinationButton(props, label, target) {

@@ -45,7 +45,7 @@ test('health report validation, bounded fixed reasons, safe errors, null and cou
   assert.equal(increment(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER)
 })
 
-test('lifecycle remains independent: disabled/sample, loaded unknown, degraded, blocked and error', async t => {
+test('lifecycle remains independent: disabled/sample, loaded idle, degraded, blocked and error', async t => {
   let active
   const h = await harness(t, [
     builtin('builtin-sample', undefined, { defaultEnabled: false }),
@@ -59,7 +59,7 @@ test('lifecycle remains independent: disabled/sample, loaded unknown, degraded, 
   assert.equal(h.read('builtin-sample').health, 'stopped')
   assert.equal(h.read('builtin-sample').runtimeGeneration, null)
   assert.equal(h.read('builtin-sample').telemetry.lastSuccessAt, null)
-  assert.equal(h.read('builtin-loaded').health, 'unknown')
+  assert.equal(h.read('builtin-loaded').health, 'healthy')
   assert.equal(h.read('builtin-loaded').reasonCode, null)
   assert.equal(h.read('external').health, 'unknown')
   assert.deepEqual(h.read('external').providers, [])
@@ -117,7 +117,7 @@ test('runtime generation rotates only for setup, survives UI authorization and i
   const revision = h.kernel.health().revision
   assert.equal(apis[0].health.report({ state: 'unhealthy', result: 'failure', reasonCode: 'ENGINE_FAILED' }), false)
   assert.equal(h.kernel.health().revision, revision)
-  assert.equal(h.read('builtin-worker').health, 'unknown')
+  assert.equal(h.read('builtin-worker').health, 'healthy')
 })
 
 test('GET is fresh and side-effect-free, available while provider stop holds lifecycle queue', async t => {

@@ -1,5 +1,16 @@
 # 变更记录
 
+## 未发布
+
+- 缺口收敛验证：1107 项测试，1103 通过、4 项既有跳过、0 失败；文档、parity、本地双格式打包及包检查通过。版本保持 0.11.14，无推送、部署、标签或发布。
+
+- 模块动作增加有界原子审计（128 条 / 一小时终态 / 256 KiB），接纳与执行前写盘；重启未完成项标 interrupted、不续跑/补发，终态 ID/代次/时间与 requestId 去重保留。审计错误 fail closed，终态写盘失败只报告未知窗口；面板将 interrupted 视为终态。仍无强制 drain 恢复、多进程锁或跨平台 exactly-once。
+
+- 新增完整宿主离线沙盒：mock OneBot 私聊/群聊 share 与种入贴纸、假 B站远程、本地模型主动单发、自动入队与手动/自动模式研究、task/evidence/claim/loop 关联及管理 API 读取。
+- 修复底层 OneBot 发送网络失败可能 HTTP → WS 再发或自动重试的问题；send_* 始终只尝试一次，读取保留回退。新增应答丢失与主动 token 重用测试，明确 at-most-once 尝试和真实 QQ exactly-once 限制。
+
+- 成功 setup 的内置模块默认健康空闲；输入状态、回复、示例和调度引擎启动报告空闲，媒体操作记录成功/失败；外部未埋点模块仍为 unknown，停止仍为 stopped。新增真实七个内置模块激活与媒体遥测回归。
+
 ## 0.11.14（2026-11-08，Windows 闭环测试修复）
 
 - 修复 Windows 上 system-loop 测试先删临时 SQLite 再 close 导致的 EBUSY；改为先 close 再清理。

@@ -124,6 +124,7 @@ export function createReminderEngine({ repository, getConfig, owner, clock = { n
     if (started || disposed) return
     started = true
     schedule(generation)
+    health?.report({ state: 'healthy', result: 'observation' })
   }
   function stop() {
     started = false

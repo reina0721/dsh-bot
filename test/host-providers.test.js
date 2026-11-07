@@ -178,7 +178,8 @@ test('host production builtin owns reminders; toggles restore core commands and 
     assert.equal(provider.ownerModuleId, id)
     assert.equal(provider.ownerRuntimeGeneration, health.runtimeGeneration)
     assert.equal(provider.fallback.active, false)
-    assert.equal(health.health, 'unknown', 'activation alone is not business health')
+    assert.equal(health.health, 'healthy', 'successful builtin setup is known idle')
+    assert.equal(health.engine.runs, null, 'activation must not invent a business run')
   }
   host.setConfig({ ...host.getConfig(), access: { ownerQQ: '10001' },
     cognition: { ...host.getConfig().cognition, dryRun: true, reminders: { enabled: true } } })

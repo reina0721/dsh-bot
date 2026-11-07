@@ -292,7 +292,8 @@ test('scheduler health counts registration/fire/cancel/completion/failure withou
   assert.equal(read().scheduler.active, 3)
   const nextDueAt = read().scheduler.nextDueAt
   assert.equal(read().telemetry.nextRunAt, nextDueAt)
-  assert.equal(read().health, 'unknown', 'a timer is not business success')
+  assert.equal(read().health, 'healthy', 'successful setup is idle; a timer is not business success')
+  assert.equal(read().engine.succeeded, null)
   assert.equal(cancelled.dispose(), true)
   clock.advance(10)
   assert.equal(read().scheduler.running, 1)
