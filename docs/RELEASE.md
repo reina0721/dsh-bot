@@ -57,7 +57,7 @@ git diff --check
 
 ## 6. 真机验收状态（部分）
 
-**0.11.12 部署**：live 将升级 0.11.12；新增 builtin-media-features、builtin-proactivity、builtin-learning。
+**0.11.12 部署**：live 已升级 0.11.12；新增 builtin-media-features、builtin-proactivity、builtin-learning。
 
 **0.11.11 部署**：live 已升级 0.11.11；模块详情、配置归位、四个内置预览、外部声明式配置与隔离 iframe 授权。
 
