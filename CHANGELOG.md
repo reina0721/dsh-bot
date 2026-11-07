@@ -11,6 +11,13 @@
 
 - 成功 setup 的内置模块默认健康空闲；输入状态、回复、示例和调度引擎启动报告空闲，媒体操作记录成功/失败；外部未埋点模块仍为 unknown，停止仍为 stopped。新增真实七个内置模块激活与媒体遥测回归。
 
+## 0.11.15（2026-11-08，闭环缺口补齐与沙盒）
+
+- 七个内置模块激活后默认健康空闲，媒体模块增加持续埋点，不再长期 unknown。
+- 新增 mock OneBot/fake DSH/mock model 整合沙盒：/bili、/sticker、proactivity、learning、health/actions/operation/loop。
+- 操作审计持久化最多 128 条，重启未完成项标 interrupted，不续跑/补发；保留安全 drain，不支持强制恢复/exactly-once。
+- 1103 项测试：1099 通过、4 跳过、0 失败。
+
 ## 0.11.14（2026-11-08，Windows 闭环测试修复）
 
 - 修复 Windows 上 system-loop 测试先删临时 SQLite 再 close 导致的 EBUSY；改为先 close 再清理。
