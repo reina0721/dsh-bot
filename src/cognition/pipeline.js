@@ -12,7 +12,7 @@ import { executeDeliveryPlan } from '../delivery/executor.js'
 import { flattenForward, forwardIdsOf } from '../gateway/forward.js'
 
 export function createPipeline({
-  store, getConfig, clock, logger,
+  store, getConfig, clock, logger, deliverySleep = null,
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
   beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null, purpose = null,
@@ -350,7 +350,7 @@ export function createPipeline({
       text, turn, decisionId: decision.id, source: 'pipeline', dryRun: () => isDry() ? true : null,
       deliver: outbound && typeof outbound.deliver === 'function' ? (payload) => outbound.deliver(payload) : null,
       fallbackDeliver: (payload) => sendDirect(decision, payload.segments, turn, { mark: directPart++ === 0 }),
-      sleep,
+      sleep: deliverySleep || sleep,
       onPartSent: ({ messageId, index, parts }) => {
         turnAggregatorRef?.noteBotMessage?.(messageId)
         try {

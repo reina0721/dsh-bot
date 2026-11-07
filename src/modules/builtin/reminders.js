@@ -21,6 +21,6 @@ export function createBuiltinReminders(api, { clock = { now: Date.now } } = {}) 
 }
 
 export function setup(api) {
-  const reminders = createBuiltinReminders(api)
+  const reminders = createBuiltinReminders(api, { clock: api.clock })
   return () => reminders.dispose()
 }

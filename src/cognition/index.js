@@ -62,6 +62,12 @@ export function createCognition({
   providerRegistry = null,
   deliveryRegistry = null,
   turnHooks = null,
+  store = null,
+  runtimeAdapter = null,
+  runtimeDataRoot = null,
+  sourceRegistry = null,
+  embeddingAdapter = null,
+  deliverySleep = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -78,6 +84,13 @@ export function createCognition({
   }
   const knowledgeSources = new Map()
   const capabilities = new Map()
+  const pendingWork = new Set()
+  function track(work) {
+    const promise = Promise.resolve(work)
+    pendingWork.add(promise)
+    promise.then(() => pendingWork.delete(promise), () => pendingWork.delete(promise))
+    return promise
+  }
   let remindersStarted = false
   const cfg = () => {
     try { return getConfig()?.cognition || {} } catch (error) { return {} }
@@ -98,7 +111,7 @@ export function createCognition({
 
   function init() {
     try {
-      state.store = createStore({ file: dbFile, log, clock })
+      state.store = store || createStore({ file: dbFile, log, clock })
       const pausedRecord = state.store.get('setting', 'cognition.paused')
       if (pausedRecord) state.paused = Boolean(pausedRecord.value)
       state.services.identities = createIdentityService({ store: state.store, clock, logger: log })
@@ -124,7 +137,7 @@ export function createCognition({
       state.services.emotion = createEmotionService({ store: personaStore, getConfig, clock })
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
-      const embedder = createEmbeddingService({ getConfig, logger: log })
+      const embedder = embeddingAdapter || createEmbeddingService({ getConfig, logger: log })
       state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log, embedder })
       state.services.archiveImport = createArchiveImportService({ store: state.scopedStore, getConfig, clock, logger: log })
       state.services.purpose = createPurposeService({ store: personaStore, getConfig, clock, log })
@@ -153,7 +166,7 @@ export function createCognition({
         clock,
       })
       state.services.delivery = createDeliveryService({ outbound: state.services.outbound })
-      state.services.runtime = createAgentRuntime({
+      state.services.runtime = runtimeAdapter || createAgentRuntime({
         delivery: state.services.delivery,
         ctx,
         getConfig,
@@ -161,7 +174,7 @@ export function createCognition({
         gateway,
         outbound: state.services.outbound,
         logger: log,
-        dataRoot: pluginDataDir('runtime'),
+        dataRoot: runtimeDataRoot || join(baseDir, 'runtime'),
       })
       state.services.approvals = createApprovalService({ store: state.store, clock, logger: log })
       state.services.qqActions = createQqActions({ gateway, getConfig, logger: log })
@@ -191,7 +204,7 @@ export function createCognition({
       })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
       state.services.beliefs = createBeliefService({ store: personaStore, getConfig, clock })
-      state.services.sources = defaultSourceRegistry({ ctx, getConfig, clock, log })
+      state.services.sources = sourceRegistry || defaultSourceRegistry({ ctx, getConfig, clock, log })
       state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock })
       state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
@@ -221,6 +234,7 @@ export function createCognition({
         purpose: state.services.purpose,
         media,
         turnAggregator: null,
+        deliverySleep,
       })
       state.services.aggregator = createTurnAggregator({
         getConfig,
@@ -235,7 +249,7 @@ export function createCognition({
         onTurn: (turn) => {
           state.stats.turns += 1
           try { state.services.pipeline.observeIncoming(turn) } catch (error) { log.debug?.('outcome 观察失败：', error.message) }
-          return state.services.pipeline.handleTurn(turn)
+          return track(state.services.pipeline.handleTurn(turn))
         },
       })
       // 让 pipeline 能在发送后通知 aggregator 记录 bot message id（避免回复自己/识别回复）。
@@ -361,11 +375,11 @@ export function createCognition({
         const messageId = String(normalized.notice.messageId || '')
         const sawContent = sawContentFor(messageId)
         state.services.aggregator.handleRecall(normalized.notice)
-        state.services.pipeline.handleRecall({ notice: normalized.notice, messageId, sawContent }).catch((error) => log.warn?.('撤回处理失败：', error.message))
+        track(state.services.pipeline.handleRecall({ notice: normalized.notice, messageId, sawContent })).catch((error) => log.warn?.('撤回处理失败：', error.message))
         return
       }
       if (normalized?.kind === 'notice' && isPoke(normalized.notice)) {
-        state.services.pipeline.handlePoke?.({ notice: normalized.notice }).catch((error) => log.debug?.('拍一拍处理失败：', error.message))
+        track(state.services.pipeline.handlePoke?.({ notice: normalized.notice })).catch((error) => log.debug?.('拍一拍处理失败：', error.message))
         return
       }
       if (normalized?.kind === 'notice' && isReaction(normalized.notice)) {
@@ -665,6 +679,7 @@ export function createCognition({
 
   return {
     get ready() { return Promise.resolve(state.ready) },
+    async whenIdle() { while (pendingWork.size) await Promise.allSettled([...pendingWork]) },
     startReminders,
     stopReminders,
     get state() { return state },

@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- C04：抽出 host/service 共享装配，注入目录/store/config/clock/scheduler/model/transport/event bus/runtime，修复 runtime 与事件持久化的全局目录边界；新增独立人格、SQLite、配置、approval/request/reminder/module 状态与会话命名空间的离线模拟服务。OneBot 动作全部捕获，raw/unknown fail closed；fixture 模型/知识源与虚拟聚合/提醒/交付等待不访问 QQ 或外部网络。
+- 新增后端 simulations create/events/advance/state/reset/delete 独立 API、requestId 幂等和 opaque/身份注入拒绝；新增双图/live 共存、命令、私群/访问、通知请求、动作捕获、timer、reset/delete 回归，契约与限制见 [ADR-021](docs/architecture/ADR-021-simulation-service.md)。仅 C04，无 Chat UI/C06 执行沙箱、版本变更、推送、部署、标签或发布。
+
 - C03：WebUI 改为 Overview / Chat & Sandbox / Profiles / Extensions / Data & Logs / System 六区，宽 rail、窄 drawer 和元数据搜索；内部 URL 状态保留 DSH 外层路由，支持同区定位、刷新与前进/后退。沿用 C01 全部旧标签、认知分区、配置组、字段路径、模块及锚点别名；未知安全回落 Overview。
 - 设置按唯一 owner 归属：System/数据治理单 owner revisioned patch、profile API 的指定人格 staged 编辑（不激活、不改变运行）、模块详情唯一配置。保留当前运行人格旧编辑模式，其余 legacy 运行参数仍由原配置文件维护；移除根页面全量保存/reset，外观与内置模块保存适配 C02。补 Node shim 的别名穷举、所有者分区、搜索、URL 历史、窄屏 markup、secret 操作与 CAS 冲突测试。
 - Chat & Sandbox 仅 planned 占位，无新增沙盒后端或 profile runtime cutover；DSH 仍恰好两项注册。仅本地构建/验证，版本不变，无推送、部署、tag 或 release。

@@ -88,7 +88,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, simulations = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -182,6 +182,37 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }))
 
   // ---- 状态与配置 ----
+  // Simulation mutations have dedicated paths; never route them through /send, /action or /events.
+  if (simulations) {
+    const simulationBody = async (req, keys) => {
+      const body = await readBody(req, 64 * 1024)
+      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !keys.includes(key))) throw new Error('INVALID_SIMULATION_INPUT')
+      return body
+    }
+    const simulationRoute = (method, path, handler) => route(method, '/simulations/' + path, async req => {
+      try { return await handler(req) }
+      catch (error) { return { ok: false, environment: 'simulation', message: String(error?.message || error) } }
+    })
+    simulationRoute('POST', 'create', async req => simulations.create(await readBody(req, 64 * 1024)))
+    simulationRoute('POST', 'events', async req => {
+      const { id, event } = await simulationBody(req, ['id', 'event'])
+      return { ok: true, ...await simulations.submit(id, event) }
+    })
+    simulationRoute('POST', 'advance', async req => {
+      const { id, ms } = await simulationBody(req, ['id', 'ms'])
+      return { ok: true, ...await simulations.advance(id, ms) }
+    })
+    for (const action of ['reset', 'delete']) simulationRoute('POST', action, async req => {
+      const { id } = await simulationBody(req, ['id'])
+      return simulations[action](id)
+    })
+    simulationRoute('GET', 'state', async req => {
+      const query = loopQueryOf(req)
+      if (Object.keys(query).length !== 1 || !query.id) throw new Error('INVALID_SIMULATION_INPUT')
+      return simulations.read(query.id)
+    })
+  }
+
   route('GET', '/status', async () => statusPayload())
 
   const settings = () => {

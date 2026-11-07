@@ -256,5 +256,7 @@ test('persona store: production cognition service wiring, restart persistence an
   assert.equal(facade.base.count(originalKind), 0)
   assert.equal(cognition.activePersonaId(), other)
   const host = await readFile(new URL('../src/host.js', import.meta.url), 'utf8')
-  assert.match(host, /personaStore: cognition\.services\.personaStore/)
+  assert.match(host, /assembleServices\(/)
+  const assembly = await readFile(new URL('../src/services/assembly.js', import.meta.url), 'utf8')
+  assert.match(assembly, /personaStore: cognition\.services\.personaStore/)
 })

@@ -3,6 +3,7 @@
 // 事件是后续认知/记忆/防抖插件的输入，因此这里保持「只追加、不推断」：
 // 平台给什么就存什么，过滤规则全部来自配置（config.events.*），没有任何写死的业务判断。
 
+import { join } from 'node:path'
 import { dataDir, appendJsonl } from './store.js'
 
 const MAX_BUFFER = 5000
@@ -12,7 +13,7 @@ const MAX_BUFFER = 5000
  * @param {() => object} o.getConfig
  * @param {import('./logger.js').createLogger extends Function ? object : object} [o.log]
  */
-export function createEventStore({ getConfig, log } = {}) {
+export function createEventStore({ getConfig, log, dataRoot = null, clock = { now: () => Date.now() } } = {}) {
   const state = {
     buffer: [],
     seq: 0,
@@ -79,7 +80,7 @@ export function createEventStore({ getConfig, log } = {}) {
     }
     const record = {
       seq: ++state.seq,
-      receivedAt: Date.now(),
+      receivedAt: clock.now(),
       ...normalized,
     }
     state.accepted += 1
@@ -97,7 +98,7 @@ export function createEventStore({ getConfig, log } = {}) {
     const persist = cfg().events?.persist
     if (persist?.enabled) {
       try {
-        appendJsonl(dataDir(persist.file || 'events.jsonl'), record, { maxBytes: (Number(persist.maxMB) || 32) * 1024 * 1024 })
+        appendJsonl(dataRoot ? join(dataRoot, 'events.jsonl') : dataDir(persist.file || 'events.jsonl'), record, { maxBytes: (Number(persist.maxMB) || 32) * 1024 * 1024 })
       } catch (error) {
         log?.warn?.('事件落盘失败：', error.message)
       }

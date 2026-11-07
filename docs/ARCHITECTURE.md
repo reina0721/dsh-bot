@@ -2,6 +2,12 @@
 
 > 本文件描述当前模块边界与接口契约。接口变更需同步更新本文、测试及用户文档。
 
+## AstrBot alignment C04：离线模拟服务图
+
+[ADR-021](architecture/ADR-021-simulation-service.md) 定义共享 `src/services/assembly.js` 装配和 `src/simulation/` 离线会话服务。host 保留 apply 注册、真实 QQ/model/media 与动态提醒所有权；模拟复用真实 normalization/access/ingress/aggregation/command/cognition/delivery，注入独立根目录/store/config/persona/bus/runtime namespace、fixture 模型/知识源、虚拟 scheduler 和捕获 OneBot transport。raw/unknown 动作 fail closed，captures 与业务 receipts 分开且标记 `environment: simulation`；没有 process.env/global fetch/live persona 切换或 QQ 发送。
+
+后端 `/onebot-qq/api/simulations/{create,events,advance,state,reset,delete}` 使用独立 mutation 路径，拒绝 opaque frame、任意 raw/身份/权限/路径/凭据输入。事件只描述 private/group 消息、有限通知和请求，由服务生成合成身份；requestId 幂等，advance 后读取 transcript/captures/receipts。typing/reply-delivery/reminders 使用真实内置模块与私有状态，外部模块发现关闭；媒体、learning、proactivity 和 DSH Agent 工具不加载。没有 Chat UI（C05）或任意代码执行沙箱（C06），完整字段、关闭顺序和限制见 ADR-021。
+
 ## 闭环 v2（C01–C07 已实现，C08 离线验收）
 
 实现基线为 C07 `6cf5637`；[C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)记录连续提交链、贴纸矩阵、管理/系统闭环、测试及双格式包证据。下文历史阶段说明按原阶段保留。

@@ -85,8 +85,10 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null, providerRegistry = null, access: accessControl = null, media = null, stickers = null, reminderControl = null } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null, providerRegistry = null, access: accessControl = null, media = null, stickers = null, reminderControl = null, clock = { now: () => Date.now() }, scheduler = null, discoverExternal = true } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
+  const timerDriver = scheduler || globalThis
+  const monotonicNow = scheduler ? () => clock.now() : () => performance.now()
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
   const log = logger?.child?.('modules') || logger || { info() {}, warn() {}, debug() {}, error() {}, child() { return this } }
@@ -234,7 +236,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     touchHealth()
     // Close admission first; captured reminder repositories remain valid through drain.
     runtime.accepting = false
-    for (const timer of runtime.timers.values()) globalThis.clearTimeout(timer.native)
+    for (const timer of runtime.timers.values()) timerDriver.clearTimeout(timer.native)
     // Drain provider sends while repository leases are still valid, then revoke APIs.
     for (const stop of runtime.providerStops) {
       try { await stop() } catch {
@@ -246,7 +248,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     }
     runtime.active = false
     for (const timer of runtime.timers.values()) {
-      globalThis.clearTimeout(timer.native)
+      timerDriver.clearTimeout(timer.native)
       record.health.scheduler.cancelled = increment(record.health.scheduler.cancelled)
     }
     runtime.timers.clear()
@@ -263,7 +265,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     record.drainStorage = null
     record.runtime = null
     record.health.phase = 'stopped'
-    record.health.telemetry.lastStoppedAt = Date.now()
+    record.health.telemetry.lastStoppedAt = clock.now()
     observeHealth(record.health, { state: 'stopped', reasonCode: 'MODULE_STOPPED' })
     touchHealth()
   }
@@ -349,7 +351,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     cache.scheduler.nextDueAt = runtime.timers.size ? Math.min(...[...runtime.timers.values()].map(timer => timer.dueAt)) : null
     cache.telemetry.timerScheduled = runtime.timers.size > 0
     cache.telemetry.nextRunAt = cache.scheduler.nextDueAt
-    cache.observedAt = Date.now()
+    cache.observedAt = clock.now()
     touchHealth()
   }
   function schedulerApi(record, runtime) {
@@ -361,7 +363,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     function clearTimeout(id) {
       const timer = runtime.timers.get(id)
       if (!timer) return false
-      globalThis.clearTimeout(timer.native)
+      timerDriver.clearTimeout(timer.native)
       runtime.timers.delete(id)
       record.health.scheduler.cancelled = increment(record.health.scheduler.cancelled)
       schedulerSnapshot(record, runtime)
@@ -376,11 +378,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         if (!Number.isSafeInteger(delayMs) || delayMs < 0 || delayMs > MAX_SCHEDULER_DELAY_MS) throw new Error('调度延迟必须是 0–2592000000 ms 的整数')
         if (runtime.timers.size >= MAX_MODULE_TIMERS) throw new Error('模块最多允许 64 个活跃定时器')
         const id = randomUUID()
-        const timer = { native: null, deadline: performance.now() + delayMs, dueAt: Date.now() + delayMs }
+        const timer = { native: null, deadline: monotonicNow() + delayMs, dueAt: clock.now() + delayMs }
         const run = () => {
           // runtime 身份即本次 setup 的 generation；旧回调不能进入新生命周期。
           if (!isCurrent() || runtime.timers.get(id) !== timer) return
-          const remaining = timer.deadline - performance.now()
+          const remaining = timer.deadline - monotonicNow()
           if (remaining > 0) { schedule(remaining); return }
           runtime.timers.delete(id)
           const counters = record.health.scheduler
@@ -398,7 +400,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         }
         // Node 超过有符号 32 位毫秒会退化为 1 ms，按单调时钟分段等待。
         const schedule = (remaining) => {
-          timer.native = globalThis.setTimeout(run, Math.min(MAX_NATIVE_TIMEOUT_MS, Math.ceil(remaining)))
+          timer.native = timerDriver.setTimeout(run, Math.min(MAX_NATIVE_TIMEOUT_MS, Math.ceil(remaining)))
         }
         schedule(delayMs)
         runtime.timers.set(id, timer)
@@ -599,6 +601,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         return dispose
       },
     }
+    if (record.builtin) api.clock = Object.freeze({ now: () => clock.now() })
     if (record.builtin) api.health = Object.freeze({ report: value => {
       if (!currentRuntime(record, runtime)) return false
       return report(record, runtime, validateHealthReport(value))
@@ -680,7 +683,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     record.runtime = runtime
     record.status = 'loading'
     record.health = createModuleHealth(runtime.runtimeGeneration, record.builtin && record.permissions.includes('scheduler'))
-    record.health.telemetry.lastStartedAt = Date.now()
+    record.health.telemetry.lastStartedAt = clock.now()
     observeHealth(record.health, { state: 'unknown', reasonCode: 'MODULE_LOADING' })
     touchHealth()
     try {
@@ -699,7 +702,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         imported = await record.imported
       } else {
         const fileStat = await stat(record.entryPath)
-        imported = await import(`${pathToFileURL(record.entryPath).href}?v=${fileStat.mtimeMs}-${++importGeneration}-${Date.now()}`)
+        imported = await import(`${pathToFileURL(record.entryPath).href}?v=${fileStat.mtimeMs}-${++importGeneration}-${clock.now()}`)
       }
       const setup = typeof imported.setup === 'function' ? imported.setup : (typeof imported.default === 'function' ? imported.default : imported.default?.setup)
       if (typeof setup !== 'function') throw new Error('入口必须导出 setup(api)（named 或 default）')
@@ -713,7 +716,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (record.health.reasonCode === 'MODULE_LOADING') observeHealth(record.health, { state: record.builtin ? 'healthy' : 'unknown' })
       touchHealth()
       record.error = ''
-      record.loadedAt = Date.now()
+      record.loadedAt = clock.now()
       log.info?.(`模块 ${record.id} 已加载`)
     } catch (error) {
       try { await disposeRuntime(record, strict) } catch (stopError) { record.error = '模块停止未完成'; throw stopError }
@@ -779,7 +782,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       for (const name of record.provides) providerRegistry?.expect(name, record.id)
       records.set(manifest.id, record)
     }
-    const entries = await readdir(root, { withFileTypes: true })
+    const entries = discoverExternal ? await readdir(root, { withFileTypes: true }) : []
     for (const entry of entries) {
       if (entry.name === '.builtin' || (!entry.isDirectory() && !entry.isSymbolicLink())) continue
       // 保留命名空间的外部目录不可能覆盖真正的内置记录。
@@ -816,7 +819,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     const items = selected.map(record => projectModuleHealth(record, record.provides?.map(name => providerSnapshot.items.find(item => item.name === name) || createProviderHealth(name, record.id)).filter(Boolean) || []))
       .sort((a, b) => a.moduleId.localeCompare(b.moduleId))
     const summary = Object.fromEntries(['unknown', 'healthy', 'degraded', 'unhealthy', 'stopped'].map(state => [state, items.filter(item => item.health === state).length]))
-    return { ok: true, collectedAt: Date.now(), revision: Math.min(Number.MAX_SAFE_INTEGER, healthRevision + providerSnapshot.revision), items, summary }
+    return { ok: true, collectedAt: clock.now(), revision: Math.min(Number.MAX_SAFE_INTEGER, healthRevision + providerSnapshot.revision), items, summary }
   }
 
   function uiCatalog() {
@@ -947,6 +950,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return c?.enabled && !c.paused && c[name]?.enabled && cognition?.state?.ready ? null : 'MODULE_ACTION_UNAVAILABLE'
   }
   const actions = createModuleActions({
+    now: () => clock.now(), timers: timerDriver,
     audit: createActionAudit({ file: join(root, 'operations.json') }),
     onAuditError: code => log.warn?.(code),
     getModule: getActionModule, getPersona: getActionPersona, eligibility,
