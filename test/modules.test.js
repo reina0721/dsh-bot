@@ -624,7 +624,7 @@ test('modules v2：内置默认不导入，来源只读，启停持久化，独�
     source: 'builtin', builtin: true, canReload: false, canToggle: true, apiVersion: 1, requires: [], status: 'disabled',
   })
   await h.kernel.setEnabled('builtin-test', true)
-  assert.deepEqual(JSON.parse(await readFile(join(h.root, 'state.json'), 'utf8')), { disabled: [], enabled: ['builtin-test'] })
+  assert.deepEqual(JSON.parse(await readFile(join(h.root, 'state.json'), 'utf8')), { disabled: [], enabled: ['builtin-test'], uiGrants: {} })
   await assert.rejects(h.kernel.reload('builtin-test'), { code: 'MODULE_BUILTIN_RELOAD' })
   await h.kernel.setEnabled('builtin-test', false)
   await h.kernel.setEnabled('builtin-test', true)
@@ -750,7 +750,7 @@ test('modules v2：状态写失败保持 live 与内存状态，后续操作仍�
   await rm(join(h.root, 'state.json'), { recursive: true })
   await h.kernel.setEnabled('builtin-test', false)
   assert.equal(cleanups, 1); assert.equal(setups, 1)
-  assert.deepEqual(JSON.parse(await readFile(join(h.root, 'state.json'), 'utf8')), { disabled: ['builtin-test'], enabled: [] })
+  assert.deepEqual(JSON.parse(await readFile(join(h.root, 'state.json'), 'utf8')), { disabled: ['builtin-test'], enabled: [], uiGrants: {} })
 })
 
 test('modules v2：内置存储符号链接与 1 MiB 限制，不扫描 .builtin', async (t) => {

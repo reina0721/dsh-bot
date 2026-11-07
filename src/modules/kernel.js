@@ -10,7 +10,8 @@ import { pathToFileURL } from 'node:url'
 import { ID_RE, validateManifest } from './manifest.js'
 import { analyzeDependencies, dependentClosure } from './dependencies.js'
 import { builtinRegistry } from './registry.js'
-import { buildModuleUiCatalog, loadWebuiDescriptor } from './webui.js'
+import { buildModuleUiCatalog, loadWebuiDescriptor, sandboxEligible } from './webui.js'
+import { readUiArtifact } from './sandbox.js'
 import { createModulePersonaStore } from './persona-store.js'
 import { createReminderRepository } from './reminder-repository.js'
 import { createLegacyConfig } from './legacy-config.js'
@@ -85,6 +86,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   const records = new Map()
   let disabled = new Set()
   let enabledIds = new Set()
+  let uiGrants = new Map()
   let importGeneration = 0
   let started = false
   let disposed = false
@@ -117,6 +119,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     const ids = (value) => new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string' && ID_RE.test(id)) : [])
     disabled = ids(state?.disabled)
     enabledIds = ids(state?.enabled)
+    const savedGrants = state?.uiGrants && typeof state.uiGrants === 'object' && !Array.isArray(state.uiGrants) ? state.uiGrants : {}
+    uiGrants = new Map(Object.entries(savedGrants)
+      .filter(([id, grant]) => ID_RE.test(id) && grant?.id === id && /^[a-f0-9]{64}$/.test(grant.uiRevision) && /^[a-f0-9]{64}$/.test(grant.artifactHash) && typeof grant.entry === 'string')
+      .map(([id, grant]) => [id, { id, uiRevision: grant.uiRevision, entry: grant.entry, artifactHash: grant.artifactHash }]))
   }
 
   function effectiveEnabled(record) {
@@ -140,7 +146,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     const realEntry = await realpath(entryPath)
     if (!inside(realModuleDir, realEntry)) throw new Error('manifest.entry 不能通过符号链接离开模块目录')
     const configSchema = raw.config === undefined ? null : validateConfigSchema(raw.config)
-    return { ...manifest, configSchema, ...loadWebuiDescriptor(raw.webui, { source: 'external', configSchema }), source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry }
+    const record = { ...manifest, configSchema, ...loadWebuiDescriptor(raw.webui, { source: 'external', configSchema }), source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry, uiArtifactHash: null }
+    if (sandboxEligible(record)) {
+      try { record.uiArtifactHash = (await readUiArtifact(root, record)).hash } catch {}
+    }
+    return record
   }
 
   function makeRecord(manifest) {
@@ -618,7 +628,59 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   function uiCatalog() {
-    return buildModuleUiCatalog(records.values())
+    return buildModuleUiCatalog(records.values(), hasUiGrant)
+  }
+
+  function hasUiGrant(record) {
+    const grant = uiGrants.get(record.id)
+    return Boolean(sandboxEligible(record) && record.uiArtifactHash && grant?.id === record.id && grant.uiRevision === record.uiRevision && grant.entry === record.ui.sandbox.entry && grant.artifactHash === record.uiArtifactHash)
+  }
+
+  async function checkedArtifact(record) {
+    if (!record?.uiArtifactHash || !sandboxEligible(record)) return null
+    try {
+      const artifact = await readUiArtifact(root, record)
+      if (artifact.hash === record.uiArtifactHash) return artifact
+    } catch {}
+    // Latch closed until reload: restoring bytes must not silently restore access.
+    record.uiArtifactHash = null
+    return null
+  }
+
+  function refreshUiCatalog() {
+    return serialize(async () => {
+      for (const record of records.values()) if (sandboxEligible(record)) await checkedArtifact(record)
+      return uiCatalog()
+    })
+  }
+
+  function stateSnapshot(nextDisabled = disabled, nextEnabled = enabledIds, nextGrants = uiGrants) {
+    return { disabled: [...nextDisabled].sort(), enabled: [...nextEnabled].sort(), uiGrants: Object.fromEntries(nextGrants) }
+  }
+
+  function setUiGrant(id, enabled) {
+    return serialize(async () => {
+      const record = records.get(checkAction(id))
+      if (typeof id !== 'string' || typeof enabled !== 'boolean' || !record || !sandboxEligible(record)) throw actionError('仅允许声明隔离 UI 和 ui:sandbox 权限的外部模块授权', 'MODULE_UI_UNAVAILABLE')
+      if (enabled && !await checkedArtifact(record)) throw actionError('隔离 UI 资源不可用，请重载后重新授权', 'MODULE_UI_UNAVAILABLE')
+      const next = new Map(uiGrants)
+      if (enabled) next.set(id, { id, uiRevision: record.uiRevision, entry: record.ui.sandbox.entry, artifactHash: record.uiArtifactHash })
+      else next.delete(id)
+      try { await writeJsonAtomic(stateFile, stateSnapshot(disabled, enabledIds, next)) }
+      catch { throw actionError('隔离 UI 授权保存失败', 'MODULE_UI_WRITE_FAILED') }
+      uiGrants = next
+      record.generation = randomUUID()
+      return uiCatalog().items.find((item) => item.moduleId === id)
+    })
+  }
+
+  function readSandboxAsset(id, generation, path) {
+    return serialize(async () => {
+      const record = records.get(id)
+      if (disposed || !record || !record.enabled || record.status !== 'loaded' || record.generation !== generation || !hasUiGrant(record)) return null
+      const artifact = await checkedArtifact(record)
+      return artifact && hasUiGrant(record) ? artifact.files.get(path) || null : null
+    })
   }
 
   function checkAction(id) {
@@ -666,7 +728,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       const nextDisabled = new Set(disabled), nextEnabled = new Set(enabledIds)
       if (enabled) { nextDisabled.delete(normalized); nextEnabled.add(normalized) }
       else { nextDisabled.add(normalized); nextEnabled.delete(normalized) }
-      try { await writeJsonAtomic(stateFile, { disabled: [...nextDisabled].sort(), enabled: [...nextEnabled].sort() }) }
+      try { await writeJsonAtomic(stateFile, stateSnapshot(nextDisabled, nextEnabled)) }
       catch { throw actionError('模块状态保存失败，运行状态未改变', 'MODULE_STATE_WRITE_FAILED') }
       disabled = nextDisabled; enabledIds = nextEnabled
       const affected = dependentClosure(records, [normalized])
@@ -756,6 +818,6 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
-  return { start, list, uiCatalog, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
+  return { start, list, uiCatalog, refreshUiCatalog, setUiGrant, readSandboxAsset, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
 }
 

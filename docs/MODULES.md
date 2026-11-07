@@ -11,11 +11,11 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
-## WebUI Phase 4 当前状态
+## WebUI Phase 5 当前状态
 
-现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，外部仅 status/schema renderer，内置额外允许 builtin-react。拒绝未知字段/能力、重复 ID/hook、非法 componentKey、sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不 rescan、不读配置值；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
+现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，外部允许 status/schema 与显式授权的 sandbox renderer，内置额外允许 builtin-react。拒绝未知字段/能力、重复 ID/hook、非法 componentKey、越权 sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不重扫模块目录、不读配置值；隔离 UI 读取会校验公开资源；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
 
-核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。未来 actions/panel、未支持的 hook/renderer 组合与不可用配置保留禁用占位，不执行 sandbox；builtin-react 仅在 module.detail 查找编译期组件。
+核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。module.panel/detail 的 sandbox 经授权后仅在详情 iframe 中执行；actions、未支持的 hook/renderer 组合与不可用配置保留禁用占位；builtin-react 仅在 module.detail 查找编译期组件。
 
 reply-delivery、typing、reminders 使用 `legacy-core`（available:true），sample 使用 `module-file`（available:true）；均为 schemaVersion:1 并包含 module.config/schema surface。前三者从现有 `configInfo.groups` 按字段 `module` 归属读取表单，值来自全局 draft，以 `saveUiPatch({[path]:value})` 即时保存并显示既有保存状态，不访问 `/modules/config`。归属元数据只允许最多 64 字符的模块 ID 字符串，不包含配置值或新存储位置。
 
@@ -27,7 +27,7 @@ Phase 3A 精确归属：
 | builtin-typing | cognition.typing.enabled |
 | builtin-reminders | cognition.reminders.enabled、cognition.reminders.maxActive、cognition.reminders.minIntervalSeconds、cognition.reminders.maxIntervalSeconds、cognition.reminders.tickMs |
 
-系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；Phase 4 已开放外部声明式配置；iframe、沙箱与能力消息桥留待后续，外部同源 React 继续禁止。
+系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；Phase 4 已开放外部声明式配置；Phase 5 实现显式授权的 iframe 与最小消息桥，外部同源 React 继续禁止。
 
 
 Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 module.config/schema，无重复 hook。服务端冻结 `BUILTIN_COMPONENT_KEYS` 与客户端冻结 `BUILTIN_MODULE_UI` 编译期注册表一致：
@@ -40,6 +40,66 @@ Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 m
 | sample.preview | 当前配置草稿的示例消息，最多 200 字符，纯文本 |
 
 componentKey 必须匹配 `^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$` 且长度 ≤64；服务端拒绝未知 key、外部 builtin-react 和非 builtin-react 上的 componentKey。客户端先经 uiFor 校验来源、generation、revision、status 与描述，再查冻结表；未知 key 显示安全回退，外部从不渲染预览。组件只接收冻结的有界模块元数据、各自配置字段与只读 summary；不接收全局 draft、秘密、请求/保存回调或宿主 API。前三者从全局 draft 选择字段，sample 使用匹配模块的既有 editor.values；缺失配置显示未加载。无 DOM 注入、网络、副作用、动态 import/eval 或任意 slot。配置编辑器、存储键、默认值、实际值与保存流程保持；`/modules/ui` 仍只有元数据，componentKey 仅见于 builtin-react surface，无函数或路径。
+
+## 外部隔离 WebUI（Phase 5）
+
+外部自定义 HTML/React 仅能在显式授权的、不透明源 iframe 中执行。声明式配置编辑器继续由核心渲染，不经过 iframe。完整清单示例（`index.mjs` 可仅导出 `export function setup() {}`）：
+
+```json
+{
+  "id": "isolated-demo",
+  "entry": "index.mjs",
+  "permissions": ["ui:sandbox"],
+  "webui": {
+    "version": 1,
+    "sandbox": { "entry": "webui/index.html" },
+    "requestedCapabilities": ["ui.sandbox"],
+    "surfaces": [
+      { "id": "panel", "hook": "module.panel", "renderer": "sandbox" }
+    ]
+  }
+}
+```
+
+每模块最多一个 sandbox surface，只允许 module.panel 或 module.detail，均在核心「模块详情」内展示；不能含 componentKey。sandbox 必须同时声明 entry 和 requestedCapabilities，内置 sandbox、外部 builtin-react/componentKey 均拒绝。`ui:sandbox` 仅外部可声明，不暴露任何后端或宿主 API；缺少权限保留禁用说明。entry 最长 256 字符，必须是 `webui/` 下相对 `.html` 文件；路径段只允许 ASCII 字母数字、下划线、连字符及非首位点，最多 8 层公开路径，拒绝绝对路径、遍历、空段、反斜线、NUL、编码路径和点文件。
+
+`webui/index.html` 可使用内联经典脚本，自带 React 须预先打成公开静态资源；不能引用宿主 React 或在线 CDN。以下最小消息桥示例只在收到 init 后应答，`textContent` 保证通知文本不作为 HTML 解析：
+
+```html
+<!doctype html>
+<meta charset="utf-8">
+<title>隔离示例</title>
+<p id="status">等待核心初始化</p>
+<script>
+let bridge;
+addEventListener('message', (event) => {
+  const m = event.data;
+  if (event.source !== parent || !m || m.version !== 1 || m.type !== 'init' ||
+      typeof m.nonce !== 'string' || !/^[a-f0-9]{32}$/.test(m.nonce)) return;
+  bridge = { version: 1, nonce: m.nonce };
+  document.getElementById('status').textContent = m.module.id;
+  parent.postMessage({ ...bridge, type: 'ready' }, '*');
+  parent.postMessage({ ...bridge, type: 'resize', height: 240 }, '*');
+  parent.postMessage({ ...bridge, type: 'notify', text: '隔离界面已就绪' }, '*');
+});
+</script>
+```
+
+进入详情点击「启用隔离 WebUI」，确认外部脚本警告后，核心调用 `POST /onebot-qq/api/modules/ui/grant {id,enabled:true}`。授权原子保存到 `data/modules/state.json` 的 uiGrants（键为模块 id，值含 id/uiRevision/entry/artifactHash）；原 disabled/enabled 保持兼容，写入失败不改变授权。仅有效外部 sandbox 描述及 ui:sandbox 权限可授权/撤销。授权绑定规范化描述的 SHA-256、entry 和全部公开 UI 文件的路径/长度/内容 SHA-256；修改描述、入口或公开文件后原授权失效。每次 HTTP UI 目录读取及资源请求重新检查公开文件；检测变化或不可读后在内存中关闭 UI，需重载；若资源或描述绑定已变化，还需重新授权。无 import、配置读取或整个模块重新扫描。未声明 UI/未授权/无效资源显示固定原因，目录仅在有效授权时返回 `grantedCapabilities:['ui.sandbox']`。
+
+「撤销」确认后删除授权、移除当前详情的 iframe，配置与后端运行不变；停用模块保留授权，只禁止 UI 资源服务。重载/重新激活以及授权修改使用新的 generation，旧 URL 404；停用保留 generation，但资源请求被拒绝。授权不会因普通重载而消失，但描述或资源哈希改变时必须重新确认。配置保存不改变 UI 修订或授权。其它已打开页面在刷新/离开时卸载旧 frame；已下载的脚本无法由服务器追溯擦除，撤销立即阻断后续资源请求。
+
+资源唯一入口为 `GET/HEAD /onebot-qq/module-ui/<id>/<generation>/<公开路径>`，只能读取当前 loaded、enabled、有有效授权的外部模块 `webui/`。允许 `.html .js .css .png .jpg .jpeg .webp`，按扩展名固定 MIME，并发送 nosniff、no-store、no-referrer。拒绝目录列表、点文件、config/data 路径段、JSON/配置文件、source map、任何符号链接（含指向目录内的链接）、编码遍历与路径逃逸；realpath 必须包含于模块公开目录。最多 128 个公开文件、单文件 2 MiB、总计 8 MiB、256 个树节点；校验后直接发送同一份有界读取的字节。失败均为无路径 404，非 GET/HEAD 同样 404。宿主 REST API 拒绝 Origin:null 和浏览器 iframe/脚本/图片等子资源目的地，避免隔离页通过这些请求使用宿主端点；普通核心 fetch、same-origin 图片预览与非浏览器调用保持。
+
+每个资源响应都强制以下 CSP（直接打开 HTML 也受 sandbox 约束）：
+
+```text
+sandbox allow-scripts; default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'
+```
+
+iframe 固定 `sandbox="allow-scripts" referrerpolicy="no-referrer"`，无 allow-same-origin/forms/popups/top-navigation/downloads。父到 frame 的 v1 init 使用每次 load 新生成的 128-bit nonce，只含 id/generation/uiRevision 等非秘密元数据；不传配置、Cookie、全局 draft、宿主对象或调用函数。父只接受来自当前 contentWindow、origin:null、相同 nonce/version 的 ready/resize/notify，拒绝额外字段、未知类型和旧 frame；ready 限时 10 秒，resize 仅整数 120–1000 px，notify 为 1–200 UTF-16 字符的纯文本、拒绝控制字符、每次 load 最多 20 次，固定字段使有效消息小于 1 KiB。不支持配置保存、fetch 代理、命令或 DSH slots。重载/卸载清理监听器与计时器。
+
+**威胁模型与限制**：假设外部 HTML/脚本不可信，依靠浏览器 sandbox/CSP 和窄消息桥隔离宿主 DOM、Cookie、配置与 API；不允许外部同源 React，不新增 DSH 注册。后端仍是操作员安装的同进程 Node.js，不能防御恶意后端、管理员修改状态文件、并发恶意文件系统替换、浏览器漏洞或 iframe CPU/内存耗尽。公开目录只放适合展示的非秘密资源，不提供网络、持久化存储、worker、表单或下载能力。自身 frame 导航不是完整的网络隔离；不把这些约束描述成操作系统或网络沙箱。严格 CSP 下的 opaque-origin 外链脚本/ES module、字体等可能被浏览器阻止，建议内联经典脚本或自包含 bundle，不为兼容而放宽 connect-src 或 sandbox。Node 单测覆盖服务端头与客户端契约，**真实浏览器 sandbox/CSP/资源加载尚未验证**；本阶段无浏览器自动化、推送、部署、版本、tag 或发布。
 
 ## 最终边界（Phase 14）
 
@@ -87,10 +147,10 @@ componentKey 必须匹配 `^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$` 且长�
 `<数据目录>/modules/state.json` 的原子持久化格式：
 
 ```json
-{ "disabled": ["echo"], "enabled": ["builtin-sample"] }
+{ "disabled": ["echo"], "enabled": ["builtin-sample"], "uiGrants": {} }
 ```
 
-兼容旧的 `{disabled}`，文件缺失或损坏按空状态处理。外部有效状态为 `manifestEnabled && !disabled.has(id)`，enabled 列表不能越过清单上限。内置先看 disabled（关闭），再看 enabled（开启），否则使用静态描述符的 defaultEnabled。启停操作先成功持久化新状态，再变更内存与运行资源；写入失败返回安全错误，原运行状态保持。此状态在重启后保留。
+uiGrants 为独立 UI 授权，详见下文；启停写入保留授权。兼容旧的 `{disabled}`，文件缺失或损坏按空状态处理。外部有效状态为 `manifestEnabled && !disabled.has(id)`，enabled 列表不能越过清单上限。内置先看 disabled（关闭），再看 enabled（开启），否则使用静态描述符的 defaultEnabled。启停操作先成功持久化新状态，再变更内存与运行资源；写入失败返回安全错误，原运行状态保持。此状态在重启后保留。
 
 ## 入口导出
 
@@ -385,7 +445,7 @@ export function setup(api) {
 
 外部 webui 的 `available:true` 必须同时具有有效顶层 config schema、`binding:'module-file'`、`schemaVersion:1`；`module.config` / schema surface 也必须有有效顶层 schema。否则整个 UI 描述符回退为不可用并给出固定 `MODULE_UI_INVALID`，有效后端仍可加载。仅有 config 而无 webui 时仍支持配置 API，但不自动开放 UI 编辑器。没有 schema 时 `hasConfig:false`，GET/POST `/modules/config` 返回 `MODULE_CONFIG_UNAVAILABLE`。字段只有 enabled 且 loaded 时可编辑，关闭、error、blocked 或 loading 时只读；服务端沿用原有关闭时也可读写的配置 API 语义。
 
-外部徽章仍为「外部声明式（无执行权限）」，这里指 WebUI。外部 componentKey、builtin-react、sandbox 声明仍拒绝，没有外部 React、可执行 WebUI、新 DSH slot 或 iframe。**尚未实现沙箱**：隔离加载、iframe、能力授权、消息桥、执行器及其安全验证均为后续独立工作。后端 JS 仍是操作员安装的同进程代码；文件检查不是面对并发恶意文件系统修改的进程隔离，revision 也不是跨进程锁。
+未声明 sandbox 的外部徽章仍为「外部声明式（无执行权限）」，这里指 WebUI；声明合法 sandbox 时显示「外部隔离 WebUI」。外部 componentKey、builtin-react 继续拒绝；Phase 5 只允许下文显式授权的隔离 iframe，无外部同源 React 或新 DSH slot。后端 JS 仍是操作员安装的同进程代码；文件检查不是面对并发恶意文件系统修改的进程隔离，revision 也不是跨进程锁。
 
 
 ## 生命周期与故障隔离
@@ -403,10 +463,11 @@ export function setup(api) {
 | 路由 | 响应/行为 |
 |---|---|
 | `GET /modules` | `{ok:true,items,summary:{builtin,external}}`；summary 是目录数量，包含关闭/错误项 |
-| `GET /modules/ui` | `{ok:true,version:1,catalogRevision,items}`；每项含 moduleId/source/trust/generation/uiRevision/status、config 绑定元数据、surfaces、空 requestedCapabilities/grantedCapabilities、uiWarning，不含配置值或文件路径 |
+| `GET /modules/ui` | `{ok:true,version:1,catalogRevision,items}`；每项含 moduleId/source/trust/generation/uiRevision/status、config 绑定元数据、surfaces、requestedCapabilities/grantedCapabilities、可选 sandbox 的公开相对 entry/available/reason、uiWarning，不含配置值或私有文件路径 |
+| `POST /modules/ui/grant {id,enabled}` | 仅有效外部 sandbox + ui:sandbox；原子保存绑定授权，失败 MODULE_UI_UNAVAILABLE / MODULE_UI_WRITE_FAILED |
 | `POST /modules/reload {id}` | 外部返回 `{ok:true,item}`；内置返回 `{ok:false,code:"MODULE_BUILTIN_RELOAD",message}` |
 | `POST /modules/toggle {id,enabled}` | 两种来源均支持；清单上限返回 `MODULE_MANIFEST_DISABLED`，状态保存失败返回 `MODULE_STATE_WRITE_FAILED` |
-| `GET /modules/config?id=<id>` | 仅声明配置的内置模块：`{ok:true,id,schema,values,revision}` |
+| `GET /modules/config?id=<id>` | 声明有效配置的内置/外部模块：`{ok:true,id,schema,values,revision}` |
 | `POST /modules/config {id,values,revision}` | 校验、原子保存、通知后返回与 GET 相同形状；过期返回 `MODULE_CONFIG_CONFLICT` |
 
 公开记录保留 id/name/version/description/permissions/enabled/status/error/loadedAt，新增 source/builtin/apiVersion/requires/canReload/canToggle/hasConfig/configWarning，以及用于匹配 UI 目录的 generation/uiRevision，不返回绝对路径。配置错误统一 `{ok:false,code,message}`：字段/revision 无效为 `MODULE_CONFIG_INVALID`，不可用为 `MODULE_CONFIG_UNAVAILABLE`，写入失败为 `MODULE_CONFIG_WRITE_FAILED`；消息不含存储绝对路径。status 可为 disabled/loading/loaded/error/blocked；动作 `ok:true` 表示请求处理完成，仍需检查 item.status 是否实际 loaded。

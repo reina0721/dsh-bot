@@ -7419,6 +7419,61 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       })
     }
 
+    function validSandboxUiEntry(entry) {
+      return typeof entry === 'string' && entry.length <= 256 && entry.startsWith('webui/') && entry.endsWith('.html') && entry.split('/').length <= 9 && entry.split('/').every((part) => /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/.test(part))
+    }
+
+    // Opaque frames have origin "null"; source + fresh nonce identify this load.
+    function attachSandboxBridge(frame, metadata, callbacks, host = window) {
+      const source = frame.contentWindow
+      const random = new Uint8Array(16)
+      host.crypto.getRandomValues(random)
+      const nonce = Array.from(random, (byte) => byte.toString(16).padStart(2, '0')).join('')
+      let active = true, ready = false, notifications = 0
+      const stop = () => { active = false; host.removeEventListener('message', receive); host.clearTimeout(timer) }
+      const receive = (event) => {
+        if (!active || !callbacks.current() || frame.contentWindow !== source || event.source !== source || event.origin !== 'null') return
+        const data = event.data
+        if (!isPlainObject(data) || data.version !== 1 || data.nonce !== nonce || !['ready', 'resize', 'notify'].includes(data.type)) return
+        const allowed = ['version', 'nonce', 'type', ...(data.type === 'resize' ? ['height'] : data.type === 'notify' ? ['text'] : [])]
+        if (Object.keys(data).some((key) => !allowed.includes(key))) return
+        if (data.type === 'ready') { ready = true; host.clearTimeout(timer); return }
+        if (!ready) return
+        if (data.type === 'resize' && Number.isInteger(data.height) && data.height >= 120 && data.height <= 1000) callbacks.resize(data.height)
+        if (data.type === 'notify' && typeof data.text === 'string' && data.text.length > 0 && data.text.length <= 200 && !/[\u0000-\u0008\u000b-\u001f\u007f]/.test(data.text) && notifications < 20) {
+          notifications++
+          callbacks.notify(data.text)
+        }
+      }
+      const timer = host.setTimeout(stop, 10000)
+      host.addEventListener('message', receive)
+      // '*' is required for an opaque target. This contains no secrets or capabilities.
+      try {
+        source.postMessage({ version: 1, type: 'init', nonce, module: { id: String(metadata.id).slice(0, 64), generation: String(metadata.generation).slice(0, 64), uiRevision: String(metadata.uiRevision).slice(0, 64) } }, '*')
+      } catch (error) { stop(); throw error }
+      return stop
+    }
+
+    function SandboxModuleFrame({ item, entry, toast }) {
+      const frame = useRef(null), cleanup = useRef(null), mounted = useRef(true)
+      const [height, setHeight] = useState(320)
+      useEffect(() => { mounted.current = true; return () => { mounted.current = false; cleanup.current?.(); cleanup.current = null } }, [])
+      return h('iframe', {
+        ref: frame, title: '隔离 WebUI · ' + String(item.id),
+        src: '/onebot-qq/module-ui/' + encodeURIComponent(item.id) + '/' + encodeURIComponent(item.generation) + '/' + entry.slice('webui/'.length),
+        sandbox: 'allow-scripts', referrerPolicy: 'no-referrer',
+        style: { width: '100%', height: height + 'px', border: 0 },
+        onLoad: () => {
+          cleanup.current?.()
+          if (!mounted.current || !frame.current) return
+          try {
+            const current = frame.current
+            cleanup.current = attachSandboxBridge(current, item, { current: () => mounted.current && frame.current === current, resize: setHeight, notify: (text) => toast?.(text, 'info') })
+          } catch { cleanup.current = null }
+        },
+      })
+    }
+
     function ModulesPage(props) {
       const [items, setItems] = useState([])
       const [loading, setLoading] = useState(true)
@@ -7433,7 +7488,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const uiFor = (item) => {
         const ui = safeArray(uiCatalog?.items).find((row) => row?.moduleId === item.id)
         if (uiCatalog?.version !== 1 || !ui || ui.uiWarning || typeof item.uiRevision !== 'string' || typeof item.generation !== 'string' || ui.generation !== item.generation || ui.uiRevision !== item.uiRevision || ui.status !== item.status) return null
-        if (Object.keys(ui).some((key) => !['moduleId', 'source', 'trust', 'generation', 'uiRevision', 'status', 'config', 'surfaces', 'requestedCapabilities', 'grantedCapabilities', 'uiWarning'].includes(key))) return null
+        if (Object.keys(ui).some((key) => !['moduleId', 'source', 'trust', 'generation', 'uiRevision', 'status', 'config', 'surfaces', 'requestedCapabilities', 'grantedCapabilities', 'uiWarning', 'sandbox'].includes(key))) return null
         const source = item.builtin ? 'builtin' : 'external'
         if (item.source !== source || ui.trust !== source || ui.source !== source || !Array.isArray(ui.surfaces) || ui.surfaces.length > 5) return null
         const config = ui.config
@@ -7443,19 +7498,26 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         if (config.binding === 'none' && (config.available || config.schemaVersion !== null)) return null
         if (config.binding === 'legacy-core' && source !== 'builtin') return null
         if (source === 'external' && config.available && (!item.hasConfig || config.binding !== 'module-file' || config.schemaVersion !== 1)) return null
-        if (!Array.isArray(ui.requestedCapabilities) || ui.requestedCapabilities.length || !Array.isArray(ui.grantedCapabilities) || ui.grantedCapabilities.length) return null
+        if (![ui.requestedCapabilities, ui.grantedCapabilities].every((caps) => Array.isArray(caps) && caps.length <= 1 && caps.every((cap) => cap === 'ui.sandbox'))) return null
+        if (ui.sandbox !== undefined) {
+          if (source !== 'external' || !isPlainObject(ui.sandbox) || Object.keys(ui.sandbox).some((key) => !['entry', 'available', 'reason'].includes(key)) || !validSandboxUiEntry(ui.sandbox.entry) || typeof ui.sandbox.available !== 'boolean' || typeof ui.sandbox.reason !== 'string' || ui.sandbox.reason.length > 200 || !ui.requestedCapabilities.includes('ui.sandbox')) return null
+        } else if (ui.requestedCapabilities.length || ui.grantedCapabilities.length) return null
+        if (ui.grantedCapabilities.length && (!ui.sandbox?.available || !safeArray(item.permissions).includes('ui:sandbox'))) return null
         const hooks = new Set(), ids = new Set()
+        let sandboxCount = 0
         for (const surface of ui.surfaces) {
           if (!surface || typeof surface.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(surface.id) || ids.has(surface.id) || hooks.has(surface.hook)) return null
           if (Object.keys(surface).some((key) => !['id', 'hook', 'renderer', 'order', 'componentKey'].includes(key))) return null
-          if (!['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'].includes(surface.hook) || !['status', 'schema', 'builtin-react'].includes(surface.renderer)) return null
+          if (!['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'].includes(surface.hook) || !['status', 'schema', 'builtin-react', 'sandbox'].includes(surface.renderer)) return null
           if (source === 'external' && surface.hook === 'module.config' && surface.renderer === 'schema' && !item.hasConfig) return null
+          if (surface.renderer === 'sandbox' && (source !== 'external' || !ui.sandbox || !['module.detail', 'module.panel'].includes(surface.hook) || ++sandboxCount > 1)) return null
           if (surface.renderer === 'builtin-react') {
             if (source !== 'builtin' || typeof surface.componentKey !== 'string' || surface.componentKey.length > 64 || !/^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$/.test(surface.componentKey)) return null
           } else if (Object.prototype.hasOwnProperty.call(surface, 'componentKey')) return null
           if (!Number.isInteger(surface.order) || surface.order < -100 || surface.order > 100) return null
           ids.add(surface.id); hooks.add(surface.hook)
         }
+        if (ui.sandbox && sandboxCount !== 1) return null
         return ui
       }
 
@@ -7551,7 +7613,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const badges = (item) => h('div', { className: 'ob-row' },
-        h(Badge, { tone: item.builtin ? 'brand' : 'muted' }, item.builtin ? '内置受信任' : '外部声明式（无执行权限）'),
+        h(Badge, { tone: item.builtin ? 'brand' : 'muted' }, item.builtin ? '内置受信任' : uiFor(item)?.sandbox ? '外部隔离 WebUI' : '外部声明式（无执行权限）'),
         h(Badge, { tone: item.status === 'loaded' ? 'ok' : ['error', 'blocked'].includes(item.status) ? 'err' : 'muted' }, String(item.status || 'unknown')),
         h(Badge, { tone: item.enabled ? 'brand' : 'muted' }, item.enabled ? '已启用' : '已停用'),
       )
@@ -7590,7 +7652,31 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         })),
         props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
       )
+      const grantSandbox = async (item, enabled) => {
+        if (busy || !window.confirm(enabled ? '启用隔离 WebUI？将运行此外部模块的 HTML/脚本。它不能读取宿主 DOM、Cookie、配置或 API；请先审核公开 UI 文件。' : '撤销隔离 WebUI 授权？界面将移除，模块配置保留。')) return
+        setBusy(item.id + ':grant')
+        try {
+          const result = await post('/modules/ui/grant', { id: item.id, enabled })
+          if (result?.ok !== true) throw new Error(String(result?.message || '隔离 UI 授权失败'))
+          // Unmount immediately, even if refreshing the directory fails.
+          setUiCatalog(null)
+          await refresh()
+        } catch (error) { props.toast?.(String(error.message || '隔离 UI 授权失败'), 'err') }
+        finally { setBusy('') }
+      }
       const renderSurface = (item, ui, surface) => {
+        if (surface.renderer === 'sandbox') {
+          const permitted = item.source === 'external' && !item.builtin && safeArray(item.permissions).includes('ui:sandbox')
+          const granted = permitted && ui.grantedCapabilities.includes('ui.sandbox')
+          const executable = granted && ui.sandbox.available && item.enabled === true && item.status === 'loaded'
+          return h('section', { key: surface.id, className: 'ob-stack', 'aria-label': '隔离 WebUI' },
+            h('h3', null, '隔离 WebUI'),
+            h('p', { className: 'ob-muted ob-small' }, '外部 HTML/脚本在不透明源 iframe 内运行；无宿主 DOM、Cookie、配置或 API 访问。'),
+            executable ? h(SandboxModuleFrame, { key: item.id + ':' + item.generation + ':' + item.uiRevision, item: { id: item.id, generation: item.generation, uiRevision: item.uiRevision }, entry: ui.sandbox.entry, toast: props.toast })
+              : h('p', { className: 'ob-muted ob-small' }, !permitted ? '缺少 ui:sandbox 权限' : ui.sandbox.reason || (!granted ? '未授权或授权已失效，请确认后启用隔离 WebUI' : '模块未启用或未加载，隔离 WebUI 已禁用')),
+            h(Btn, { small: true, kind: granted ? 'danger' : 'secondary', disabled: Boolean(busy) || !permitted || (!granted && !ui.sandbox.available), onClick: () => grantSandbox(item, !granted) }, granted ? '撤销' : '启用隔离 WebUI'),
+          )
+        }
         if (surface.hook === 'module.detail' && surface.renderer === 'builtin-react') {
           const Component = Object.prototype.hasOwnProperty.call(BUILTIN_MODULE_UI, surface.componentKey) ? BUILTIN_MODULE_UI[surface.componentKey] : null
           return h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
@@ -8305,6 +8391,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.MediaPage = MediaPage
     exports.ContentPage = ContentPage
     exports.ModulesPage = ModulesPage
+    exports.SandboxModuleFrame = SandboxModuleFrame
+    exports.attachSandboxBridge = attachSandboxBridge
     exports.BackupPage = BackupPage
     exports.SecurityPage = SecurityPage
     // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`

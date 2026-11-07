@@ -2319,3 +2319,140 @@ test('ModulesPage Phase 3B: missing or oversized config stays bounded and module
     if (!editor || editor.id !== item.id) assert.match(JSON.stringify(preview.type(preview.props)), /未加载配置/)
   }
 })
+
+test('ModulesPage sandbox: grant fallback/confirmation, external loaded gating and iframe attributes', async () => {
+  let item = { id: 'sandbox-test', name: '隔离测试', builtin: false, source: 'external', permissions: ['ui:sandbox'], enabled: true, status: 'loaded', generation: 'generation', uiRevision: 'revision', canToggle: true }
+  let granted = false
+  const ui = () => moduleUi(item, { surfaces: [{ id: 'panel', hook: 'module.panel', renderer: 'sandbox', order: 0 }], sandbox: { entry: 'webui/index.html', available: true, reason: granted ? '' : '未授权或授权已失效' }, requestedCapabilities: ['ui.sandbox'], grantedCapabilities: granted ? ['ui.sandbox'] : [] })
+  const session = { values: [[item], false, '', '', null, '', moduleCatalog(ui()), '', item.id], index: 0 }
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast() {} }) } finally { hookSession = null } }
+  const original = globalThis.fetch, confirm = window.confirm, calls = [], prompts = []
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, method: init.method, body: init.body ? JSON.parse(init.body) : undefined })
+    if (path.endsWith('/grant')) { granted = JSON.parse(init.body).enabled; item = { ...item, generation: 'new-generation' }; return { ok: true, json: async () => ({ ok: true }) } }
+    return { ok: true, json: async () => path.endsWith('/modules/ui') ? moduleCatalog(ui()) : { ok: true, items: [item] } }
+  }
+  try {
+    assert.match(JSON.stringify(render()), /未授权或授权已失效/)
+    assert.equal(treeNodes(render()).some((node) => node.type === panel.SandboxModuleFrame), false)
+    window.confirm = (text) => { prompts.push(text); return false }
+    await moduleControl(render(), '启用隔离 WebUI').props.onClick()
+    assert.deepEqual(calls, []); assert.match(prompts[0], /HTML\/脚本.*DOM.*Cookie.*API/)
+    window.confirm = () => true
+    await moduleControl(render(), '启用隔离 WebUI').props.onClick()
+    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/modules/ui/grant', method: 'POST', body: { id: item.id, enabled: true } })
+    const component = treeNodes(render()).find((node) => node.type === panel.SandboxModuleFrame)
+    assert.ok(component)
+    assert.deepEqual(Object.keys(component.props.item).sort(), ['generation', 'id', 'uiRevision'])
+    const iframe = component.type(component.props)
+    assert.equal(iframe.type, 'iframe'); assert.equal(iframe.props.sandbox, 'allow-scripts'); assert.equal(iframe.props.referrerPolicy, 'no-referrer')
+    assert.equal(iframe.props.src, '/onebot-qq/module-ui/sandbox-test/new-generation/index.html')
+    assert.equal(iframe.props.srcDoc, undefined); assert.equal(iframe.props.allow, undefined)
+    for (const patch of [{ enabled: false }, { status: 'disabled' }, { status: 'blocked' }, { permissions: [] }, { builtin: true, source: 'builtin' }]) {
+      const changed = { ...item, ...patch }
+      session.values[0] = [changed]
+      assert.equal(treeNodes(render()).some((node) => node.type === panel.SandboxModuleFrame), false)
+    }
+    session.values[0] = [item]
+    await moduleControl(render(), '撤销').props.onClick()
+    assert.equal(granted, false)
+    assert.equal(treeNodes(render()).some((node) => node.type === panel.SandboxModuleFrame), false)
+    // List never instantiates external frames.
+    session.values[8] = ''
+    assert.equal(treeNodes(render()).some((node) => node.type === panel.SandboxModuleFrame), false)
+  } finally { globalThis.fetch = original; window.confirm = confirm }
+})
+
+test('ModulesPage sandbox: malformed catalog or missing permission never mounts a frame', () => {
+  const item = { id: 'sandbox-test', builtin: false, source: 'external', permissions: ['ui:sandbox'], enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
+  const base = moduleUi(item, { sandbox: { entry: 'webui/index.html', available: true, reason: '' }, surfaces: [{ id: 'panel', hook: 'module.panel', renderer: 'sandbox', order: 0 }], requestedCapabilities: ['ui.sandbox'], grantedCapabilities: ['ui.sandbox'] })
+  for (const patch of [
+    { sandbox: { ...base.sandbox, entry: '../index.html' } }, { sandbox: { ...base.sandbox, entry: 'webui/a\\index.html' } },
+    { sandbox: { ...base.sandbox, url: 'https://evil/' } }, { sandbox: { ...base.sandbox, available: false } },
+    { requestedCapabilities: [] }, { grantedCapabilities: ['host.api'] }, { generation: 'old' },
+    { surfaces: [{ ...base.surfaces[0], componentKey: 'sample.preview' }] },
+    { surfaces: [{ ...base.surfaces[0], hook: 'module.card' }] },
+    { surfaces: [...base.surfaces, { id: 'detail', hook: 'module.detail', renderer: 'sandbox', order: 1 }] },
+  ]) {
+    stateOverrides = [[item], false, '', '', null, '', moduleCatalog({ ...base, ...patch }), '', item.id]
+    try {
+      const tree = panel.ModulesPage({})
+      assert.equal(treeNodes(tree).some((node) => node.type === panel.SandboxModuleFrame), false)
+      assert.match(JSON.stringify(tree), /UI 描述不可用/)
+    } finally { stateOverrides = null }
+  }
+  stateOverrides = [[{ ...item, permissions: [] }], false, '', '', null, '', moduleCatalog({ ...base, grantedCapabilities: [] }), '', item.id]
+  try {
+    const tree = panel.ModulesPage({})
+    assert.match(JSON.stringify(tree), /缺少 ui:sandbox 权限/)
+    assert.equal(moduleControl(tree, '启用隔离 WebUI').props.disabled, true)
+  } finally { stateOverrides = null }
+})
+
+test('sandbox bridge: nonce/source/version/type, forged/stale/oversize messages, bounded callbacks and cleanup', () => {
+  const listeners = new Set(), timers = new Map(), posted = [], resized = [], notices = []
+  let random = 0, current = true
+  const host = {
+    crypto: { getRandomValues(bytes) { bytes.fill(++random) } },
+    addEventListener(type, fn) { assert.equal(type, 'message'); listeners.add(fn) },
+    removeEventListener(type, fn) { listeners.delete(fn) },
+    setTimeout(fn, delay) { assert.equal(delay, 10000); const id = timers.size + 1; timers.set(id, fn); return id },
+    clearTimeout(id) { timers.delete(id) },
+  }
+  const frame = { contentWindow: { postMessage(data, origin) { posted.push({ data, origin }) } } }
+  const metadata = { id: 'external', generation: 'g', uiRevision: 'r', config: { secret: 'must-not-send' } }
+  const callbacks = { current: () => current, resize: (h) => resized.push(h), notify: (text) => notices.push(text) }
+  const stop = panel.attachSandboxBridge(frame, metadata, callbacks, host)
+  const init = posted[0].data
+  assert.equal(posted[0].origin, '*'); assert.match(init.nonce, /^[a-f0-9]{32}$/)
+  assert.deepEqual(init.module, { id: 'external', generation: 'g', uiRevision: 'r' }); assert.doesNotMatch(JSON.stringify(init), /secret|config/)
+  const send = (data, patch = {}) => { for (const fn of listeners) fn({ source: frame.contentWindow, origin: 'null', data: { version: 1, nonce: init.nonce, ...data }, ...patch }) }
+  send({ type: 'resize', height: 400 }); assert.deepEqual(resized, [])
+  for (const patch of [{ source: {} }, { origin: 'https://host.local' }]) send({ type: 'ready' }, patch)
+  for (const data of [{ type: 'ready', nonce: 'forged' }, { type: 'ready', version: 2 }, { type: 'ready', secret: 'extra' }, { type: 'fetch' }]) send(data)
+  send({ type: 'resize', height: 400 }); assert.deepEqual(resized, [])
+  send({ type: 'ready' }); assert.equal(timers.size, 0)
+  for (const height of [-1, 119, 1001, Infinity, '400', 400.5]) send({ type: 'resize', height })
+  for (const text of ['', 'x'.repeat(201), '\0secret', {}, ['text']]) send({ type: 'notify', text })
+  send({ type: 'resize', height: 500, url: '/api' })
+  assert.deepEqual(resized, []); assert.deepEqual(notices, [])
+  send({ type: 'resize', height: 500 }); send({ type: 'notify', text: '<b>plain text</b>' })
+  assert.deepEqual(resized, [500]); assert.deepEqual(notices, ['<b>plain text</b>'])
+  current = false; send({ type: 'resize', height: 600 }); assert.deepEqual(resized, [500])
+  current = true
+  const saved = frame.contentWindow; frame.contentWindow = {}
+  send({ type: 'notify', text: 'stale window' }, { source: saved }); assert.equal(notices.length, 1)
+  frame.contentWindow = saved
+  stop(); stop(); assert.equal(listeners.size, 0); assert.equal(timers.size, 0)
+  const stopNew = panel.attachSandboxBridge(frame, metadata, callbacks, host)
+  assert.notEqual(posted[1].data.nonce, init.nonce)
+  send({ type: 'ready' }); send({ type: 'notify', text: 'old nonce' }); assert.equal(notices.length, 1)
+  const timer = [...timers.values()][0]; timer(); assert.equal(listeners.size, 0); assert.equal(timers.size, 0)
+  stopNew()
+})
+
+test('sandbox iframe: repeated loads rotate bridge and unmount removes listener/timeouts', () => {
+  const effect = reactShim.useEffect, host = { crypto: window.crypto, add: window.addEventListener, remove: window.removeEventListener, timeout: window.setTimeout, clear: window.clearTimeout }
+  const listeners = new Set(), timers = new Set(), posted = []
+  let unmount, count = 0
+  try {
+    reactShim.useEffect = (fn) => { unmount = fn() }
+    window.crypto = { getRandomValues(bytes) { bytes.fill(++count) } }
+    window.addEventListener = (type, fn) => listeners.add(fn)
+    window.removeEventListener = (type, fn) => listeners.delete(fn)
+    window.setTimeout = (fn) => { timers.add(fn); return fn }
+    window.clearTimeout = (fn) => timers.delete(fn)
+    // Factory captures hooks, so create this instance with the effect-aware shim.
+    const component = registration.factory(requireShim).SandboxModuleFrame
+    const iframe = component({ item: { id: 'external', generation: 'g', uiRevision: 'r' }, entry: 'webui/index.html' })
+    iframe.props.ref.current = { contentWindow: { postMessage(data) { posted.push(data) } } }
+    iframe.props.onLoad(); assert.equal(listeners.size, 1); assert.equal(timers.size, 1)
+    iframe.props.onLoad(); assert.equal(listeners.size, 1); assert.equal(timers.size, 1)
+    assert.notEqual(posted[0].nonce, posted[1].nonce)
+    unmount(); assert.equal(listeners.size, 0); assert.equal(timers.size, 0)
+    iframe.props.onLoad(); assert.equal(listeners.size, 0)
+  } finally {
+    reactShim.useEffect = effect
+    window.crypto = host.crypto; window.addEventListener = host.add; window.removeEventListener = host.remove; window.setTimeout = host.timeout; window.clearTimeout = host.clear
+  }
+})

@@ -450,7 +450,7 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   assert.equal(reload.status, 200)
   assert.deepEqual(reload.json, { ok: false, code: 'MODULE_BUILTIN_RELOAD', message: '内置模块不能重载' })
   assert.equal((await postJson(fake, '/modules/toggle', { id: sample.id, enabled: true })).item.status, 'loaded')
-  assert.deepEqual(JSON.parse(await readFile(join(dir, 'modules', 'state.json'), 'utf8')), { disabled: [], enabled: [sample.id] })
+  assert.deepEqual(JSON.parse(await readFile(join(dir, 'modules', 'state.json'), 'utf8')), { disabled: [], enabled: [sample.id], uiGrants: {} })
   assert.equal((await postJson(fake, '/modules/toggle', { id: sample.id, enabled: false })).item.status, 'disabled')
 
   const backup = await getJson(fake, '/backup')
