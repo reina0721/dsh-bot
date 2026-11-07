@@ -57,6 +57,8 @@ ProviderOwnership = {
 }
 ```
 
+受信任内置模块成功 setup 是已观察到的健康空闲，启动报告不增加业务运行/成功计数；媒体操作单独记录成功/失败。未埋点外部模块仍为 unknown，停止仍为 stopped。
+
 `health` 含义固定：`unknown` 为尚无足够遥测；`healthy` 为已观察正常或合法空闲；`degraded` 为部分能力受限（如预期 provider 未接管）；`unhealthy` 为已观察业务故障；`stopped` 为确认没有活动 runtime。`error/blocked` 可以没有 runtime，界面仍必须展示 lifecycle 故障，不能只显示 stopped。不能根据一段时间无成功、业务关闭或一个 timer 存在就推断失败或正常；健康阈值只能来自各受信适配器的固定规则。
 
 `null` 表示未知、未观察或不适用，不能转换为 `0`、`false`、空字符串或当前时间。`inFlight:0` 表示明确观察到零；`timerScheduled:false` 表示确认无 timer；`nextRunAt:null` 不证明调度已停。未运行时 `runtimeGeneration:null`；已确认停止为 `health:stopped`，但没有 telemetry 来源的字段仍为 null。无 provider 的模块为 `providers:[]`，不虚构槽位。时间戳只在实际事件时更新，GET 不刷新 `observedAt`。公共故障码来自核心固定白名单（例如 `MODULE_DISABLED`、`DEPENDENCY_BLOCKED`、`PROVIDER_UNAVAILABLE`、`BUSINESS_DISABLED`、`STOP_PENDING`），未知错误归一为固定 `MODULE_HEALTH_UNKNOWN`；不返回原异常文本/堆栈、路径或内容。

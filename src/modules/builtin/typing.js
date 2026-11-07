@@ -13,4 +13,5 @@ export function setup(api) {
     onStart: (context) => setStatus(context, 1),
     onEnd: (context) => setStatus(context, 2),
   })
+  api.health?.report({ state: 'healthy', result: 'observation' })
 }

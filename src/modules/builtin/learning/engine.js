@@ -78,6 +78,7 @@ export function createLearningEngine({ port, getConfig, scheduler, health } = {}
       port.enqueueAuto({ unknownRef, plan: [`「${surface}」在当前语境中是什么意思？`, '来源/首次出现/常见用法是什么？', '是否存在反讽、圈层或争议用法？'] })
     })
     arm(30000, epoch)
+    health?.report({ state: 'healthy', result: 'observation' })
   }
   function stop() {
     active = false; generation++

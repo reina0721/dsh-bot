@@ -1,3 +1,4 @@
+import { reportEngine } from '../../health.js'
 import { createBilibiliService } from './bilibili.js'
 import { biliCommand, stickerCommand } from './commands.js'
 
@@ -10,7 +11,25 @@ export function createBuiltinMediaFeatures(api) {
     getConfig: () => { requireActive(); return { content: { bilibili: getConfig().bilibili } } },
     transport: port.bilibili,
   })
-  const bilibili = Object.freeze(Object.fromEntries(Object.entries(service).map(([name, method]) => [name, (...args) => { requireActive(); return method(...args) }])))
+  const bilibili = Object.freeze(Object.fromEntries(Object.entries(service).map(([name, method]) => [name, (...args) => {
+    requireActive()
+    reportEngine(api.health, 'started')
+    try {
+      const result = method(...args)
+      if (result && typeof result.then === 'function') return result.then(value => {
+        reportEngine(api.health, 'success')
+        return value
+      }, error => {
+        reportEngine(api.health, 'failure', 'MEDIA_OPERATION_FAILED')
+        throw error
+      })
+      reportEngine(api.health, 'success')
+      return result
+    } catch (error) {
+      reportEngine(api.health, 'failure', 'MEDIA_OPERATION_FAILED')
+      throw error
+    }
+  }])))
   function status() {
     const current = port.status() // Rechecks the owning runtime, including stale instances.
     const libraryReason = !active ? 'MODULE_DISABLED'
@@ -24,7 +43,7 @@ export function createBuiltinMediaFeatures(api) {
   const authorizeStickerLibrary = () => active && status().libraryAvailable
   const authorizeStickerSend = () => active && status().sendAvailable
   const engine = Object.freeze({
-    start() { active = true },
+    start() { active = true; api.health?.report({ state: 'healthy', result: 'observation' }) },
     stop() { active = false },
     status,
     authorizeStickerLibrary, authorizeStickerSend, bilibili,

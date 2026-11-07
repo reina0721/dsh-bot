@@ -708,7 +708,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (cleanup) runtime.disposers.push(cleanup)
       record.status = 'loaded'
       record.health.phase = 'active'
-      if (record.health.reasonCode === 'MODULE_LOADING') observeHealth(record.health, { state: 'unknown' })
+      // Successful trusted setup is an idle observation, not a completed business run.
+      if (record.health.reasonCode === 'MODULE_LOADING') observeHealth(record.health, { state: record.builtin ? 'healthy' : 'unknown' })
       touchHealth()
       record.error = ''
       record.loadedAt = Date.now()

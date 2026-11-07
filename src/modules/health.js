@@ -7,7 +7,7 @@ export const REASON_CODES = Object.freeze([
   'NO_PROVIDER', 'STOP_PENDING', 'BUSINESS_DISABLED', 'QUIET_HOURS', 'BUDGET_EXHAUSTED',
   'NO_CANDIDATE', 'NO_TASK', 'BUSY', 'BACKOFF', 'RUN_CANCELLED', 'ENGINE_FAILED',
   'REMINDER_TICK_FAILED', 'PROACTIVITY_RUN_FAILED', 'LEARNING_RUN_FAILED', 'TYPING_STATUS_FAILED',
-  'REPLY_PLAN_FAILED', 'SCHEDULER_CALLBACK_FAILED', 'COMMAND_FAILED', 'EVENT_FAILED', 'CONFIG_LISTENER_FAILED',
+  'MEDIA_OPERATION_FAILED', 'REPLY_PLAN_FAILED', 'SCHEDULER_CALLBACK_FAILED', 'COMMAND_FAILED', 'EVENT_FAILED', 'CONFIG_LISTENER_FAILED',
 ])
 const codes = new Set(REASON_CODES)
 export const reasonCode = value => value == null ? null : codes.has(value) ? value : 'MODULE_HEALTH_UNKNOWN'
@@ -75,7 +75,7 @@ export function projectModuleHealth(record, providers = []) {
 }
 // Engine adapters map internal outcomes to this fixed public vocabulary.
 export function reportEngine(health, result, code = null) {
-  health?.report({ state: result === 'failure' ? 'degraded' : result === 'started' ? 'unknown' : 'healthy', result, reasonCode: code })
+  health?.report({ state: result === 'failure' ? 'degraded' : 'healthy', result, reasonCode: code })
 }
 export function createProviderHealth(name, expectedModuleId = null) {
   return { name, expectedModuleId, registeredModuleId: null, owner: null, ownerModuleId: null,

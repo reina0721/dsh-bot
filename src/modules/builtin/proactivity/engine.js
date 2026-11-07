@@ -82,6 +82,7 @@ export function createProactivityEngine({ port, getConfig, scheduler, health } =
     if (active) return
     active = true
     arm(300000, ++generation)
+    health?.report({ state: 'healthy', result: 'observation' })
   }
   function stop() {
     if (!active) return sendWork?.then(() => {}, () => {})
