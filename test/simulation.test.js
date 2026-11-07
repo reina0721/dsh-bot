@@ -10,8 +10,6 @@ import { createCapturingTransport, createFixtureSources, createVirtualScheduler 
 import { assembleServices } from '../src/services/assembly.js'
 import { createStore } from '../src/cognition/store.js'
 import { defaultConfig } from '../src/core/config.js'
-import { createRoutes } from '../src/http/routes.js'
-import { createFakeDsh } from './helpers/fake-dsh.js'
 
 const message = (requestId, text, chatType = 'private', extra = {}) => ({ requestId, kind: 'message', chatType, text, ...extra })
 const sends = state => state.captures.filter(row => row.action === 'send_private_msg' || row.action === 'send_group_msg')
@@ -231,40 +229,6 @@ test('reset/delete remove persona/session/store/timer state and do not revive pe
   assert.deepEqual(await readdir(root), [])
 })
 
-test('simulation backend has separate methods/paths, opaque-frame rejection and no identity/raw/config injection', async t => {
-  const { service } = await boot(t)
-  const fake = createFakeDsh()
-  createRoutes({ ctx: fake.ctx, simulations: service, getConfig: () => ({}), logger: { child() { return this } } })
-  const path = '/onebot-qq/api/simulations/'
-  let response = await fake.call(path + 'create', {}, { method: 'POST', headers: { origin: 'null' } })
-  assert.equal(response.status, 403)
-  response = await fake.call(path + 'create', {}, { method: 'GET' })
-  assert.equal(response.status, 405)
-  for (const input of [{ config: {} }, { personaId: 'live' }, { dataRoot: '../' }, { ownerQQ: '123' }, { model: { apiKey: 'secret' } }, { persona: { secret: 'secret' } }]) {
-    response = await fake.call(path + 'create', input, { method: 'POST' })
-    assert.equal(response.json.ok, false)
-  }
-  response = await fake.call(path + 'create', {}, { method: 'POST' })
-  assert.equal(response.json.environment, 'simulation')
-  const id = response.json.id
-  for (const extra of [{ userId: '123' }, { self_id: '123' }, { role: 'admin' }, { raw: { post_type: 'message' } }, { owner: true }, { sender: {} }]) {
-    response = await fake.call(path + 'events', { id, event: { ...message('rejected', 'hello'), ...extra } }, { method: 'POST' })
-    assert.equal(response.json.ok, false)
-  }
-  response = await fake.call(path + 'events', { id, event: message('ok', '你好！') }, { method: 'POST' })
-  assert.equal(response.json.accepted, true)
-  await fake.call(path + 'advance', { id, ms: 12000 }, { method: 'POST' })
-  response = await fake.call(path + 'state?id=' + id, undefined, { method: 'GET' })
-  assert.equal(response.json.captures.length, 1)
-  const blocked = await fake.call(path + 'state?id=' + id, undefined, { method: 'GET', headers: { 'sec-fetch-dest': 'iframe' } })
-  assert.equal(blocked.status, 403)
-  await fake.call(path + 'reset', { id }, { method: 'POST' })
-  response = await fake.call(path + 'state?id=' + id, undefined, { method: 'GET' })
-  assert.equal(response.json.captures.length, 0)
-  await fake.call(path + 'delete', { id }, { method: 'POST' })
-  response = await fake.call(path + 'state?id=' + id, undefined, { method: 'GET' })
-  assert.equal(response.json.ok, false)
-})
 
 test('one live apply coexists with simulation without live bus/store/persona/send/env/fetch/secret mutation', async t => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-simulation-live-'))
@@ -288,11 +252,13 @@ test('one live apply coexists with simulation without live bus/store/persona/sen
     for (const name of ['undici:request:create', 'http.client.request.start', 'net.client.socket']) channel(name).subscribe(() => networkRequests++);
     let realSends = 0;
     host.gateway.actions.sendMessage = () => { realSends++; throw new Error('LIVE_TRANSPORT_USED') };
-    const { id } = await host.simulations.create({ persona: { displayName: 'simulation-only' } });
-    await host.simulations.submit(id, { requestId: 'hi', kind: 'message', chatType: 'private', text: '你好！' });
-    await host.simulations.advance(id, 12000);
-    const state = await host.simulations.read(id);
-    assert.equal(state.captures.length, 1);
+    const call = async (action, body) => { const response = await fake.call('/onebot-qq/api/sandbox/chat/' + action, body); assert.equal(response.status, 200, response.text); return response.json };
+    const { id } = await call('create', { requestId: 'create' });
+    await call('event', { id, requestId: 'hi', event: { kind: 'message', chatType: 'private', text: '你好！' } });
+    const state = await call('advance', { id, requestId: 'advance', ms: 12000 });
+    assert.equal(state.captures.filter(row => row.action === 'send_private_msg').length, 1);
+    assert.ok(state.captures.every(row => row.realSend === false));
+    assert.equal(state.realSends, 0);
     assert.equal(networkRequests, 0); assert.equal(realSends, 0); assert.equal(fake.emitted.length, emitted);
     assert.equal(host.cognition.activePersonaId(), active);
     assert.equal(host.cognition.store.count('raw_event'), raw);

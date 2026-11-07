@@ -170,6 +170,9 @@ async function createGraph(root, namespace, options) {
         deliveryReceipts: scoped.list('delivery_receipt', { limit: 200 }).map(row => ({ ...row, environment: 'simulation', realSend: false })),
         loops: scoped.list('loop_run', { limit: 200 }),
         persona: graph.cognition.personaState(), sessions: runtime.sessions(),
+        configSnapshot: { model: 'fixture/offline', network: false, media: false, execution: false,
+          typing: options.typing === true, reminders: options.reminders === true,
+          access: copy(options.access || { private: true, group: true }) },
         notices: scoped.list('timeline_event', { limit: 200 }), requests: graph.cognition.services.notices.list(),
         stats: graph.cognition.snapshot().stats, counts: graph.cognition.snapshot().counts, access: graph.access.summary(),
       })

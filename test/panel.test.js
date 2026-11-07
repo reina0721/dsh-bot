@@ -2930,7 +2930,7 @@ test('C03 owner destinations partition every editable config field; module edito
   assert.equal(treeNodes(model).some(node => node.props?.['aria-label'] === '模型路由模式'), false)
 })
 
-test('C03 wide grouped rail, narrow drawer, search selection and typed sandbox placeholder', () => {
+test('C05 wide grouped rail, narrow drawer, search selection and mounted offline sandbox', () => {
   const targets = [], props = { navigation: { area: 'profiles', section: 'turn' }, goTo: target => targets.push(target), configInfo: { groups: CONFIG_GROUPS } }
   const render = mountNode({ type: panel.NavigationMenu, props })
   let tree = render()
@@ -2946,9 +2946,9 @@ test('C03 wide grouped rail, narrow drawer, search selection and typed sandbox p
   assert.deepEqual(targets.at(-1), contractGo('cognition.reply.split'))
   assert.equal(control(render(), '导航与搜索').props['aria-expanded'], false)
   for (const text of ['@media (max-width:900px)', '.ob-navigation.is-open', '.ob-nav-backdrop', 'grid-template-columns:240px minmax(0,1fr)']) assert.ok(panel.PANEL_CSS.includes(text))
-  const placeholder = JSON.stringify(panel.AreaContent({ navigation: { area: 'chat', section: 'sandbox' } }))
-  assert.match(placeholder, /尚无沙盒后端/)
-  assert.doesNotMatch(placeholder, /iframe|onClick/)
+  const sandbox = panel.AreaContent({ navigation: { area: 'chat', section: 'sandbox' } })
+  assert.equal(sandbox.type, panel.SandboxChat)
+  assert.equal(panel.TABS.length, 6)
 })
 
 function ownerHarness(props) {

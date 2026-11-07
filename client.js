@@ -46,7 +46,7 @@ window.__ModuleLoader__.load({
 
     // BEGIN SHARED NAVIGATION (scripts/sync-client-navigation.mjs)
     const DEFAULT_TARGET = {"area":"overview","section":"overview"}
-    const NAVIGATION_REGISTRY = [{"id":"overview","label":"Overview","sections":[{"id":"overview","components":["Overview"],"availability":"existing"}]},{"id":"chat","label":"Chat & Sandbox","sections":[{"id":"messages","components":["Messages"],"availability":"existing"},{"id":"sandbox","components":[],"availability":"planned"}]},{"id":"profiles","label":"Profiles","sections":[{"id":"overview","components":["CognitionTab"],"availability":"existing"},{"id":"library","components":["PersonaTab"],"availability":"existing"},{"id":"general","components":["CogSettings"],"availability":"existing"},{"id":"persona","components":["CogPersona"],"availability":"existing"},{"id":"models","components":["CogSettings"],"availability":"existing"},{"id":"turn","components":["CogSettings"],"availability":"existing"},{"id":"reply","components":["CogSettings"],"availability":"existing"},{"id":"persons","components":["CogPersons"],"availability":"existing"},{"id":"relationships","components":["CogRelationships"],"availability":"existing"},{"id":"memories","components":["CogMemories"],"availability":"existing"},{"id":"timeline","components":["CogTimeline"],"availability":"existing"},{"id":"emotion","components":["CogEmotion"],"availability":"existing"},{"id":"purpose","components":["CogPurpose"],"availability":"existing"},{"id":"policy","components":["CogPolicy"],"availability":"existing"},{"id":"proactivity","components":["CogProactivity"],"availability":"existing"},{"id":"loop","components":["CogLoop"],"availability":"existing"},{"id":"learning","components":["CogLearning"],"availability":"existing"},{"id":"skills","components":["CogSkills"],"availability":"existing"},{"id":"meta","components":["CogMeta"],"availability":"existing"},{"id":"settings","components":["CogSettings"],"availability":"existing"}]},{"id":"extensions","label":"Extensions","sections":[{"id":"modules","components":["ModulesPage"],"availability":"existing"},{"id":"module","components":["CoreModuleHealth","CoreModuleActions"],"availability":"module-dependent"}]},{"id":"data","label":"Data & Logs","sections":[{"id":"media","components":["MediaPage"],"availability":"existing"},{"id":"content","components":["ContentPage"],"availability":"existing"},{"id":"logs","components":["Logs"],"availability":"existing"},{"id":"events","components":["Messages"],"availability":"existing"},{"id":"backup","components":["BackupPage"],"availability":"existing"},{"id":"privacy","components":["CogSettings"],"availability":"existing"},{"id":"import","components":["CogSettings"],"availability":"existing"}]},{"id":"system","label":"System","sections":[{"id":"general","components":["ConfigTab"],"availability":"existing"},{"id":"connection","components":["Connect"],"availability":"existing"},{"id":"timeouts","components":["ConfigTab"],"availability":"existing"},{"id":"appearance","components":["SettingsTab"],"availability":"existing"},{"id":"security","components":["SecurityPage"],"availability":"existing"},{"id":"access","components":["ConfigTab"],"availability":"existing"},{"id":"runtime","components":["ConfigTab"],"availability":"existing"},{"id":"media","components":["ConfigTab"],"availability":"existing"},{"id":"models","components":["ModelTab"],"availability":"existing"},{"id":"diagnostics","components":["CogSettings"],"availability":"existing"},{"id":"about","components":["About"],"availability":"existing"}]}]
+    const NAVIGATION_REGISTRY = [{"id":"overview","label":"Overview","sections":[{"id":"overview","components":["Overview"],"availability":"existing"}]},{"id":"chat","label":"Chat & Sandbox","sections":[{"id":"messages","components":["Messages"],"availability":"existing"},{"id":"sandbox","components":["SandboxChat"],"availability":"existing"}]},{"id":"profiles","label":"Profiles","sections":[{"id":"overview","components":["CognitionTab"],"availability":"existing"},{"id":"library","components":["PersonaTab"],"availability":"existing"},{"id":"general","components":["CogSettings"],"availability":"existing"},{"id":"persona","components":["CogPersona"],"availability":"existing"},{"id":"models","components":["CogSettings"],"availability":"existing"},{"id":"turn","components":["CogSettings"],"availability":"existing"},{"id":"reply","components":["CogSettings"],"availability":"existing"},{"id":"persons","components":["CogPersons"],"availability":"existing"},{"id":"relationships","components":["CogRelationships"],"availability":"existing"},{"id":"memories","components":["CogMemories"],"availability":"existing"},{"id":"timeline","components":["CogTimeline"],"availability":"existing"},{"id":"emotion","components":["CogEmotion"],"availability":"existing"},{"id":"purpose","components":["CogPurpose"],"availability":"existing"},{"id":"policy","components":["CogPolicy"],"availability":"existing"},{"id":"proactivity","components":["CogProactivity"],"availability":"existing"},{"id":"loop","components":["CogLoop"],"availability":"existing"},{"id":"learning","components":["CogLearning"],"availability":"existing"},{"id":"skills","components":["CogSkills"],"availability":"existing"},{"id":"meta","components":["CogMeta"],"availability":"existing"},{"id":"settings","components":["CogSettings"],"availability":"existing"}]},{"id":"extensions","label":"Extensions","sections":[{"id":"modules","components":["ModulesPage"],"availability":"existing"},{"id":"module","components":["CoreModuleHealth","CoreModuleActions"],"availability":"module-dependent"}]},{"id":"data","label":"Data & Logs","sections":[{"id":"media","components":["MediaPage"],"availability":"existing"},{"id":"content","components":["ContentPage"],"availability":"existing"},{"id":"logs","components":["Logs"],"availability":"existing"},{"id":"events","components":["Messages"],"availability":"existing"},{"id":"backup","components":["BackupPage"],"availability":"existing"},{"id":"privacy","components":["CogSettings"],"availability":"existing"},{"id":"import","components":["CogSettings"],"availability":"existing"}]},{"id":"system","label":"System","sections":[{"id":"general","components":["ConfigTab"],"availability":"existing"},{"id":"connection","components":["Connect"],"availability":"existing"},{"id":"timeouts","components":["ConfigTab"],"availability":"existing"},{"id":"appearance","components":["SettingsTab"],"availability":"existing"},{"id":"security","components":["SecurityPage"],"availability":"existing"},{"id":"access","components":["ConfigTab"],"availability":"existing"},{"id":"runtime","components":["ConfigTab"],"availability":"existing"},{"id":"media","components":["ConfigTab"],"availability":"existing"},{"id":"models","components":["ModelTab"],"availability":"existing"},{"id":"diagnostics","components":["CogSettings"],"availability":"existing"},{"id":"about","components":["About"],"availability":"existing"}]}]
     const LEGACY_ALIASES = {"tab:overview":{"area":"overview","section":"overview"},"ob-tab-overview":{"area":"overview","section":"overview"},"ob-panel-overview":{"area":"overview","section":"overview"},"tab:connect":{"area":"system","section":"connection"},"ob-tab-connect":{"area":"system","section":"connection"},"ob-panel-connect":{"area":"system","section":"connection"},"tab:messages":{"area":"chat","section":"messages"},"ob-tab-messages":{"area":"chat","section":"messages"},"ob-panel-messages":{"area":"chat","section":"messages"},"tab:media":{"area":"data","section":"media"},"ob-tab-media":{"area":"data","section":"media"},"ob-panel-media":{"area":"data","section":"media"},"tab:content":{"area":"data","section":"content"},"ob-tab-content":{"area":"data","section":"content"},"ob-panel-content":{"area":"data","section":"content"},"tab:modules":{"area":"extensions","section":"modules"},"ob-tab-modules":{"area":"extensions","section":"modules"},"ob-panel-modules":{"area":"extensions","section":"modules"},"tab:backup":{"area":"data","section":"backup"},"ob-tab-backup":{"area":"data","section":"backup"},"ob-panel-backup":{"area":"data","section":"backup"},"tab:security":{"area":"system","section":"security"},"ob-tab-security":{"area":"system","section":"security"},"ob-panel-security":{"area":"system","section":"security"},"tab:config":{"area":"system","section":"general"},"ob-tab-config":{"area":"system","section":"general"},"ob-panel-config":{"area":"system","section":"general"},"tab:persona":{"area":"profiles","section":"library"},"ob-tab-persona":{"area":"profiles","section":"library"},"ob-panel-persona":{"area":"profiles","section":"library"},"tab:models":{"area":"system","section":"models"},"ob-tab-models":{"area":"system","section":"models"},"ob-panel-models":{"area":"system","section":"models"},"tab:settings":{"area":"system","section":"appearance"},"ob-tab-settings":{"area":"system","section":"appearance"},"ob-panel-settings":{"area":"system","section":"appearance"},"tab:cognition":{"area":"profiles","section":"overview"},"ob-tab-cognition":{"area":"profiles","section":"overview"},"ob-panel-cognition":{"area":"profiles","section":"overview"},"tab:logs":{"area":"data","section":"logs"},"ob-tab-logs":{"area":"data","section":"logs"},"ob-panel-logs":{"area":"data","section":"logs"},"tab:about":{"area":"system","section":"about"},"ob-tab-about":{"area":"system","section":"about"},"ob-panel-about":{"area":"system","section":"about"},"cognition:overview":{"area":"profiles","section":"overview"},"cognition:persona":{"area":"profiles","section":"persona"},"cognition:persons":{"area":"profiles","section":"persons"},"cognition:relationships":{"area":"profiles","section":"relationships"},"cognition:memories":{"area":"profiles","section":"memories"},"cognition:timeline":{"area":"profiles","section":"timeline"},"cognition:emotion":{"area":"profiles","section":"emotion"},"cognition:purpose":{"area":"profiles","section":"purpose"},"cognition:policy":{"area":"profiles","section":"policy"},"cognition:proactivity":{"area":"profiles","section":"proactivity"},"cognition:loop":{"area":"profiles","section":"loop"},"cognition:learning":{"area":"profiles","section":"learning"},"cognition:skills":{"area":"profiles","section":"skills"},"cognition:meta":{"area":"profiles","section":"meta"},"cognition:settings":{"area":"profiles","section":"settings"},"group:basic":{"area":"system","section":"general"},"group:endpoint":{"area":"system","section":"connection"},"group:snowluma":{"area":"system","section":"connection"},"group:timeouts":{"area":"system","section":"timeouts"},"group:events":{"area":"data","section":"events"},"group:logging":{"area":"data","section":"logs"},"group:ui":{"area":"system","section":"appearance"},"group:security":{"area":"system","section":"security"},"group:access":{"area":"system","section":"access"},"group:runtime":{"area":"system","section":"runtime"},"group:media":{"area":"system","section":"media"},"group:content":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"group:ops":{"area":"data","section":"backup"},"group:cog-core":{"area":"profiles","section":"general"},"group:cog-permissions":{"area":"system","section":"access"},"group:cog-reminders":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"group:cog-llm":{"area":"profiles","section":"models"},"group:cog-turn":{"area":"profiles","section":"turn"},"group:cog-reply":{"area":"profiles","section":"reply"},"group:cog-admin":{"area":"system","section":"access"},"group:cog-purpose":{"area":"profiles","section":"purpose"},"group:cog-persona":{"area":"profiles","section":"persona"},"group:cog-emotion":{"area":"profiles","section":"emotion"},"group:cog-relationship":{"area":"profiles","section":"relationships"},"group:cog-memory":{"area":"profiles","section":"memories"},"group:cog-import":{"area":"data","section":"import"},"group:cog-policy":{"area":"profiles","section":"policy"},"group:cog-learning":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"group:cog-proactivity":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"group:cog-privacy":{"area":"data","section":"privacy"},"settings:appearance":{"area":"system","section":"appearance","anchor":"appearance"},"settings:layout":{"area":"system","section":"appearance","anchor":"layout"},"settings:data":{"area":"system","section":"appearance","anchor":"data"},"settings:motion":{"area":"system","section":"appearance","anchor":"motion"},"settings:reset":{"area":"system","section":"appearance","anchor":"reset"},"module:builtin-learning":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-detail"},"module:builtin-proactivity":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-detail"},"module:builtin-media-features":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-detail"},"module:builtin-reminders":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-detail"},"module:builtin-typing":{"area":"extensions","section":"module","moduleId":"builtin-typing","anchor":"ob-module-detail"},"module:builtin-reply-delivery":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-detail"},"module:builtin-sample":{"area":"extensions","section":"module","moduleId":"builtin-sample","anchor":"ob-module-detail"},"ob-media-stickers":{"area":"data","section":"media","anchor":"ob-media-stickers"},"ob-cog-unknowns":{"area":"profiles","section":"learning","anchor":"ob-cog-unknowns"},"ob-cog-tasks":{"area":"profiles","section":"learning","anchor":"ob-cog-tasks"},"ob-cog-claims":{"area":"profiles","section":"learning","anchor":"ob-cog-claims"},"ob-module-detail":{"area":"extensions","section":"module","anchor":"ob-module-detail"},"ob-module-config":{"area":"extensions","section":"module","anchor":"ob-module-config"},"ob-module-panel":{"area":"extensions","section":"module","anchor":"ob-module-panel"},"ob-module-reminders":{"area":"extensions","section":"module","anchor":"ob-module-reminders"}}
     const LEGACY_TABS = {"overview":{"area":"overview","section":"overview"},"connect":{"area":"system","section":"connection"},"messages":{"area":"chat","section":"messages"},"media":{"area":"data","section":"media"},"content":{"area":"data","section":"content"},"modules":{"area":"extensions","section":"modules"},"backup":{"area":"data","section":"backup"},"security":{"area":"system","section":"security"},"config":{"area":"system","section":"general"},"persona":{"area":"profiles","section":"library"},"models":{"area":"system","section":"models"},"settings":{"area":"system","section":"appearance"},"cognition":{"area":"profiles","section":"overview"},"logs":{"area":"data","section":"logs"},"about":{"area":"system","section":"about"}}
     const LEGACY_COGNITION_SECTIONS = {"overview":{"area":"profiles","section":"overview"},"persona":{"area":"profiles","section":"persona"},"persons":{"area":"profiles","section":"persons"},"relationships":{"area":"profiles","section":"relationships"},"memories":{"area":"profiles","section":"memories"},"timeline":{"area":"profiles","section":"timeline"},"emotion":{"area":"profiles","section":"emotion"},"purpose":{"area":"profiles","section":"purpose"},"policy":{"area":"profiles","section":"policy"},"proactivity":{"area":"profiles","section":"proactivity"},"loop":{"area":"profiles","section":"loop"},"learning":{"area":"profiles","section":"learning"},"skills":{"area":"profiles","section":"skills"},"meta":{"area":"profiles","section":"meta"},"settings":{"area":"profiles","section":"settings"}}
@@ -2097,6 +2097,15 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
   .ob-toast{left:12px;right:12px;transform:none;max-width:none}
 }
 /* The six areas stay inside the existing main slot. */
+      .ob-sandbox { min-width:0; }
+      .ob-sandbox-badge { display:inline-block; padding:8px 12px; border:2px solid currentColor; border-radius:8px; }
+      .ob-sandbox-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+      .ob-sandbox .ob-row { flex-wrap:wrap; }
+      .ob-sandbox select { max-width:100%; }
+      .ob-sandbox-json { white-space:pre-wrap; overflow-wrap:anywhere; max-height:360px; overflow:auto; font-size:12px; }
+      .ob-sandbox-transcript { padding-left:24px; overflow-wrap:anywhere; white-space:pre-wrap; }
+      @media (max-width:900px) { .ob-sandbox-grid { grid-template-columns:minmax(0,1fr); } }
+
 .ob-area-shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;align-items:start}
 .ob-navigation{position:sticky;top:16px;max-height:calc(100dvh - 32px);overflow-y:auto;padding:16px 8px;background:var(--ob-surface);border-right:1px solid var(--ob-border)}
 .ob-nav-group{display:flex;flex-direction:column;gap:4px;margin:16px 0}
@@ -3306,7 +3315,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
     const LEGACY_NAV_LABELS = { connect: '连接', config: '配置', cognition: '认知', settings: '系统设置', persona: '人格', messages: '消息', modules: '模块', models: '模型', about: '关于' }
     const SECTION_LABELS = {
-      overview: '概览', messages: '消息与事件', sandbox: 'Sandbox（规划中）', library: '人格库', general: '常规', persona: '人格表达',
+      overview: '概览', messages: '消息与事件', sandbox: '离线 Sandbox', library: '人格库', general: '常规', persona: '人格表达',
       models: '模型', turn: '轮次与群聊参与', reply: '回复与通知', persons: '人物', relationships: '关系', memories: '记忆',
       timeline: '时间轴', emotion: '情绪', purpose: '目的', policy: '策略与决策', proactivity: '主动行为', loop: '闭环', learning: '学习',
       skills: '技能', meta: '元认知', modules: '模块目录', media: '媒体', content: '内容', logs: '日志', events: '事件', backup: '备份',
@@ -3437,6 +3446,122 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ? field.path.slice(('modules.' + navigation.moduleId + '.').length) : navigation.fieldPath
       return 'ob-field-' + path.replace(/[^a-zA-Z0-9_-]/g, '-')
     }
+    function SandboxChat() {
+      const [items, setItems] = useState([])
+      const [id, setId] = useState('')
+      const [data, setData] = useState(null)
+      const [chatType, setChatType] = useState('private')
+      const [kind, setKind] = useState('message')
+      const [text, setText] = useState('')
+      const [ms, setMs] = useState('12000')
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const sequence = useRef(0)
+      const guard = useRef(false)
+      const requestId = () => 'ui_' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + '_' + Math.random().toString(36).slice(2))
+      const checked = (response, list = false) => {
+        if (!response || response.ok !== true) throw new Error(response?.code || 'SIMULATION_UNAVAILABLE')
+        if (response.environment !== 'simulation' || response.realSends !== 0 || (list ? !Array.isArray(response.items)
+          : !['transcript', 'captures', 'receipts', 'deliveryReceipts', 'loops', 'stages'].every(key => Array.isArray(response[key])))) throw new Error('SIMULATION_RESPONSE_INVALID')
+        return response
+      }
+      const run = async work => {
+        if (guard.current) return
+        guard.current = true
+        const ticket = ++sequence.current
+        setBusy(true); setError('')
+        try {
+          const apply = await work()
+          if (ticket === sequence.current) apply()
+        } catch (cause) {
+          if (ticket === sequence.current) {
+            const code = String(cause?.message || 'SIMULATION_UNAVAILABLE')
+            setError(code)
+            if (code === 'SIMULATION_NOT_FOUND') { setData(null); setId(''); setItems([]) }
+          }
+        } finally {
+          if (ticket === sequence.current) { guard.current = false; setBusy(false) }
+        }
+      }
+      const refresh = () => run(async () => {
+        const list = checked(await get('/sandbox/chat/list'), true)
+        const selected = list.items.some(row => row.id === id) ? id : ''
+        const next = selected ? checked(await get('/sandbox/chat/detail?id=' + encodeURIComponent(selected))) : null
+        return () => { setItems(list.items); setId(selected); setData(next) }
+      })
+      useEffect(() => { refresh(); return () => { sequence.current++; guard.current = false } }, [])
+      const select = next => {
+        if (guard.current) return
+        setData(null); setId(next)
+        if (!next) return
+        return run(async () => {
+          const result = checked(await get('/sandbox/chat/detail?id=' + encodeURIComponent(next)))
+          return () => setData(result)
+        })
+      }
+      const mutate = (action, payload = {}) => run(async () => {
+        const result = checked(await post('/sandbox/chat/' + action, { requestId: requestId(), ...(action === 'create' ? {} : { id }), ...payload }))
+        return () => {
+          if (action === 'delete') { setItems(previous => previous.filter(row => row.id !== id)); setId(''); setData(null) }
+          else {
+            setData(result); setId(result.id)
+            if (action === 'create') setItems(previous => [...previous, { id: result.id }])
+            if (action === 'event') setText('')
+          }
+        }
+      })
+      const sendEvent = () => {
+        if (!id || !data || busy) return
+        if (kind === 'message' && (!text.trim() || text.length > 4000)) { setError('INVALID_SIMULATION_INPUT'); return }
+        const event = { kind, chatType, ...(kind === 'message' ? { text, addressed: chatType === 'group' }
+          : { type: kind === 'notice' ? (chatType === 'group' ? 'group_increase' : 'friend_add') : (chatType === 'group' ? 'group' : 'friend') }) }
+        return mutate('event', { event })
+      }
+      const advance = () => {
+        const value = Number(ms)
+        if (!ms.trim() || !Number.isSafeInteger(value) || value < 0 || value > 86400000) { setError('INVALID_ADVANCE'); return }
+        return mutate('advance', { ms: value })
+      }
+      const records = (label, rows) => h('section', { className: 'ob-stack', 'aria-label': label }, h('h3', null, label),
+        rows.length ? rows.map((row, index) => h('details', { key: row.id || index },
+          h('summary', null, String(row.action || row.requestId || row.loopId || row.status || row.id || index + 1)),
+          h('pre', { className: 'ob-sandbox-json' }, JSON.stringify(row, null, 2))))
+          : h('p', { role: 'status', 'data-state': 'empty', className: 'ob-muted' }, '暂无' + label))
+      const locked = busy || !id || !data
+      return h('section', { className: 'ob-stack ob-sandbox', 'aria-label': '离线 Chat 沙盒', 'aria-busy': busy, 'data-environment': 'simulation' },
+        h(Panel, { title: 'Chat & Sandbox', description: '固定合成参与者与 fixture 回复；事件、命令和虚拟计时仅作用于本模拟。' },
+          h('strong', { className: 'ob-sandbox-badge', role: 'status' }, 'SIMULATION / zero real sends'),
+          h('p', { className: 'ob-muted' }, '人格绑定由服务端确定。模拟人格与配置快照只读；命令可改变模拟内部状态。媒体、真实模型、网络和执行沙箱均未接入。'),
+          h('div', { className: 'ob-row ob-wrap' },
+            h(Btn, { onClick: () => mutate('create'), disabled: busy }, '创建模拟'),
+            h('select', { className: 'ob-select', 'aria-label': '选择模拟', value: id, disabled: busy, onChange: event => select(event.target.value) },
+              h('option', { value: '' }, '选择当前人格的模拟'), items.map(row => h('option', { key: row.id, value: row.id }, row.id))),
+            h(Btn, { onClick: refresh, disabled: busy }, '刷新模拟'),
+            h(Btn, { onClick: () => mutate('reset'), disabled: locked }, '重置模拟'),
+            h(Btn, { onClick: () => mutate('delete'), kind: 'danger', disabled: locked }, '删除模拟'))),
+        busy ? h('p', { role: 'status', 'data-state': 'loading' }, '正在处理模拟…') : null,
+        error ? h('div', { role: 'alert', 'data-state': 'error' }, '模拟操作失败：' + error, h(Btn, { onClick: refresh, disabled: busy }, '重新读取模拟')) : null,
+        !data ? h('p', { role: 'status', 'data-state': 'empty' }, items.length ? '请选择一个模拟。' : '暂无模拟，创建后可离线发送文本或命令。') : h(Fragment, null,
+          h(Panel, { title: '模拟事件', description: '虚拟时间：' + formatDateTime(data.now) + ' · generation ' + data.generation },
+            h('div', { className: 'ob-row ob-wrap' },
+              h('label', null, '会话 ', h('select', { className: 'ob-select', 'aria-label': '模拟会话类型', value: chatType, disabled: locked, onChange: event => setChatType(event.target.value) }, h('option', { value: 'private' }, '私聊'), h('option', { value: 'group' }, '群聊（模拟 @）'))),
+              h('label', null, '事件 ', h('select', { className: 'ob-select', 'aria-label': '模拟事件类型', value: kind, disabled: locked, onChange: event => setKind(event.target.value) }, h('option', { value: 'message' }, '文本 / 命令'), h('option', { value: 'notice' }, '好友 / 入群通知'), h('option', { value: 'request' }, '好友 / 加群请求')))),
+            kind === 'message' ? h('textarea', { className: 'ob-input', 'aria-label': '模拟文本或命令', placeholder: '你好，或 /help、/like、/remind 60 离线提醒', rows: 3, maxLength: 4000, value: text, disabled: locked, onChange: event => setText(event.target.value) }) : null,
+            h(Btn, { onClick: sendEvent, disabled: locked || kind === 'message' && !text.trim() }, '提交模拟事件'),
+            h('div', { className: 'ob-row ob-wrap' }, h('label', null, '推进毫秒 ', h('input', { className: 'ob-input', 'aria-label': '推进虚拟时间（毫秒）', type: 'number', min: 0, max: 86400000, step: 1, value: ms, disabled: locked, onChange: event => setMs(event.target.value) })), h(Btn, { onClick: advance, disabled: locked }, '推进虚拟时间')),
+            h('p', { className: 'ob-muted' }, '文本聚合与提醒等待虚拟时钟，默认推进 12 秒；单次最多一天。')),
+          h(Panel, { title: '模拟 Transcript' },
+            data.transcript.length ? h('ol', { className: 'ob-sandbox-transcript' }, data.transcript.map((row, index) => h('li', { key: index },
+              h('small', { className: 'ob-muted' }, formatTime(row.at) + ' · ' + row.chatType + ' · ' + (row.direction === 'in' ? '输入' : '捕获输出')),
+              h('p', null, row.text || row.type || row.kind)))) : h('p', { role: 'status', 'data-state': 'empty' }, '暂无模拟消息。')),
+          h('div', { className: 'ob-sandbox-grid' },
+            h(Panel, { title: '捕获动作' }, records('Captured actions', data.captures)),
+            h(Panel, { title: 'Receipt / Loop' }, h('p', { className: 'ob-muted' }, 'sent / parts 仅为模拟 executor 结果，真实发送数始终为 0。'),
+              records('入站回执', data.receipts), records('交付回执', data.deliveryReceipts), records('闭环', data.loops), records('阶段', data.stages))),
+          h(Panel, { title: '人格 / 配置快照（只读）' }, h('p', null, '绑定人格：' + data.boundPersonaId),
+            h('pre', { className: 'ob-sandbox-json' }, JSON.stringify({ persona: data.persona, config: data.configSnapshot }, null, 2)))))
+    }
+
     function AreaContent(props) {
       useNavigationAnchor(props, '')
       useEffect(() => {
@@ -3448,7 +3573,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       let Component = null
       if (area === 'overview') Component = Overview
       else if (area === 'chat') {
-        if (section === 'sandbox') return h('section', { 'data-availability': 'planned', 'aria-label': 'Sandbox 规划占位' }, h(Panel, { title: 'Chat & Sandbox' }, h('p', { role: 'status' }, 'Sandbox 规划中：尚无沙盒后端，此页不执行模型或业务操作。')))
+        if (section === 'sandbox') return h(SandboxChat, props)
         Component = Messages
       } else if (area === 'extensions') Component = ModulesPage
       else if (area === 'data') Component = { media: MediaPage, content: ContentPage, logs: Logs, events: Messages, backup: BackupPage }[section]
@@ -9052,6 +9177,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.ownerFields = ownerFields
     exports.OwnerSettings = OwnerSettings
     exports.NavigationMenu = NavigationMenu
+    exports.SandboxChat = SandboxChat
     exports.AreaContent = AreaContent
     exports.TABS = TABS
     exports.OneBotPage = OneBotPage

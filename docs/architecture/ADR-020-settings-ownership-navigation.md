@@ -97,7 +97,7 @@ C01 仅提供静态、深冻结的元数据和纯导航函数，尚未接入客�
 | area | 名称 | 内容 |
 | --- | --- | --- |
 | `overview` | Overview | 概览 |
-| `chat` | Chat & Sandbox | 消息；sandbox 仅 `planned`、组件空数组 |
+| `chat` | Chat & Sandbox | 消息；C05 离线 sandbox 为 `existing` / `SandboxChat`（见 ADR-021） |
 | `profiles` | Profiles | 人格库、15 个认知子页及规范行为设置分区 |
 | `extensions` | Extensions | 模块目录；具体模块目的地为 `module-dependent` |
 | `data` | Data & Logs | 媒体/内容操作页、事件、日志、备份、隐私与导入 |

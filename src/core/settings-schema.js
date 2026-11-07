@@ -16,7 +16,7 @@ const section = (id, components, availability = 'existing') => ({ id, components
 export const NAVIGATION_REGISTRY = freeze([
   { id: 'overview', label: 'Overview', sections: [section('overview', ['Overview'])] },
   { id: 'chat', label: 'Chat & Sandbox', sections: [
-    section('messages', ['Messages']), section('sandbox', [], 'planned'),
+    section('messages', ['Messages']), section('sandbox', ['SandboxChat']),
   ] },
   { id: 'profiles', label: 'Profiles', sections: [
     section('overview', ['CognitionTab']), section('library', ['PersonaTab']),

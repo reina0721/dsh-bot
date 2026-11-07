@@ -17,7 +17,7 @@
 
 41 个内置旧绑定字段继续只由对应模块详情编辑，保存经 `/settings/view?scope=module:<id>` + `/settings/patch` 串行执行单 owner revisioned patch；sample 与外部模块文件沿用 `/modules/config` 的 schema、revision、加载状态与只读门控。System/Profile 通用表单不复制模块字段；搜索旧组/字段路径直接定位唯一模块所有者。媒体传输与 provider 属 System → 媒体，贴纸/B站业务设置属 builtin-media-features，数据操作仍在 Data & Logs；learning/proactivity/reminders 的参数只在其模块详情，Profiles 只保留业务数据/动作。
 
-六区 profile 设置仍是 C02 的 staged 预览，当前运行仍读 legacy；检查或保存 inactive profile 不切换人格。业务动作仍作用于当前激活人格。Chat & Sandbox 只保留 planned 占位，没有新增 sandbox UI/后端；既有外部模块隔离 WebUI 沿用旧实现。设置契约与完整别名库存见 [ADR-020](architecture/ADR-020-settings-ownership-navigation.md)，使用入口见[用户手册](USER-MANUAL.md#4-面板六区导航)。
+六区 profile 设置仍是 C02 的 staged 预览，当前运行仍读 legacy；检查或保存 inactive profile 不切换人格。业务动作仍作用于当前激活人格。C05 的 Chat & Sandbox → 离线 Sandbox 已接入独立模拟服务与 `/sandbox/chat/*` API：当前人格绑定、固定 fixture 模型、虚拟时钟、动作捕获、只读人格/配置快照，始终零真实发送。模拟只装配受信任 typing/reply-delivery/reminders/sample，禁止外部模块发现；没有 C06 执行沙箱。既有外部模块隔离 WebUI 沿用旧实现，与 Chat 沙盒分开，opaque frame 不能调用宿主 API。隔离和额度见 [ADR-021](architecture/ADR-021-simulation-service.md)。设置契约与完整别名库存见 [ADR-020](architecture/ADR-020-settings-ownership-navigation.md)，使用入口见[用户手册](USER-MANUAL.md#4-面板六区导航)。
 
 ## 闭环 v2 管理与导航（C07）
 

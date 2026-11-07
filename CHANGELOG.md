@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- C05：六区内新增离线 Chat/event Sandbox，支持私群文本/命令、通知请求、虚拟计时、reset/delete、transcript/捕获动作/receipt/loop/stages 与只读模拟人格/配置快照；明确 SIMULATION / zero real sends，无新 DSH slot。
+- 新增 `/sandbox/chat/create|event|advance|detail|reset|delete|list` 独立路径，替换 C04 未绑定 HTTP 入口；opaque UUID 绑定当前激活人格，未知/跨人格统一 not found，严格字段/身份拒绝、requestId、请求体/速率/排队/会话操作额度。fixture 模型、捕获 transport 和独立 store 沿用 C04，无 live gateway/store/loop 引用或真实模型/网络/媒体/执行沙箱。
+- 新增 sandbox API/UI 与 panel/nav/package 回归，live 共存测试通过新 HTTP 入口检测真实发送/网络为 0，env/fetch/live store/persona/bus 不变；Node shim 验证控件与异步状态，未使用真实浏览器。契约与限制见 [ADR-021](docs/architecture/ADR-021-simulation-service.md)。版本不变，仅本地验证和提交，无推送/部署/tag/release。
+
 - C04：抽出 host/service 共享装配，注入目录/store/config/clock/scheduler/model/transport/event bus/runtime，修复 runtime 与事件持久化的全局目录边界；新增独立人格、SQLite、配置、approval/request/reminder/module 状态与会话命名空间的离线模拟服务。OneBot 动作全部捕获，raw/unknown fail closed；fixture 模型/知识源与虚拟聚合/提醒/交付等待不访问 QQ 或外部网络。
 - 新增后端 simulations create/events/advance/state/reset/delete 独立 API、requestId 幂等和 opaque/身份注入拒绝；新增双图/live 共存、命令、私群/访问、通知请求、动作捕获、timer、reset/delete 回归，契约与限制见 [ADR-021](docs/architecture/ADR-021-simulation-service.md)。仅 C04，无 Chat UI/C06 执行沙箱、版本变更、推送、部署、标签或发布。
 

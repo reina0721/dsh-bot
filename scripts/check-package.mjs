@@ -20,7 +20,7 @@ try {
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
     for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/modules/action-audit.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
     assert.equal(pkg.dsh.client.platform, 'web');
-    for (const file of ['src/services/assembly.js', 'src/simulation/service.js', 'src/simulation/adapters.js', 'docs/architecture/ADR-021-simulation-service.md']) readFileSync(join(base, file));
+    for (const file of ['src/services/assembly.js', 'src/simulation/service.js', 'src/simulation/adapters.js', 'src/http/sandbox-chat.js', 'docs/architecture/ADR-021-simulation-service.md']) readFileSync(join(base, file));
     for (const file of ['src/core/settings-schema.js', 'src/core/profile-settings.js', 'src/core/navigation.js', 'docs/architecture/ADR-020-settings-ownership-navigation.md']) readFileSync(join(base, file));
     const settings = await import(pathToFileURL(join(base, 'src/core/settings-schema.js')).href);
     const profiles = await import(pathToFileURL(join(base, 'src/core/profile-settings.js')).href);
@@ -39,7 +39,7 @@ try {
       assert.equal(name, 'react');
       return { createElement() {}, createContext: () => ({}), Component: class {}, Fragment: 'fragment' };
     });
-    for (const name of ['OwnerSettings', 'AreaContent', 'NavigationMenu', 'searchNavigation', 'readNavigationUrl', 'navigationUrl', 'CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    for (const name of ['SandboxChat', 'OwnerSettings', 'AreaContent', 'NavigationMenu', 'searchNavigation', 'readNavigationUrl', 'navigationUrl', 'CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
     assert.equal(client.TABS.length, 6);
     for (const [alias] of Object.entries(settings.LEGACY_ALIASES)) assert.equal(JSON.stringify(client.resolveLegacyGo(alias)), JSON.stringify(navigation.go(alias)), alias);
     for (const field of settings.SETTINGS_FIELDS) assert.ok(client.searchNavigation(field.path).some(row => row.target.fieldPath === field.path), field.path);

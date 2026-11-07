@@ -6,6 +6,7 @@ import { redact } from '../core/redact.js'
 import { publicConfig, defaultConfig, CONFIG_GROUPS } from '../core/config.js'
 import { SETTINGS_FIELDS } from '../core/settings-schema.js'
 import { readFile } from 'node:fs/promises'
+import { createSandboxChatApi, sandboxChatEnvelope, SANDBOX_CHAT_LIMITS } from './sandbox-chat.js'
 
 export const API_PREFIX = '/onebot-qq/api'
 export const API_VERSION = 1
@@ -46,12 +47,12 @@ async function readBody(req, maxBytes = MAX_BODY_BYTES) {
 }
 
 // Opaque UI frames must never use the host REST API, including after self-navigation.
-function rejectSandboxApi(req, res) {
+function rejectSandboxApi(req, res, extra = {}) {
   const origin = req.headers?.origin
   const destination = req.headers?.['sec-fetch-dest']
   const coreImage = destination === 'image' && req.headers?.['sec-fetch-site'] === 'same-origin'
   if (origin !== 'null' && (!destination || ['empty', 'document'].includes(destination) || coreImage)) return false
-  send(res, 403, { ok: false, message: '不允许隔离页面访问宿主 API' })
+  send(res, 403, { ...extra, ok: false, message: '不允许隔离页面访问宿主 API' })
   return true
 }
 
@@ -108,14 +109,14 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     }
   }
 
-  const route = (method, path, handler) => {
+  const route = (method, path, handler, failure = () => ({})) => {
     const register = () => ctx.webServer.register({
       kind: 'exact',
       path: API_PREFIX + path,
       handler: (req, res) => {
-        if (rejectSandboxApi(req, res)) return
+        if (rejectSandboxApi(req, res, failure())) return
         if (method && String(req.method || '').toUpperCase() !== method) {
-          send(res, 405, { ok: false, message: `只支持 ${method}` })
+          send(res, 405, { ...failure(), ok: false, message: `只支持 ${method}` })
           return
         }
         answer(res, () => handler(req, res))
@@ -182,35 +183,28 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }))
 
   // ---- 状态与配置 ----
-  // Simulation mutations have dedicated paths; never route them through /send, /action or /events.
+  // Dedicated offline paths replace the unscoped C04 /simulations endpoints.
   if (simulations) {
-    const simulationBody = async (req, keys) => {
-      const body = await readBody(req, 64 * 1024)
-      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !keys.includes(key))) throw new Error('INVALID_SIMULATION_INPUT')
-      return body
+    const sandbox = createSandboxChatApi({ simulations, currentPersonaId: () => cognition?.activePersonaId?.() })
+    for (const action of ['create', 'event', 'advance', 'detail', 'reset', 'delete', 'list']) {
+      const method = ['detail', 'list'].includes(action) ? 'GET' : 'POST'
+      route(method, '/sandbox/chat/' + action, async (req, res) => {
+        let input
+        try {
+          const query = loopQueryOf(req)
+          if (method === 'GET') input = query
+          else {
+            if (Object.keys(query).length) throw new Error('INVALID_SIMULATION_INPUT')
+            input = await readBody(req, SANDBOX_CHAT_LIMITS.bodyBytes)
+          }
+        } catch {
+          send(res, 400, sandboxChatEnvelope({ ok: false, code: 'INVALID_SIMULATION_INPUT', message: 'INVALID_SIMULATION_INPUT' }))
+          return
+        }
+        const result = await sandbox.handle(action, input)
+        send(res, result.status, result.body)
+      }, sandboxChatEnvelope)
     }
-    const simulationRoute = (method, path, handler) => route(method, '/simulations/' + path, async req => {
-      try { return await handler(req) }
-      catch (error) { return { ok: false, environment: 'simulation', message: String(error?.message || error) } }
-    })
-    simulationRoute('POST', 'create', async req => simulations.create(await readBody(req, 64 * 1024)))
-    simulationRoute('POST', 'events', async req => {
-      const { id, event } = await simulationBody(req, ['id', 'event'])
-      return { ok: true, ...await simulations.submit(id, event) }
-    })
-    simulationRoute('POST', 'advance', async req => {
-      const { id, ms } = await simulationBody(req, ['id', 'ms'])
-      return { ok: true, ...await simulations.advance(id, ms) }
-    })
-    for (const action of ['reset', 'delete']) simulationRoute('POST', action, async req => {
-      const { id } = await simulationBody(req, ['id'])
-      return simulations[action](id)
-    })
-    simulationRoute('GET', 'state', async req => {
-      const query = loopQueryOf(req)
-      if (Object.keys(query).length !== 1 || !query.id) throw new Error('INVALID_SIMULATION_INPUT')
-      return simulations.read(query.id)
-    })
   }
 
   route('GET', '/status', async () => statusPayload())

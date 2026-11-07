@@ -137,7 +137,7 @@ test('six-area metadata stays pure; DSH registration remains main and sidebar.pa
   assert.equal(new Set(NAVIGATION_REGISTRY.map(area => area.id)).size, 6)
   for (const area of NAVIGATION_REGISTRY) assert.equal(new Set(area.sections.map(section => section.id)).size, area.sections.length)
   assert.deepEqual(NAVIGATION_REGISTRY.find(area => area.id === 'chat').sections.find(section => section.id === 'sandbox'),
-    { id: 'sandbox', components: [], availability: 'planned' })
+    { id: 'sandbox', components: ['SandboxChat'], availability: 'existing' })
   for (const file of ['settings-schema.js', 'navigation.js']) {
     const source = readFileSync(new URL(`../src/core/${file}`, import.meta.url), 'utf8')
     assert.doesNotMatch(source, /slots\.(?:register|inject)|window\.|document\./)
