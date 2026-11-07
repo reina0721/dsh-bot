@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-07T10:55:00Z",
-  "scope": "dsh-bot 0.11.10 live web profile — module architecture v3, partial real smoke",
+  "at": "2026-11-07T15:40:00Z",
+  "scope": "dsh-bot 0.11.11 live web profile — module WebUI v1, API/slot verification",
   "live": {
     "ok": true,
-    "version": "0.11.10",
+    "version": "0.11.11",
     "apiVersion": 1,
     "state": "connected",
     "uptimeMsAtCheck": 44272370
@@ -37,15 +37,15 @@
     "files": 5
   },
   "notCovered": [
+    "real browser module detail UI",
+    "external sandbox iframe/CSP",
     "real QQ reminder delivery",
-    "real QQ reply split/typing observation after 0.11.10",
+    "typing/reply split live observation",
     "external module live install",
     "approval queue round-trip",
-    "media provider",
-    "real QQ file send",
-    "B站登录/WBI/字幕/发布评论"
+    "media provider"
   ],
-  "installedFrom": "local dist/dsh-bot.tgz (0.11.10); GitHub release v0.11.10 published after Windows CI fix",
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.11); GitHub release v0.11.11 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
     "observed": true,
@@ -139,27 +139,39 @@
         "id": "builtin-reminders",
         "source": "builtin",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "configBinding": "legacy-core"
       },
       {
         "id": "builtin-reply-delivery",
         "source": "builtin",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "configBinding": "legacy-core"
       },
       {
         "id": "builtin-sample",
         "source": "builtin",
         "enabled": false,
-        "status": "disabled"
+        "status": "disabled",
+        "configBinding": "module-file"
       },
       {
         "id": "builtin-typing",
         "source": "builtin",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "configBinding": "legacy-core"
       }
     ],
-    "note": "GET /modules verified; builtin-sample disabled by default; reminders and typing feature switches were already true in live config; no message send or reminder delivery test."
+    "uiCatalog": {
+      "version": 1,
+      "items": 4,
+      "allBuiltinSurfaces": [
+        "module.detail:builtin-react",
+        "module.config:schema"
+      ]
+    },
+    "note": "GET /modules and /modules/ui verified; config groups still return legacy keys with module metadata; client filters them from CogSettings. DSH sidebar.panellist onebot-qq active; exactly one panel entry. No headless browser available for real WebUI/iframe validation."
   }
 }
