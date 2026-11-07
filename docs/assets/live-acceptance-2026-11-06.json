@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-08T05:10:00Z",
-  "scope": "dsh-bot 0.11.14 live web profile — system/module closed loops v2, API/slot verification",
+  "at": "2026-11-08T05:50:00Z",
+  "scope": "dsh-bot 0.11.15 live web profile — sandbox/health gap closure, API/slot verification",
   "live": {
     "ok": true,
-    "version": "0.11.14",
+    "version": "0.11.15",
     "apiVersion": 1,
     "state": "connected",
     "uptimeMsAtCheck": 44272370
@@ -37,15 +37,15 @@
     "files": 5
   },
   "notCovered": [
-    "real QQ actions/commands",
-    "real browser health/actions/loop UI",
-    "real Bilibili/sticker",
-    "real proactive send",
-    "real learning provider research",
+    "real QQ login/message",
+    "real Bilibili network",
+    "real paid model",
+    "real browser UI",
     "external sandbox iframe/CSP",
-    "approval queue"
+    "approval queue",
+    "real learning external sources"
   ],
-  "installedFrom": "local dist/dsh-bot.tgz (0.11.14); GitHub release v0.11.14 published",
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.15); GitHub release v0.11.15 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
     "observed": true,
@@ -138,54 +138,60 @@
       {
         "id": "builtin-learning",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "health": "healthy"
       },
       {
         "id": "builtin-media-features",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "health": "healthy"
       },
       {
         "id": "builtin-proactivity",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "health": "healthy"
       },
       {
         "id": "builtin-reminders",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "health": "healthy"
       },
       {
         "id": "builtin-reply-delivery",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "health": "healthy"
       },
       {
         "id": "builtin-sample",
         "enabled": false,
-        "status": "disabled"
+        "status": "disabled",
+        "health": "stopped"
       },
       {
         "id": "builtin-typing",
         "enabled": true,
-        "status": "loaded"
+        "status": "loaded",
+        "health": "healthy"
       }
     ],
     "health": {
       "ok": true,
       "summary": {
-        "unknown": 6,
-        "healthy": 0,
+        "unknown": 0,
+        "healthy": 6,
         "degraded": 0,
         "unhealthy": 0,
         "stopped": 1
-      },
-      "note": "health API live; newly loaded modules report unknown until their first instrumented run; sample stopped. Runtime/UI generations and provider owner fields verified."
+      }
     },
     "loop": {
       "summaryOk": true
     },
     "sidebar": "sidebar.panellist/onebot-qq active after restoring row enabled",
-    "note": "GET /modules, /modules/health, /system/loop/summary verified; no real QQ commands, model/provider, browser or sandbox validation."
+    "note": "GET /modules, /modules/health, /system/loop/summary verified; six active built-ins healthy, sample stopped. Sandbox integration tests cover mock OneBot /bili /sticker, fake Bilibili, proactive one-send, learning task/evidence/claim/loop."
   }
 }
