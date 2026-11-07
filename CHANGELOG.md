@@ -1,5 +1,11 @@
 # 变更记录
 
+## 未发布（one-shot 模块 3，2026-11-07）
+
+- 默认启用 builtin-learning，独占固定 learning provider、自动 unknown→task 规划/入队、pending/run、来源迭代与 timer；核心删除自动入队/学习 runner/timer，无 fallback。默认 enabled:true/autoResearch:false 保持，手动运行/取消/重试经过当前 provider，停用返回 MODULE_DISABLED；知识读取与未知检测保留，无追溯建任务。
+- 内置固定 learning:service 窄端口、一次 attempt 的人格/代次/runtime/版本 lease；核心保留来源/页面、LLM/预算、同步事务与数据，证据去重/complete 幂等，私聊/开关/取消/停止阻止迟到发布。首次约 30 秒、完成后 60 秒，每 tick 最多一个到期 pending，suggested 不自动运行。
+- 16 个原配置归模块详情 legacy-core 与纯 learning.preview；原认知页操作经 provider，无可选模块 panel 或 DSH 新入口。保留 ID/数据/配置和既有未完整执行字段语义，补充 ADR-017、生命周期/port/UI/归档检查。无版本/依赖变化、推送、部署、tag 或发布；未验证真实来源/模型/QQ/浏览器。
+
 ## 未发布（one-shot 模块 2，2026-11-07）
 
 - 默认启用 builtin-proactivity，独占主动策略/提示词/排序/退避与单递归 timer；新增仅固定模块可注册的 proactivity 槽位和 proactivity:service 窄端口。删除 core 主动引擎与 timer；统计/手动运行及原 HTTP 通过 facade，停用返回 MODULE_DISABLED，无 fallback，提醒所有权不变。

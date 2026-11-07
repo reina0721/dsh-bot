@@ -7375,6 +7375,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       lines.map((line, index) => h('p', { key: index, className: 'ob-small' }, line)),
     )
     const BUILTIN_MODULE_UI = Object.freeze({
+      'learning.preview': function LearningPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '学习开关：' + previewSwitch(config.enabled),
+          '自动外部检索：' + previewSwitch(config.autoResearch),
+          '未知检测：' + previewSwitch(config.detectUnknowns),
+          '每小时任务上限：' + previewValue(config.maxTasksPerHour),
+          '自动任务首次约 30 秒检查，完成后 60 秒；手动运行遵循认知开关与暂停状态。',
+        ])
+      },
       'reply-delivery.preview': function ReplyDeliveryPreview({ module, config, summary }) {
         return previewBody(summary, [
           '模块启用：' + previewSwitch(module.enabled),
@@ -7438,6 +7448,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       } else if (key === 'typing.preview') {
         config.enabled = previewBool(draft?.cognition?.typing?.enabled)
         configAvailable = config.enabled !== null
+      } else if (key === 'learning.preview') {
+        const raw = safeObject(draft?.cognition?.learning)
+        Object.assign(config, { enabled: previewBool(raw.enabled), autoResearch: previewBool(raw.autoResearch), detectUnknowns: previewBool(raw.detectUnknowns), maxTasksPerHour: previewNumber(raw.maxTasksPerHour, 0, 30) })
+        configAvailable = isPlainObject(draft?.cognition?.learning)
       } else if (key === 'proactivity.preview') {
         const raw = safeObject(draft?.cognition?.proactivity)
         const finite = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : null

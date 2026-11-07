@@ -14,6 +14,7 @@ import { buildModuleUiCatalog, loadWebuiDescriptor, sandboxEligible } from './we
 import { readUiArtifact } from './sandbox.js'
 import { createModulePersonaStore } from './persona-store.js'
 import { createReminderRepository } from './reminder-repository.js'
+import { createLearningPort } from './learning-port.js'
 import { createProactivityPort } from './proactivity-port.js'
 import { createMediaFeaturesPort } from './media-features-port.js'
 import { createLegacyConfig } from './legacy-config.js'
@@ -351,7 +352,17 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
           if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('MODULE_DISABLED')
         },
       }) : null
+    const learningPort = record.builtin && record.id === 'builtin-learning' && record.permissions.includes('learning:service')
+      ? createLearningPort({ getConfig, store: personaStore, services: cognition?.services,
+        getState: () => cognition?.services?.learningState?.() || { ready: false },
+        assertActive() {
+          requireActive(runtime)
+          requirePermission(record, 'learning:service')
+          if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('MODULE_DISABLED')
+        },
+      }) : null
     const api = {
+      ...(learningPort ? { learning: learningPort } : {}),
       ...(proactivityPort ? { proactivity: proactivityPort } : {}),
       ...(mediaPort ? { mediaFeatures: mediaPort.api } : {}),
       id: record.id,

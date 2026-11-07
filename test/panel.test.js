@@ -2132,7 +2132,7 @@ test('ModulesPage legacy config: all owned fields, draft values, global patch sa
   const original = globalThis.fetch, calls = [], patches = []
   globalThis.fetch = async (path) => { calls.push(path); throw Error('legacy detail must not fetch module-file config') }
   try {
-    for (const id of ['builtin-reply-delivery', 'builtin-typing', 'builtin-reminders', 'builtin-media-features', 'builtin-proactivity']) {
+    for (const id of ['builtin-learning', 'builtin-reply-delivery', 'builtin-typing', 'builtin-reminders', 'builtin-media-features', 'builtin-proactivity']) {
       const owned = CONFIG_GROUPS.flatMap((group) => group.fields).filter((spec) => spec.module === id)
       assert.ok(owned.length)
       const item = { id, builtin: true, source: 'builtin', status: 'loaded', enabled: true, generation: id, uiRevision: 'ui' }
@@ -2249,6 +2249,7 @@ test('ModulesPage trusted previews render bounded read-only drafts without reque
   const draft = { secret: 'global-secret-marker', content: { bilibili: { enabled: false } }, media: { enabled: true, images: { enabled: true }, stickers: { enabled: true } }, cognition: {
     reply: { split: true, maxChars: 480, maxParts: 4, quote: true, atSender: false, delayMs: 800, secret: 'reply-secret-marker' },
     typing: { enabled: true },
+    learning: { enabled: true, autoResearch: false, detectUnknowns: true, maxTasksPerHour: 3, secret: 'learning-secret-marker' },
     proactivity: { enabled: true, quietStart: 23, quietEnd: 8, maxPrivatePerDay: 1, maxGroupPerDay: 0, minFamiliarity: 0.5, backoffHours: 24, secret: 'proactive-secret-marker' },
     reminders: { enabled: true, maxActive: 25, minIntervalSeconds: 120, maxIntervalSeconds: 3600, tickMs: 5000 },
   } }
@@ -2257,6 +2258,7 @@ test('ModulesPage trusted previews render bounded read-only drafts without reque
   try {
     const cases = [
       ['reply-delivery', ['模块启用：开启', '长回复分条：开启', '单条字数上限：480', '最多分条：4', '引用原消息：开启；群聊 @ 对方：关闭', '分条等待：800 ms / 条间']],
+      ['learning', ['模块启用：开启', '学习开关：开启', '自动外部检索：关闭', '未知检测：开启', '每小时任务上限：3']],
       ['typing', ['模块启用：开启', '输入状态开关：开启', '输入状态有效状态：开启（仅私聊，依赖网关支持）']],
       ['proactivity', ['模块启用：开启', '主动行为开关：开启（仅私聊）', '安静时段（本地小时）：23–8', '滚动 24 小时私聊上限：1', '最低熟悉度：0.5；无回应退避：24 小时']],
       ['reminders', ['模块启用：开启', '主人提醒开关：开启', '每人格活跃提醒上限：25', '最短重复间隔：120 s', '最长重复间隔：3600 s', '到期检查间隔：5000 ms']],

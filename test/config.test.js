@@ -328,6 +328,7 @@ test('LLM dual budgets: normalize scopes and persona limits; invalid input defau
 
 test('module ownership is bounded metadata on exactly the existing legacy fields', () => {
   const expected = {
+    'builtin-learning': ['enabled', 'autoResearch', 'detectUnknowns', 'maxTasksPerHour', 'maxQueries', 'maxSources', 'dailyTokenBudget', 'taskTtlHours', 'retry', 'minConfidence', 'sources.web', 'sources.wikipedia', 'sources.openalex', 'sources.github', 'sources.rss', 'sources.local'].map(key => 'cognition.learning.' + key),
     'builtin-reply-delivery': ['split', 'maxChars', 'maxParts', 'delayMs', 'quote', 'atSender'].map((key) => 'cognition.reply.' + key),
     'builtin-proactivity': ['enabled', 'quietStart', 'quietEnd', 'maxPrivatePerDay', 'maxGroupPerDay', 'minFamiliarity', 'backoffHours'].map((key) => 'cognition.proactivity.' + key),
     'builtin-typing': ['cognition.typing.enabled'],
@@ -335,7 +336,7 @@ test('module ownership is bounded metadata on exactly the existing legacy fields
     'builtin-reminders': ['enabled', 'maxActive', 'minIntervalSeconds', 'maxIntervalSeconds', 'tickMs'].map((key) => 'cognition.reminders.' + key),
   }
   const fields = CONFIG_GROUPS.flatMap((group) => group.fields)
-  assert.equal(fields.filter((field) => field.module).length, 25)
+  assert.equal(fields.filter((field) => field.module).length, 41)
   for (const [module, paths] of Object.entries(expected)) {
     assert.match(module, /^[a-z0-9][a-z0-9_-]{0,63}$/)
     assert.deepEqual(fields.filter((field) => field.module === module).map((field) => field.path), paths)

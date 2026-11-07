@@ -17,6 +17,10 @@
 
 主动行为归默认启用的 `builtin-proactivity`，业务开关仍默认关闭。七个原键 `cognition.proactivity.enabled/quietStart/quietEnd/maxPrivatePerDay/maxGroupPerDay/minFamiliarity/backoffHours` 标记 `module:'builtin-proactivity'`，在模块详情通过 legacy-core 编辑并沿用全局 config.json 保存；停用/未 loaded 时只读，系统设置不重复展示。纯预览无副作用，无 panel 或新 DSH 入口。模块停用后不运行 timer/手动任务且无 fallback，原统计/运行路由返回安全 disabled 状态。`/quiet`、`/active` 仍修改原配置，但不能启用停用模块。仅私聊，maxGroupPerDay 保留但不发送；日额度是滚动 24 小时 decision 数，包括 dry-run 和失败。无默认值或数据迁移，详见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
 
+学习编排归默认启用的第七个内置模块 `builtin-learning`，独占 learning provider、新 unknown → 自动任务计划/入队、pending/run、来源迭代和 timer（约 30 秒首次/完成后 60 秒，每 tick 一个 due pending）。核心删除自动入队/runner/timer，仅保留检测/知识读取、来源、数据、提炼、LLM/预算和同步事务；停用无 fallback，旧 lease 迟到不能发布，未知检测和已有知识仍可读，重新启用不追溯入队。runLearning/cancel/retry 只委托当前 provider，缺失返回 MODULE_DISABLED。
+
+16 个 cognition.learning 原字段标记 module:'builtin-learning'，模块详情 legacy-core 与纯 learning.preview，保留全局保存和 enabled:true、autoResearch:false；手动运行无需 autoResearch，但要求模块/cognition/learning 开启且未暂停。没有可选模块 panel/新 DSH slot，原认知任务入口保留且经 provider。窄 learning-port 只发人格/代次/runtime/任务版本绑定的 lease 和有界 refs，核心不传页面/URL/凭据/store；保留私聊政策、旧 IDs/命名空间/数据、retry/taskTtl/maxQueries 的既有语义。详见 [ADR-017](architecture/ADR-017-builtin-learning.md)。
+
 ## 1. 配置文件位置
 
 | 用途 | 路径 |

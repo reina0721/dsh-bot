@@ -17,7 +17,7 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
-    for(const file of ['docs/architecture/ADR-016-builtin-proactivity.md','src/modules/proactivity-port.js','src/modules/builtin/proactivity/index.js','src/modules/builtin/proactivity/engine.js','src/modules/webui.js','docs/architecture/ADR-014-module-webui.md','docs/architecture/ADR-015-builtin-media-features.md','src/modules/media-features-port.js','src/modules/builtin/media-features/index.js','src/modules/builtin/media-features/bilibili.js','src/modules/builtin/media-features/commands.js']) readFileSync(join(base,file));
+    for(const file of ['docs/architecture/ADR-017-builtin-learning.md','src/cognition/research.js','src/modules/learning-port.js','src/modules/builtin/learning/index.js','src/modules/builtin/learning/engine.js','docs/architecture/ADR-016-builtin-proactivity.md','src/modules/proactivity-port.js','src/modules/builtin/proactivity/index.js','src/modules/builtin/proactivity/engine.js','src/modules/webui.js','docs/architecture/ADR-014-module-webui.md','docs/architecture/ADR-015-builtin-media-features.md','src/modules/media-features-port.js','src/modules/builtin/media-features/index.js','src/modules/builtin/media-features/bilibili.js','src/modules/builtin/media-features/commands.js']) readFileSync(join(base,file));
     for(const file of ['docs/ARCHITECTURE.md','docs/MODULES.md','docs/cognitive/IMPLEMENTATION-STATUS.md','docs/architecture/ADR-013-media-boundary.md','docs/architecture/MODULE-ACCEPTANCE.md']) readFileSync(join(base,file));
     for(const file of ['src/host.js','src/cognition/turn-hooks.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/reminders.js','src/reminders/service.js','src/reminders/commands.js','src/modules/builtin/typing.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
@@ -59,10 +59,10 @@ try {
       } });
       try {
         const items = await kernel.start();
-        assert.deepEqual(items.map(item => item.id), ['builtin-media-features', 'builtin-proactivity', 'builtin-reminders', 'builtin-reply-delivery', 'builtin-sample', 'builtin-typing']);
-        assert.equal(items.length, 6); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
+        assert.deepEqual(items.map(item => item.id), ['builtin-learning', 'builtin-media-features', 'builtin-proactivity', 'builtin-reminders', 'builtin-reply-delivery', 'builtin-sample', 'builtin-typing']);
+        assert.equal(items.length, 7); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
         const ui = kernel.uiCatalog();
-        assert.equal(ui.version, 1); assert.equal(ui.items.length, 6);
+        assert.equal(ui.version, 1); assert.equal(ui.items.length, 7);
         for (const item of ui.items) {
           assert.equal(item.trust, 'builtin'); assert.equal(item.surfaces.length, item.moduleId === 'builtin-media-features' ? 3 : 2);
           assert.equal(item.uiWarning, ''); assert.deepEqual(item.grantedCapabilities, []);
@@ -71,6 +71,10 @@ try {
         }
         assert.ok(!JSON.stringify(ui).includes(root));
         assert.deepEqual(kernel.uiCatalog(), ui);
+        const learning = items.find(item => item.id === 'builtin-learning');
+        assert.equal(learning.status, 'loaded'); assert.ok(providerRegistry.get('learning'));
+        await kernel.setEnabled(learning.id, false); assert.equal(providerRegistry.get('learning'), null);
+        assert.equal((await kernel.setEnabled(learning.id, true)).status, 'loaded');
         const proactive = items.find(item => item.id === 'builtin-proactivity');
         assert.equal(proactive.status, 'loaded'); assert.ok(providerRegistry.get('proactivity'));
         await kernel.setEnabled(proactive.id, false); assert.equal(providerRegistry.get('proactivity'), null);

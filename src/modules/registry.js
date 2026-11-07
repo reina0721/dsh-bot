@@ -14,6 +14,18 @@ function builtinUi(componentKey, binding, panel = null) {
 export const builtinRegistry = Object.freeze([
   Object.freeze({
     manifest: Object.freeze({
+      id: 'builtin-learning', name: '学习编排', version: '1.0.0',
+      description: '未知自动研究、学习任务执行与后台调度。',
+      entry: 'builtin/learning/index.js', apiVersion: 1,
+      permissions: Object.freeze(['providers:register', 'scheduler', 'config:read', 'learning:service']),
+    }),
+    defaultEnabled: true,
+    provides: Object.freeze(['learning']),
+    ui: builtinUi('learning.preview', 'legacy-core'),
+    load: () => import('./builtin/learning/index.js'),
+  }),
+  Object.freeze({
+    manifest: Object.freeze({
       id: 'builtin-proactivity', name: '主动行为', version: '1.0.0',
       description: '私聊主动行为策略与调度；人格、模型预算和交付闸门由核心管理',
       entry: 'builtin/proactivity/index.js', apiVersion: 1,

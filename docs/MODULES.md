@@ -13,7 +13,7 @@
 
 ## 内置媒体功能（one-shot 模块 1）
 
-当前目录共六个内置模块：proactivity、media-features、reminders、reply-delivery、typing 默认启用，sample 默认关闭。`builtin-media-features` 是 Bilibili 功能服务、`/bili`、表情包策略和 `/sticker` 的唯一所有者；停用不恢复核心实现。其 `mediaFeatures` 槽位仅允许此模块注册，模块 setup 自行 start，start/stop 幂等；宿主提醒订阅只处理 `reminders`，媒体启停不改变提醒所有权。
+当前目录共七个内置模块：learning、proactivity、media-features、reminders、reply-delivery、typing 默认启用，sample 默认关闭。`builtin-media-features` 是 Bilibili 功能服务、`/bili`、表情包策略和 `/sticker` 的唯一所有者；停用不恢复核心实现。其 `mediaFeatures` 槽位仅允许此模块注册，模块 setup 自行 start，start/stop 幂等；宿主提醒订阅只处理 `reminders`，媒体启停不改变提醒所有权。
 
 `media:features` 仅内置声明，端口仅向该模块 ID 暴露。`api.mediaFeatures` 提供固定 Bilibili search/popular/view/replies transport、贴纸 pick/send、固定配置投影和媒体/图片/贴纸开关布尔状态。无 URL/headers/Cookie、路径、字节、凭据或任意 HTTP/路由权限。`/sticker` 的 commandToken 由核心在主人/denied/access 检查后签发，固定聊天、单次使用且 handler 结束或 runtime 停止后失效；文件解析、校验和 delivery/outbound 发送留核心。`audience` 仅内置命令可声明，`/bili` 为 owner-or-operator，`/sticker` 为 owner。
 
@@ -26,6 +26,12 @@
 仅申请 providers:register、scheduler、config:read、proactivity:service；最后一项只允许固定内置 ID。`api.proactivity` 的 snapshot/begin/candidates/context/complete/send/release 提供当前人格的不透明 run token、最多 1000 个有效私聊候选（扁平维度）、显示名/最多四条各 160 字符记忆/三项风格。模型调用固定 proactive/220 tokens/0.8，核心保留路由与预算；发送固定目标/文本/source，创建规范 decision/proactive_intent，经过原 delivery/outbound 闸门且每 token 最多一次，无通用存储、LLM、delivery、URL/凭据或跨人格访问。
 
 memory/LLM 等待前后和发送前检查人格/切换代次/runtime；停止使 token 失效，迟到回复不发送，已接纳发送可完成并写回原人格。私聊、安静本地小时、滚动 24 小时 decision 计数（包括 dry/failed）、熟悉度/排序/退避和 single-flight 保持。七个原 cognition.proactivity 字段在模块详情 legacy-core 编辑，preview 纯只读，停用/未 loaded 配置只读；键/默认值/数据不迁移，/quiet 与 /active 保持核心配置行为但不能启用停用模块。无 panel 或新 DSH slot。完整切换与限制见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
+
+## 内置学习编排（one-shot 模块 3）
+
+`builtin-learning` 默认启用，唯一拥有固定 learning provider、未知自动规划/入队、来源迭代、任务执行和后台 timer（首次约 30 秒，完成后 60 秒，每 tick 最多一个 due pending）。停用同步取消订阅/timer/lease；无核心自动入队、runner 或 fallback，迟到结果不能发布 claim/解决 unknown。unknown 检测、已有知识与任务读取保持，重新启用不追溯建任务。手动运行不要求 autoResearch，但要求模块/cognition/learning 开启且未暂停；suggested 不自动执行。
+
+只申请 providers:register、scheduler、config:read、learning:service，最后一项仅 builtin-learning 可用。宿主 learning-port 提供 onUnknownDetected/enqueueAuto/pending/claim/sources/collectFromSource/extractClaim/complete/fail/release/retry，引用均绑定人格/代次/runtime/任务版本，每 lease 一次 attempt。核心保留数据、来源/页面/URL、LLM/预算和同步事务写入；无通用存储或任意网络/模型调用。取消通过 claim 的 cancel 模式作原仓库转换，retry 保留原语义，facade 缺 provider 返回 MODULE_DISABLED。详情有纯 learning.preview 和 16 字段 legacy-core 设置，无可选 panel/新 DSH slot；原认知页手动运行入口经 provider。完整边界及限制见 [ADR-017](architecture/ADR-017-builtin-learning.md)。
 
 ## WebUI Phase 5 当前状态
 
@@ -52,6 +58,7 @@ Phase 3A 精确归属：
 |---|---|
 | reply-delivery.preview | 分条开关、单条字数/最多条数、引用/@、分条等待 |
 | typing.preview | 模块启用、typing 开关及 enabled + loaded + typing.enabled 有效状态 |
+| learning.preview | 模块/学习/自动检索/未知检测开关与每小时上限；不请求或运行任务 |
 | proactivity.preview | 模块/主动开关、安静时段、私聊/群聊额度、熟悉度与退避；不运行 tick 或请求数据 |
 | reminders.preview | 模块/提醒开关、活跃上限、最短/最长间隔、tick；不创建或列出提醒 |
 | sample.preview | 当前配置草稿的示例消息，最多 200 字符，纯文本 |
@@ -201,7 +208,8 @@ export async function setup(api) {
 | `scheduler` | `api.scheduler.setTimeout(fn, delayMs)` / `clearTimeout(id)` | 仅向声明权限的内置模块暴露；一次性、当前 runtime 范围内的定时器，返回 `{id,dispose}` |
 | `persona:store` | `api.personaStore` | 仅内置模块；同步 `get/put/remove/list/count`，当前人格与模块命名空间隔离；外部清单声明即拒绝 |
 | `reminders:service` | `api.reminderRepository` | 仅内置模块；同步访问当前人格核心 reminder 行；外部清单声明即拒绝 |
-| `config:read` | `api.legacyConfig.section(path)` | builtin-proactivity 只读 cognition.proactivity 七字段，其余内置只读 cognition.reminders 五字段；外部清单拒绝 |
+| `config:read` | `api.legacyConfig.section(path)` | builtin-learning 只读 cognition.learning 16 字段，builtin-proactivity 只读 cognition.proactivity 七字段，其余内置只读 cognition.reminders 五字段；外部清单拒绝 |
+| `learning:service` | `api.learning` | 仅 builtin-learning；有界任务/来源/证据/claim 引用和一次 attempt lease，见 ADR-017 |
 | `proactivity:service` | `api.proactivity` | 仅 builtin-proactivity；固定人格 run token、私聊投影、固定模型调用和一次交付 |
 | `providers:register` | `api.providers.register(name, provider)` | 仅内置且运行中的模块；固定白名单 reminders、mediaFeatures、proactivity，返回生命周期 disposer；外部或缺权限调用抛错 |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
@@ -380,7 +388,7 @@ put 是创建/完整替换入口，update 刻意只提供取消和投递结果�
 
 每次同步调用访问**调用当时的当前人格**；人格切换后同一主端口访问新人格。Phase 13 增加 capture()：仅内部捕获调用时的作用域，返回相同固定 reminder 方法与 isCurrent()，不暴露人格标识，也不能指定其它人格；tick 的等待后写回原人格，检测切换后停止处理剩余候选。两种 API 均绑定 setup runtime；停用、setup/事件失败、依赖禁用/重载及 dispose 撤销旧方法，cleanup 中也不能调用。提交数据和已返回快照保留。
 
-`api.legacyConfig.section(path)` 对提醒内置只接受单个严格等于 `cognition.reminders` 的字符串（builtin-proactivity 仅接受 cognition.proactivity 七字段，见 ADR-016），每次调用重新获取当前配置并复用核心 normalizeConfig，只返回 enabled/maxActive/minIntervalSeconds/maxIntervalSeconds/tickMs 五个字段的深拷贝。拒绝父路径、子路径、其它路径和额外参数；未知字段、秘密和其它配置不会出现在结果。缺少配置使用现有默认值；没有写入、onChange 或订阅，已返回快照不会自动更新；不影响独立的 api.config 声明式模块配置。
+`api.legacyConfig.section(path)` 对提醒内置只接受单个严格等于 `cognition.reminders` 的字符串（builtin-learning 仅接受 cognition.learning 16 字段，见 ADR-017；builtin-proactivity 仅接受 cognition.proactivity 七字段，见 ADR-016），每次调用重新获取当前配置并复用核心 normalizeConfig，只返回 enabled/maxActive/minIntervalSeconds/maxIntervalSeconds/tickMs 五个字段的深拷贝。拒绝父路径、子路径、其它路径和额外参数；未知字段、秘密和其它配置不会出现在结果。缺少配置使用现有默认值；没有写入、onChange 或订阅，已返回快照不会自动更新；不影响独立的 api.config 声明式模块配置。
 
 数据继续留在核心人格作用域的 reminder kind，使用现有 SQLite/JSON、备份及人格复制/删除/统计语义，无迁移、无 module_store 副本。Phase 13 的 builtin-reminders 已使用此端口接管调度与命令，核心保留兼容回退；仓库读写前后快照比较防止取消、删除或替换被旧发送结果覆盖。本阶段无配置字段/UI/REST/依赖或版本变化。详见 [ADR-011](architecture/ADR-011-reminder-repository.md)。
 

@@ -1,6 +1,6 @@
 // 两种来源共享清单；来源与操作能力只能由加载器赋值。
 export const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
-const PERMISSIONS = new Set(['events', 'commands', 'commands:override', 'send:text', 'cognition:read', 'knowledge', 'capabilities', 'storage', 'delivery:plan', 'turn:lifecycle', 'status:write', 'scheduler', 'persona:store', 'providers:register', 'reminders:service', 'config:read', 'access:check', 'delivery:send', 'ui:sandbox', 'media:features', 'proactivity:service'])
+const PERMISSIONS = new Set(['events', 'commands', 'commands:override', 'send:text', 'cognition:read', 'knowledge', 'capabilities', 'storage', 'delivery:plan', 'turn:lifecycle', 'status:write', 'scheduler', 'persona:store', 'providers:register', 'reminders:service', 'config:read', 'access:check', 'delivery:send', 'ui:sandbox', 'media:features', 'learning:service', 'proactivity:service'])
 
 export function validateManifest(manifest, { builtin = false, directoryName } = {}) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('module.json 必须是对象')
@@ -15,9 +15,10 @@ export function validateManifest(manifest, { builtin = false, directoryName } = 
   const unknown = permissions.find((item) => !PERMISSIONS.has(item))
   if (unknown) throw new Error(`未知 permission：${unknown}`)
   if (!builtin && permissions.includes('persona:store')) throw new Error('persona:store 仅允许内置模块声明')
-  for (const permission of ['proactivity:service', 'media:features', 'reminders:service', 'config:read', 'access:check', 'delivery:send']) {
+  for (const permission of ['learning:service', 'proactivity:service', 'media:features', 'reminders:service', 'config:read', 'access:check', 'delivery:send']) {
     if (!builtin && permissions.includes(permission)) throw new Error(`${permission} 仅允许内置模块声明`)
   }
+  if (permissions.includes('learning:service') && id !== 'builtin-learning') throw new Error('learning:service 仅允许 builtin-learning 声明')
   if (permissions.includes('proactivity:service') && id !== 'builtin-proactivity') throw new Error('proactivity:service 仅允许 builtin-proactivity 声明')
   if (builtin && permissions.includes('ui:sandbox')) throw new Error('ui:sandbox 仅允许外部模块声明')
   const requires = manifest.requires === undefined ? [] : manifest.requires

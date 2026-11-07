@@ -180,7 +180,7 @@ export function createCognition({
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
       state.services.beliefs = createBeliefService({ store: personaStore, getConfig, clock })
       state.services.sources = defaultSourceRegistry({ ctx, getConfig, clock, log })
-      state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock, llm: state.services.llm, sources: state.services.sources, log })
+      state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock })
       state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
         turnHooks,
@@ -226,11 +226,11 @@ export function createCognition({
       })
       // 让 pipeline 能在发送后通知 aggregator 记录 bot message id（避免回复自己/识别回复）。
       state.services.pipeline.setTurnAggregator(state.services.aggregator)
+      state.services.learningState = () => ({ ...publicState(), ready: state.ready, now: clock.now() })
       state.services.proactivityState = () => ({ ...publicState(), ready: state.ready, now: clock.now() })
       state.ready = true
       state.services.aggregator.restore()
       log.info?.(`认知存储就绪：${state.store.info().mode} ${dbFile}`)
-      startBackgroundJobs()
     } catch (error) {
       state.error = String(error?.message || error)
       state.ready = false
@@ -249,23 +249,6 @@ export function createCognition({
   function stopReminders() {
     remindersStarted = false
     return state.services.reminders?.stop()
-  }
-
-  function startBackgroundJobs() {
-    let stopped = false
-    const tick = async () => {
-      if (stopped) return
-      try {
-        const c = cfg()
-        if (c.enabled && !state.paused && c.learning?.autoResearch) {
-          await state.services.knowledge?.runPending?.({ max: 1 })
-        }
-      } catch (error) {
-        log.debug?.('后台学习任务失败：', error.message)
-      }
-      if (!stopped) scheduler.setTimeout(tick, 60 * 1000)
-    }
-    scheduler.setTimeout(tick, 30 * 1000)
   }
 
   function rawPayload(raw, maxBytes = 16384) {
@@ -562,9 +545,15 @@ export function createCognition({
   function unknowns(query = {}) { return state.services.knowledge?.listUnknowns?.(query) || [] }
   function learningTasks(query = {}) { return state.services.knowledge?.listTasks?.(query) || [] }
   function claims(query = {}) { return state.services.knowledge?.listClaims?.(query) || [] }
-  async function runLearning(query = {}) { return state.services.knowledge?.runPending?.({ max: Number(query.max) || 1 }) || [] }
-  function retryTask(taskId) { return state.services.knowledge?.retry?.(taskId) || null }
-  function cancelTask(taskId) { return state.services.knowledge?.cancel?.(taskId) || null }
+  async function runLearning(query = {}) { return providerRegistry?.get('learning')?.runPending(query) || { ok: false, reason: 'MODULE_DISABLED' } }
+  function retryTask(taskId) {
+    const provider = providerRegistry?.get('learning')
+    return provider ? provider.retry(taskId) : { ok: false, reason: 'MODULE_DISABLED' }
+  }
+  function cancelTask(taskId) {
+    const provider = providerRegistry?.get('learning')
+    return provider ? provider.cancel(taskId) : { ok: false, reason: 'MODULE_DISABLED' }
+  }
   function metrics() { return state.services.meta?.metrics?.() || null }
   function proactivityStats() {
     return providerRegistry?.get('proactivity')?.stats() || { active: false, running: false, lastTickAt: 0, lastError: '', sent: 0, skipped: 0, dailyCount: 0, reason: 'MODULE_DISABLED' }

@@ -15,7 +15,7 @@ const validate = (raw, source = 'external', schema = null) => validateWebuiDescr
 
 test('WebUI builtin-react: frozen compile-time allowlist and strict source/key matrix', () => {
   assert.ok(Object.isFrozen(BUILTIN_COMPONENT_KEYS))
-  assert.deepEqual(BUILTIN_COMPONENT_KEYS, ['reply-delivery.preview', 'typing.preview', 'proactivity.preview', 'reminders.preview', 'sample.preview', 'media-features.preview', 'media-features.panel'])
+  assert.deepEqual(BUILTIN_COMPONENT_KEYS, ['learning.preview', 'reply-delivery.preview', 'typing.preview', 'proactivity.preview', 'reminders.preview', 'sample.preview', 'media-features.preview', 'media-features.panel'])
   const react = (componentKey) => descriptor({ surfaces: [surface('module.detail', { renderer: 'builtin-react', componentKey })] })
   for (const key of BUILTIN_COMPONENT_KEYS) {
     assert.equal(validate(react(key), 'builtin').surfaces[0].componentKey, key)
@@ -154,7 +154,7 @@ test('WebUI built-in registry catalog includes disabled sample; no import/config
   await h.kernel.start()
   const catalog = h.kernel.uiCatalog()
   assert.equal(catalog.version, 1)
-  assert.equal(catalog.items.length, 6)
+  assert.equal(catalog.items.length, 7)
   for (const item of catalog.items) {
     assert.equal(item.status, 'disabled')
     assert.equal(item.source, 'builtin'); assert.equal(item.trust, 'builtin')
