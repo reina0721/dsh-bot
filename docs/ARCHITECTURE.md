@@ -85,6 +85,8 @@ Phase 14 完成模块边界验收，生产目录保持 reply delivery、typing�
 
 ### 3.1 配置（src/core/config.js）
 
+AstrBot alignment C01 的权威编辑所有权与导航契约位于 `src/core/settings-schema.js`、`src/core/navigation.js`，详见 [ADR-020：settings ownership and navigation contract](architecture/ADR-020-settings-ownership-navigation.md)。静态库存覆盖 30 个旧组、297 个核心配置叶子及 1 个模块文件字段，按 system/profile/module 唯一分区；operation 单独描述人工动作。六区导航仅为登记模型，旧 tab/section/group/DOM 锚点通过纯函数解析。profile scope 不改变当前全局配置存储；本阶段不接入 UI、不迁移 profile、不增加沙盒或 DSH slot。
+
 - 配置文件：`$DSH_HOME/plugins-data/dsh-bot/config.json`（可用 `DSH_BOT_DATA_DIR` 覆盖，测试用）。
 - `DEFAULTS` 必须包含**所有**可调参数（重连退避、超时、重试、事件过滤、缓冲容量、日志级别等）。
 - 读取时与 DEFAULTS 深合并；未知字段保留（向前兼容）；类型/取值非法时回退默认值并记录 warning。
