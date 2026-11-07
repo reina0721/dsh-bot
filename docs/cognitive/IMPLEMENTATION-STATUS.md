@@ -1,4 +1,4 @@
-# 实现状态（v0.11.11 发布后，M7-v 工作区）
+# 实现状态（v0.11.12 发布后，M7-v 工作区）
 
 one-shot 模块 1（未发布，I/T）：新增第五个默认启用的 builtin-media-features，独占 Bilibili 解释/命令和贴纸策略/命令。核心固定窄 transport 与一次性发送令牌，媒体凭据/文件/存储保留核心；模块停用关闭相关命令与 HTTP，无功能回退。六个配置字段与 Bilibili 面板移入模块详情，贴纸控件留核心并咨询 provider，配置/数据无迁移。详见 [ADR-015](../architecture/ADR-015-builtin-media-features.md)。以下 Phase 14 等段落保留历史阶段记录。
 

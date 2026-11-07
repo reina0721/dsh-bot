@@ -1,18 +1,24 @@
 # 变更记录
 
-## 未发布（one-shot 模块 3，2026-11-07）
+## 0.11.12（2026-11-08，媒体/主动/学习内置模块）
+
+- 新增默认启用的 `builtin-media-features`、`builtin-proactivity`、`builtin-learning`；三个模块各自独占行为/timer/命令，核心保留资源、状态、LLM/预算、delivery 与安全边界。
+- 模块关闭后功能停止，无核心回退所有者；配置键、默认值和既有数据保持不变。
+- 947 项测试：943 通过、4 跳过、0 失败。
+
+### 模块 3：builtin-learning
 
 - 默认启用 builtin-learning，独占固定 learning provider、自动 unknown→task 规划/入队、pending/run、来源迭代与 timer；核心删除自动入队/学习 runner/timer，无 fallback。默认 enabled:true/autoResearch:false 保持，手动运行/取消/重试经过当前 provider，停用返回 MODULE_DISABLED；知识读取与未知检测保留，无追溯建任务。
 - 内置固定 learning:service 窄端口、一次 attempt 的人格/代次/runtime/版本 lease；核心保留来源/页面、LLM/预算、同步事务与数据，证据去重/complete 幂等，私聊/开关/取消/停止阻止迟到发布。首次约 30 秒、完成后 60 秒，每 tick 最多一个到期 pending，suggested 不自动运行。
 - 16 个原配置归模块详情 legacy-core 与纯 learning.preview；原认知页操作经 provider，无可选模块 panel 或 DSH 新入口。保留 ID/数据/配置和既有未完整执行字段语义，补充 ADR-017、生命周期/port/UI/归档检查。无版本/依赖变化、推送、部署、tag 或发布；未验证真实来源/模型/QQ/浏览器。
 
-## 未发布（one-shot 模块 2，2026-11-07）
+### 模块 2：builtin-proactivity
 
 - 默认启用 builtin-proactivity，独占主动策略/提示词/排序/退避与单递归 timer；新增仅固定模块可注册的 proactivity 槽位和 proactivity:service 窄端口。删除 core 主动引擎与 timer；统计/手动运行及原 HTTP 通过 facade，停用返回 MODULE_DISABLED，无 fallback，提醒所有权不变。
 - run token 捕获人格/切换代次/runtime，投影有效私聊候选、有限记忆/风格；固定核心 proactive/220 tokens/0.8 调用与一次 delivery/outbound 发送，保留预算和 access/rate/leak/dryRun。修正旧私聊 scope/关系维度混用；迟到 memory/LLM 不发送，已接纳发送以原人格写规范 decision/proactive_intent 回执，无 raw error/通用存储/凭据/provider 选择。
 - 七个原配置字段归属模块详情 legacy-core 与纯预览，键/默认关闭/数据及 /quiet、/active 保持，无 panel/新 DSH slot。补充 engine/port/provider/生命周期/出站/UI/包验证和 ADR-016。无学习策略、依赖、版本变化，无推送、部署、标签或发布；真实 QQ/模型 provider/浏览器未验。
 
-## 未发布（one-shot 模块 1，2026-11-07）
+### 模块 1：builtin-media-features
 
 - 默认启用 builtin-media-features，独占 Bilibili 解释/命令和贴纸策略/命令；新增固定 mediaFeatures 槽位和内置专用 media:features 窄端口，提醒订阅隔离。删除核心 Bilibili 服务与两个功能命令实现，模块停用后命令静默、相关 HTTP fail closed，无核心回退。
 - 核心固定 Bilibili 四操作的 origin/端点/headers/超时/2 MiB 流式响应上限并拒绝重定向；贴纸用一次性、绑定授权聊天和生命周期的 commandToken，核心解析/校验文件并经 delivery/outbound 发送一次，不暴露路径、字节或凭据。媒体 transport/provider/存储继续留核心。
