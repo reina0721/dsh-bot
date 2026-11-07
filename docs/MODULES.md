@@ -11,6 +11,14 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
+## 六区 WebUI 与设置归属（AstrBot alignment C03）
+
+模块目录统一位于 **Extensions → 模块目录**；卡片详情/配置和功能回链写入面板内部 URL 状态，刷新、前进/后退及重复同区定位均保留 moduleId。旧 `modules`、`module:<id>` 与 `ob-module-detail/config/panel/reminders` 继续直接进入详情，未知模块显示目录不可用提示，不创建 DSH slot。全插件仍恰好注册 `sidebar.panellist/onebot-qq`、`main/onebot-qq` 两项。
+
+41 个内置旧绑定字段继续只由对应模块详情编辑，保存经 `/settings/view?scope=module:<id>` + `/settings/patch` 串行执行单 owner revisioned patch；sample 与外部模块文件沿用 `/modules/config` 的 schema、revision、加载状态与只读门控。System/Profile 通用表单不复制模块字段；搜索旧组/字段路径直接定位唯一模块所有者。媒体传输与 provider 属 System → 媒体，贴纸/B站业务设置属 builtin-media-features，数据操作仍在 Data & Logs；learning/proactivity/reminders 的参数只在其模块详情，Profiles 只保留业务数据/动作。
+
+六区 profile 设置仍是 C02 的 staged 预览，当前运行仍读 legacy；检查或保存 inactive profile 不切换人格。业务动作仍作用于当前激活人格。Chat & Sandbox 只保留 planned 占位，没有新增 sandbox UI/后端；既有外部模块隔离 WebUI 沿用旧实现。设置契约与完整别名库存见 [ADR-020](architecture/ADR-020-settings-ownership-navigation.md)，使用入口见[用户手册](USER-MANUAL.md#4-面板六区导航)。
+
 ## 闭环 v2 管理与导航（C07）
 
 C01–C07 的提交链、贴纸库/发送矩阵、恢复与系统闭环验收、包检查和离线限制统一见 [C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)。C08 不新增生产功能；main/sidebar.panellist 仍恰好两项 DSH 注册，无自动 restart、exactly-once 或 UI 权限扩展。

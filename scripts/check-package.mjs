@@ -38,7 +38,10 @@ try {
       assert.equal(name, 'react');
       return { createElement() {}, createContext: () => ({}), Component: class {}, Fragment: 'fragment' };
     });
-    for (const name of ['CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    for (const name of ['OwnerSettings', 'AreaContent', 'NavigationMenu', 'searchNavigation', 'readNavigationUrl', 'navigationUrl', 'CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    assert.equal(client.TABS.length, 6);
+    for (const [alias] of Object.entries(settings.LEGACY_ALIASES)) assert.equal(JSON.stringify(client.resolveLegacyGo(alias)), JSON.stringify(navigation.go(alias)), alias);
+    for (const field of settings.SETTINGS_FIELDS) assert.ok(client.searchNavigation(field.path).some(row => row.target.fieldPath === field.path), field.path);
     const registrations = [];
     const slots = { inject(name, register) { register(); }, register(def) { registrations.push(def.name); } };
     client.apply({ get: name => name === 'slots' ? slots : undefined, effect() {} });

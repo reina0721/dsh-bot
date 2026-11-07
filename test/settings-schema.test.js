@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { runInNewContext } from 'node:vm'
 import { CONFIG_GROUPS, DEFAULTS } from '../src/core/config.js'
 import { builtinRegistry } from '../src/modules/registry.js'
@@ -115,7 +116,7 @@ test('schema contains metadata only, is deeply immutable, and distinguishes secr
 
 test('registry matches every live tab, cognition subsection, settings category and static anchor', () => {
   const extractIds = name => [...clientSource.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\n    \\]`))[1].matchAll(/\bid: '([^']+)'/g)].map(match => match[1])
-  assert.deepEqual(sorted(Object.keys(LEGACY_TABS)), sorted(extractIds('TABS')))
+  assert.match(clientSource, /const TABS = NAVIGATION_REGISTRY.map/)
   assert.equal(Object.keys(LEGACY_TABS).length, 15)
   assert.deepEqual(sorted(Object.keys(LEGACY_COGNITION_SECTIONS)), sorted(extractIds('COG_SECTIONS')))
   assert.equal(Object.keys(LEGACY_COGNITION_SECTIONS).length, 15)
@@ -129,7 +130,7 @@ test('registry matches every live tab, cognition subsection, settings category a
   }
 })
 
-test('six areas are descriptive only; existing DSH registration remains main and sidebar.panellist', () => {
+test('six-area metadata stays pure; DSH registration remains main and sidebar.panellist', () => {
   assert.deepEqual(NAVIGATION_REGISTRY.map(area => area.label), [
     'Overview', 'Chat & Sandbox', 'Profiles', 'Extensions', 'Data & Logs', 'System',
   ])
@@ -148,4 +149,8 @@ test('six areas are descriptive only; existing DSH registration remains main and
   const slots = { inject(name, register) { register() }, register(def) { registrations.push(def.name) } }
   client.apply({ get: name => name === 'slots' ? slots : undefined, effect() {} })
   assert.deepEqual(registrations, ['main', 'sidebar.panellist'])
+})
+
+test('C03 embedded client navigation is reproducible from the shared contracts', () => {
+  execFileSync(process.execPath, ['scripts/sync-client-navigation.mjs', '--check'], { cwd: new URL('..', import.meta.url) })
 })

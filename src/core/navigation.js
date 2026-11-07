@@ -1,4 +1,4 @@
-// Pure C01 normalization. Consumers may adopt this contract in a later UI phase.
+// Shared normalization for the WebUI and legacy feature links.
 import {
   DEFAULT_TARGET, NAVIGATION_REGISTRY, LEGACY_ALIASES, LEGACY_TABS,
   LEGACY_COGNITION_SECTIONS, LEGACY_CONFIG_GROUPS, LEGACY_MODULE_IDS,
@@ -151,3 +151,59 @@ export function go(id, group = '') {
 }
 
 export const normalizeNavigation = goTo
+
+
+// Only this query parameter belongs to the panel. The host path/hash/state stay intact.
+export const NAVIGATION_PARAM = 'ob-nav'
+export function readNavigationUrl(href) {
+  try {
+    const url = new URL(href, 'http://localhost')
+    const value = url.searchParams.get(NAVIGATION_PARAM)
+    if (value !== null) return goTo(JSON.parse(value))
+    return go(decodeURIComponent(url.hash.slice(1)))
+  } catch { return fallback() }
+}
+export function navigationUrl(href, target) {
+  const url = new URL(href, 'http://localhost')
+  url.searchParams.set(NAVIGATION_PARAM, JSON.stringify(goTo(target)))
+  return url.pathname + url.search + url.hash
+}
+export function createNavigationHistory(host, onChange) {
+  const read = () => onChange(readNavigationUrl(host.location.href))
+  host.addEventListener('popstate', read)
+  host.addEventListener('hashchange', read)
+  return {
+    navigate(input) {
+      const target = goTo(input)
+      host.history.pushState(host.history.state, '', navigationUrl(host.location.href, target))
+      onChange(target)
+      return target
+    },
+    dispose() {
+      host.removeEventListener('popstate', read)
+      host.removeEventListener('hashchange', read)
+    },
+  }
+}
+
+// Metadata is explicitly projected: neither current settings nor defaults enter search.
+export function navigationSearchIndex(labels = {}) {
+  const rows = NAVIGATION_REGISTRY.flatMap(area => area.sections
+    .filter(section => section.id !== 'module' && !(area.id === 'profiles' && section.id === 'settings'))
+    .map(section => ({ label: area.label + ' / ' + (labels[section.id] || section.id), target: { area: area.id, section: section.id }, terms: area.label + ' ' + section.id + ' ' + (labels[section.id] || '') })))
+  for (const [alias, target] of Object.entries(LEGACY_ALIASES)) {
+    if (target.section === 'module' && !target.moduleId) continue
+    const row = rows.find(row => samePlace(row.target, target))
+    if (row) row.terms += ' ' + alias + ' ' + (labels[alias.replace(/^tab:/, '')] || '')
+    else rows.push({ label: labels[alias] || alias, target: goTo(target), terms: alias + ' ' + (labels[alias] || '') })
+  }
+  for (const field of SETTINGS_FIELDS) rows.push({
+    label: labels[field.path] || field.path, target: { ...field.canonical, fieldPath: field.path },
+    terms: [field.path, labels[field.path] || '', field.legacyGroup || '', labels['group:' + field.legacyGroup] || '', ...field.aliases].join(' '),
+  })
+  return rows
+}
+export function searchNavigation(query, labels = {}) {
+  const terms = typeof query === 'string' ? query.trim().toLowerCase().split(/\s+/).filter(Boolean) : []
+  return terms.length ? navigationSearchIndex(labels).filter(row => terms.every(term => (row.label + ' ' + row.terms).toLowerCase().includes(term))) : []
+}

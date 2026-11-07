@@ -178,3 +178,56 @@ test('canonical normalization is idempotent, immutable and has no navigation/act
   assert.deepEqual(goTo({ area: 'system' }), target('system', 'general'))
   assert.deepEqual(goTo(Object.assign(Object.create(null), { tab: 'config' })), target('system', 'general'))
 })
+
+test('navigation URL reload preserves outer DSH routes, query and opaque identities', async () => {
+  const { readNavigationUrl, navigationUrl } = await import('../src/core/navigation.js')
+  for (const outer of ['https://dsh.local/work?host=keep#/main/onebot-qq', 'https://dsh.local/main/onebot-qq?x=1#outer']) {
+    for (const input of [go('config'), go('cognition'), goTo({ tab: 'modules', moduleId: 'Local.v2:ABC', anchor: 'config' }), goTo({ tab: 'cognition', taskId: 'Task:ABC-1', anchor: 'tasks' })]) {
+      const next = new URL(navigationUrl(outer, input), outer), before = new URL(outer)
+      assert.equal(next.pathname, before.pathname)
+      assert.equal(next.hash, before.hash)
+      for (const [key, value] of before.searchParams) assert.equal(next.searchParams.get(key), value)
+      assert.deepEqual(readNavigationUrl(next.href), input)
+    }
+  }
+  assert.deepEqual(readNavigationUrl('https://local/#ob-tab-config'), go('config'))
+  assert.deepEqual(readNavigationUrl('https://local/?ob-nav=invalid#/main/onebot-qq'), DEFAULT_TARGET)
+  assert.deepEqual(readNavigationUrl('https://local/?ob-nav=%7B%22area%22:%22bad%22%7D'), DEFAULT_TARGET)
+})
+
+test('history adapter handles same-area updates, back/forward, reload and listener cleanup', async () => {
+  const { createNavigationHistory, readNavigationUrl } = await import('../src/core/navigation.js')
+  const listeners = new Map(), changes = [], entries = ['https://local/?host=keep#/main/onebot-qq']
+  let position = 0
+  const outerState = { route: 'main', host: { key: 3 } }
+  const host = { location: { href: entries[0] },
+    addEventListener: (name, listener) => listeners.set(name, listener), removeEventListener: (name, listener) => { assert.equal(listeners.get(name), listener); listeners.delete(name) },
+    history: { state: outerState, pushState(state, _title, path) { assert.equal(state, outerState); entries.splice(++position); entries.push(new URL(path, host.location.href).href); host.location.href = entries[position] } } }
+  const history = createNavigationHistory(host, value => changes.push(value))
+  const first = goTo({ tab: 'cognition', section: 'learning', taskId: 'Task:A', anchor: 'tasks' })
+  const second = { ...first, taskId: 'Task:B' }
+  history.navigate(first); history.navigate(second)
+  assert.deepEqual(changes, [first, second])
+  host.location.href = entries[--position]; listeners.get('popstate')()
+  assert.deepEqual(changes.at(-1), first)
+  host.location.href = entries[++position]; listeners.get('popstate')()
+  assert.deepEqual(changes.at(-1), second)
+  assert.deepEqual(readNavigationUrl(host.location.href), second)
+  history.navigate({ tab: 'invalid', moduleId: 'stale' })
+  assert.deepEqual(changes.at(-1), DEFAULT_TARGET)
+  history.dispose(); assert.equal(listeners.size, 0)
+})
+
+test('search indexes section labels, legacy aliases and every field path without values', async () => {
+  const { navigationSearchIndex, searchNavigation } = await import('../src/core/navigation.js')
+  for (const field of SETTINGS_FIELDS) assert.ok(searchNavigation(field.path).some(row => row.target.fieldPath === field.path), field.path)
+  for (const [alias, destination] of Object.entries(LEGACY_ALIASES)) {
+    if (destination.section === 'module' && !destination.moduleId) continue
+    assert.ok(searchNavigation(alias).some(row => row.terms.includes(alias)), alias)
+  }
+  assert.ok(searchNavigation('旧配置', { config: '旧配置' }).some(row => row.target.area === 'system'))
+  assert.ok(searchNavigation('回复分段', { 'cognition.reply.split': '回复分段' }).some(row => row.target.moduleId === 'builtin-reply-delivery'))
+  assert.equal(searchNavigation('SAMPLE_SECRET_VALUE').length, 0)
+  assert.deepEqual(searchNavigation('   '), [])
+  assert.ok(navigationSearchIndex().every(row => Object.keys(row).sort().join(',') === 'label,target,terms'))
+})

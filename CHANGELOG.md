@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- C03：WebUI 改为 Overview / Chat & Sandbox / Profiles / Extensions / Data & Logs / System 六区，宽 rail、窄 drawer 和元数据搜索；内部 URL 状态保留 DSH 外层路由，支持同区定位、刷新与前进/后退。沿用 C01 全部旧标签、认知分区、配置组、字段路径、模块及锚点别名；未知安全回落 Overview。
+- 设置按唯一 owner 归属：System/数据治理单 owner revisioned patch、profile API 的指定人格 staged 编辑（不激活、不改变运行）、模块详情唯一配置。保留当前运行人格旧编辑模式，其余 legacy 运行参数仍由原配置文件维护；移除根页面全量保存/reset，外观与内置模块保存适配 C02。补 Node shim 的别名穷举、所有者分区、搜索、URL 历史、窄屏 markup、secret 操作与 CAS 冲突测试。
+- Chat & Sandbox 仅 planned 占位，无新增沙盒后端或 profile runtime cutover；DSH 仍恰好两项注册。仅本地构建/验证，版本不变，无推送、部署、tag 或 release。
+
 - C02：新增人格 profile_settings、逐人格有效行为 snapshot/hash 与事务幂等迁移；保留显式值，失败保留 legacy 运行并关闭 profile 编辑。新增 settings schema/view/patch、profiles/config API、revision 冲突检查、单 owner 保存、secret keep/set/clear 和脱敏读取；legacy config adapter 路由 active profile 与原 System/module owner，拒绝缺版本、跨 owner 和全量 reset 绕过。
 - C02 运行门控为 legacy：profile 保存 staged，管线只做脱敏影子 capture，不改变认知输出；未适配的旧 UI 保存会因缺 revision/personaId 拒绝。无 UI/沙盒/版本变更，未推送、部署、打标签或发布；实现与限制见 [ADR-020](docs/architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
 

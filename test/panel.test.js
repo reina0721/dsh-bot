@@ -5,6 +5,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { go as contractGo, goTo as contractGoTo } from '../src/core/navigation.js'
+import { SETTINGS_FIELDS, LEGACY_ALIASES, NAVIGATION_REGISTRY } from '../src/core/settings-schema.js'
 import { CONFIG_GROUPS, DEFAULTS } from '../src/core/config.js'
 import { DIMENSIONS } from '../src/cognition/relationships.js'
 import { BUILTIN_COMPONENT_KEYS } from '../src/modules/webui.js'
@@ -388,7 +390,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
   assert.equal(panel.DEFAULT_UI.contrast, 'system')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
-    ['overview', 'connect', 'messages', 'media', 'content', 'modules', 'backup', 'security', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
+    ['overview', 'chat', 'profiles', 'extensions', 'data', 'system'],
   )
 })
 
@@ -440,21 +442,16 @@ test('apply：注册 sidebar.panellist 与 main 两个 slot', () => {
   assert.equal(typeof sidebar.component, 'function')
 })
 
-test('面板品牌：初始名称、status 更新、tabs aria 与关于标题', () => {
-  const render = (tab, status) => {
-    stateOverrides = [tab, status, {}]
-    try { return treeNodes(panel.OneBotPage()) } finally { stateOverrides = null }
-  }
-  for (const [status, brand] of [[null, '小葵'], [{ brand: '' }, '小葵'], [{ brand: '葵' }, '葵']]) {
-    const nodes = render('overview', status)
-    const header = nodes.find((node) => node.type?.name === 'PageHeader')
-    assert.equal(header.props.title, brand)
-    assert.equal(header.props.eyebrow, `ONEBOT V11 · ${brand}`)
-    const tabs = nodes.find((node) => node.type?.name === 'Tabs')
-    assert.equal(tabs.type(tabs.props).props['aria-label'], '小葵 面板')
-    assert.doesNotMatch(JSON.stringify(nodes), /QQ 连接/)
-  }
-  assert.equal(render('about', { brand: '葵' }).find((node) => node.type?.name === 'PageHeader').props.title, '关于 dsh-bot')
+test('six-area root mounts grouped navigation inside the branded two-slot shell', () => {
+  stateOverrides = ['overview', { brand: '葵' }, {}]
+  let nodes
+  try { nodes = treeNodes(panel.OneBotPage()) } finally { stateOverrides = null }
+  const header = nodes.find(node => node.type?.name === 'PageHeader')
+  assert.equal(header.props.title, '概览')
+  assert.equal(header.props.eyebrow, 'Overview')
+  assert.ok(nodes.some(node => node.type === panel.NavigationMenu))
+  assert.equal(nodes.some(node => node.type?.name === 'Tabs'), false)
+  assert.ok(nodes.some(node => node.props?.role === 'region' && node.props.id === 'ob-panel-overview-overview'))
 })
 
 test('面板品牌：factory 清理注入名称并回退 dsh-bot', () => {
@@ -1261,8 +1258,8 @@ test('SecurityPage: read-only launch checklist, last five audit rows, manual upg
   }
   try {
     const tree = render(), json = JSON.stringify(tree)
-    assert.equal(panel.TABS.length, 15)
-    assert.deepEqual(panel.TABS.find((tab) => tab.id === 'security'), { id: 'security', label: '安全', icon: 'shield' })
+    assert.equal(panel.TABS.length, 6)
+    assert.ok(panel.NAVIGATION_REGISTRY.find(area => area.id === 'system').sections.some(section => section.id === 'security'))
     for (const text of ['访问控制', '出站文本防泄漏', '没有扫描内容/密钥', 'redact（脱敏后发送）', '危险面', '上线检查', '升级', '123456', 'VISION_KEY', '人工审核', '不是沙箱', 'v0.11.0-beta.1', '不自动检查、下载或安装']) assert.ok(json.includes(text), text)
     assert.doesNotMatch(json, /audit-0|audit-1|NEVER_RENDER_SECRET/)
     const disabledGuard = JSON.stringify(render({ ...data, status: { config: { security: { leakGuard: { enabled: false, action: 'block' } } } } }))
@@ -2665,8 +2662,8 @@ test('C07 action controls: service catalog only, duplicate click guard, pending/
 })
 
 test('C07 typed navigation: same mounted cognition/config destinations, go compatibility and backlinks', async () => {
-  assert.deepEqual(panel.navigationTarget({ tab: 'cognition', section: 'loop', decisionId: 'decision_1', taskId: 'task_1', anchor: 'tasks', extra: 'ignored' }), { tab: 'cognition', section: 'loop', decisionId: 'decision_1', taskId: 'task_1', anchor: 'tasks' })
-  for (const input of [{ tab: 'sidebar' }, { tab: 'modules', moduleId: '../bad' }, { tab: 'cognition', taskId: {} }]) assert.throws(() => panel.navigationTarget(input), /无效/)
+  assert.deepEqual(panel.navigationTarget({ tab: 'cognition', section: 'loop', decisionId: 'decision_1', taskId: 'task_1', anchor: 'tasks', extra: 'ignored' }), { area: 'overview', section: 'overview' })
+  for (const input of [{ tab: 'sidebar' }, { tab: 'modules', moduleId: '../bad' }, { tab: 'cognition', taskId: {} }]) assert.deepEqual(panel.navigationTarget(input), { area: 'overview', section: 'overview' })
   const originalEffect = reactShim.useEffect, effects = []
   reactShim.useEffect = (effect, deps) => effects.push({ effect, deps })
   const props = { navigation: { tab: 'cognition', section: 'learning', taskId: 'task_1' } }
@@ -2686,12 +2683,12 @@ test('C07 typed navigation: same mounted cognition/config destinations, go compa
   // Root go() remains compatible with config group arguments and shares typed state.
   const session = { values: ['overview', { gateway: {} }, {}, {}, false], index: 0 }
   const root = () => { session.index = 0; hookSession = session; try { return panel.OneBotPage() } finally { hookSession = null } }
-  const currentPage = () => treeNodes(root()).find(node => typeof node.props?.goTo === 'function')
+  const currentPage = () => treeNodes(root()).find(node => node.type === panel.AreaContent)
   currentPage().props.go('cognition', 'cog-llm')
-  assert.equal(currentPage().props.configTarget, 'cog-llm')
-  assert.deepEqual(currentPage().props.navigation, { tab: 'cognition', section: 'settings', anchor: 'cog-llm' })
+  assert.equal(currentPage().props.configTarget, '')
+  assert.deepEqual(currentPage().props.navigation, { area: 'profiles', section: 'models' })
   currentPage().props.goTo({ tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' })
-  assert.deepEqual(currentPage().props.navigation, { tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' })
+  assert.deepEqual(currentPage().props.navigation, { area: 'extensions', section: 'module', moduleId: 'builtin-media-features', anchor: 'ob-module-panel' })
   const navigate = []
   const shared = { goTo: value => navigate.push(value) }
   for (const [moduleId, label, target] of [
@@ -2897,4 +2894,219 @@ test('operation restart interruption is terminal: polling stops without retry or
     assert.equal(reads, 1)
     assert.equal(waits, 1)
   } finally { globalThis.fetch = original }
+})
+
+test('C03 embedded browser contract matches all C01 aliases and fields', () => {
+  assert.deepEqual(panel.NAVIGATION_REGISTRY, NAVIGATION_REGISTRY)
+  for (const [alias] of Object.entries(LEGACY_ALIASES)) assert.deepEqual(panel.resolveLegacyGo(alias), contractGo(alias), alias)
+  for (const field of SETTINGS_FIELDS) for (const alias of field.aliases) assert.deepEqual(panel.resolveLegacyGo(alias), contractGo(alias), alias)
+  for (const group of CONFIG_GROUPS) assert.deepEqual(panel.resolveLegacyGo('config', group.id), contractGo('config', group.id))
+  assert.deepEqual(panel.navigationTarget({ tab: 'cognition', section: 'learning', taskId: 'Task:ABC-1', anchor: 'tasks' }), contractGoTo({ tab: 'cognition', section: 'learning', taskId: 'Task:ABC-1', anchor: 'tasks' }))
+})
+
+test('C03 owner destinations partition every editable config field; module editors remain in details', () => {
+  const paths = []
+  for (const area of NAVIGATION_REGISTRY) for (const section of area.sections) {
+    if (area.id === 'extensions') continue
+    paths.push(...panel.ownerFields({ area: area.id, section: section.id }).map(field => field.path))
+  }
+  for (const moduleId of new Set(SETTINGS_FIELDS.filter(field => field.ownerClass === 'module').map(field => field.canonical.moduleId))) {
+    const fields = panel.ownerFields({ area: 'extensions', section: 'module', moduleId })
+    assert.ok(fields.every(field => field.canonical.moduleId === moduleId))
+    paths.push(...fields.map(field => field.path))
+  }
+  assert.equal(paths.length, new Set(paths).size)
+  assert.deepEqual(paths.sort(), SETTINGS_FIELDS.filter(field => field.storage === 'config.json' && field.apply !== 'read-only').map(field => field.path).sort())
+  const props = { toast() {}, navigation: { area: 'system', section: 'general' } }
+  const tree = panel.AreaContent(props)
+  assert.equal(treeNodes(tree).filter(node => node.type === panel.OwnerSettings).length, 1)
+  assert.equal(treeNodes(tree).some(node => node.type === panel.ConfigTab || node.type === panel.CogSettings), false)
+  const moduleTree = panel.AreaContent({ ...props, navigation: { area: 'extensions', section: 'module', moduleId: 'builtin-learning' } })
+  assert.equal(treeNodes(moduleTree).filter(node => node.type === panel.OwnerSettings).length, 0)
+  assert.ok(treeNodes(moduleTree).some(node => node.type === panel.ModulesPage))
+  const connection = panel.Connect({ ...props, operationsOnly: true, configInfo: { groups: CONFIG_GROUPS }, draft: DEFAULTS })
+  assert.equal(treeNodes(connection).filter(node => node.type?.name === 'FieldRow').length, 0)
+  const model = panel.ModelTab({ ...props, ownerIntegration: true })
+  assert.equal(treeNodes(model).some(node => node.props?.['aria-label'] === '模型路由模式'), false)
+})
+
+test('C03 wide grouped rail, narrow drawer, search selection and typed sandbox placeholder', () => {
+  const targets = [], props = { navigation: { area: 'profiles', section: 'turn' }, goTo: target => targets.push(target), configInfo: { groups: CONFIG_GROUPS } }
+  const render = mountNode({ type: panel.NavigationMenu, props })
+  let tree = render()
+  assert.equal(treeNodes(tree).filter(node => node.type === 'h2').length, 6)
+  assert.equal(field(tree, '六区导航').type, 'nav')
+  assert.equal(control(tree, '导航与搜索').props['aria-expanded'], false)
+  control(tree, '导航与搜索').props.onClick(); tree = render()
+  assert.equal(control(tree, '导航与搜索').props['aria-expanded'], true)
+  assert.ok(control(tree, '关闭导航'))
+  field(tree, '搜索页面、旧名称或设置路径').props.onChange({ target: { value: 'cognition.reply.split' } })
+  tree = render()
+  treeNodes(tree).find(node => node.type === 'button' && node.children?.includes('长回复分条')).props.onClick()
+  assert.deepEqual(targets.at(-1), contractGo('cognition.reply.split'))
+  assert.equal(control(render(), '导航与搜索').props['aria-expanded'], false)
+  for (const text of ['@media (max-width:900px)', '.ob-navigation.is-open', '.ob-nav-backdrop', 'grid-template-columns:240px minmax(0,1fr)']) assert.ok(panel.PANEL_CSS.includes(text))
+  const placeholder = JSON.stringify(panel.AreaContent({ navigation: { area: 'chat', section: 'sandbox' } }))
+  assert.match(placeholder, /尚无沙盒后端/)
+  assert.doesNotMatch(placeholder, /iframe|onClick/)
+})
+
+function ownerHarness(props) {
+  const session = { values: [], index: 0 }, effects = [], original = reactShim.useEffect
+  reactShim.useEffect = (effect, deps) => effects.push({ effect, deps })
+  const instance = registration.factory(requireShim)
+  const render = () => { session.index = 0; effects.length = 0; hookSession = session; try { return instance.OwnerSettings(props) } finally { hookSession = null } }
+  const settle = () => new Promise(resolve => setImmediate(resolve))
+  return { render, effects, settle, async load() { render(); effects.find(row => row.deps?.length === 3 && typeof row.deps[0] === 'function').effect(); await settle(); return render() }, restore() { reactShim.useEffect = original } }
+}
+
+test('C03 profile staged editor reads inactive IDs, sends only changed owner fields with revision and retains conflicts', async () => {
+  const original = globalThis.fetch, calls = [], toasts = []
+  const props = { navigation: { area: 'profiles', section: 'reply' }, configInfo: { groups: CONFIG_GROUPS }, toast: (...args) => toasts.push(args) }
+  let conflict = false
+  globalThis.fetch = async (path, init) => {
+    const body = init.body && JSON.parse(init.body); calls.push({ path, body })
+    return { ok: true, json: async () => path.endsWith('/profiles') ? { ok: true, activeId: 'active', items: [{ id: 'active' }, { id: 'inactive' }] }
+      : body ? conflict ? { ok: false, code: 'SETTINGS_CONFLICT' } : { ok: true, revision: 8, values: { ...Object.fromEntries(panel.ownerFields(props.navigation).map(field => [field.path, true])), ...body.patch } }
+      : { ok: true, id: path.endsWith('inactive') ? 'inactive' : 'active', revision: 7, values: Object.fromEntries(panel.ownerFields(props.navigation).map(field => [field.path, true])), runtimeMode: 'legacy', profileEditsApply: 'staged' } }
+  }
+  const harness = ownerHarness(props)
+  try {
+    harness.render(); harness.effects.find(row => row.deps?.length === 1 && row.deps[0] === true).effect(); await harness.settle()
+    let tree = await harness.load()
+    field(tree, '预览人格').props.onChange({ target: { value: 'inactive' } }); tree = await harness.load()
+    assert.ok(calls.at(-1).path.endsWith('/profiles/config?id=inactive'))
+    assert.match(JSON.stringify(tree), /staged/)
+    const editors = treeNodes(tree).filter(node => node.type?.name === 'FieldRow')
+    assert.deepEqual(editors.map(node => node.props.spec.path).sort(), panel.ownerFields(props.navigation).map(field => field.path).sort())
+    editors.find(node => node.props.spec.path === 'cognition.notices.enabled').props.onChange(false)
+    await moduleControl(harness.render(), '保存设置').props.onClick()
+    assert.deepEqual(calls.find(row => row.body).body, { id: 'inactive', revision: 7, patch: { 'cognition.notices.enabled': false } })
+    assert.ok(calls.find(row => row.body).path.endsWith('/profiles/config/save'))
+    assert.match(toasts.at(-1)[0], /运行配置未切换/)
+    tree = harness.render(); treeNodes(tree).find(node => node.type?.name === 'FieldRow').props.onChange(false)
+    conflict = true
+    await moduleControl(harness.render(), '保存设置').props.onClick()
+    assert.match(JSON.stringify(harness.render()), /SETTINGS_CONFLICT/)
+    assert.equal(moduleControl(harness.render(), '保存设置').props.disabled, false)
+    assert.equal(calls.some(row => /switch|activate|config\/save$/.test(row.path) && !row.path.includes('/profiles/')), false)
+  } finally { harness.restore(); globalThis.fetch = original }
+})
+
+test('C03 system secrets use explicit keep/set/clear and never render mask objects as values', async () => {
+  const original = globalThis.fetch, calls = []
+  const props = { navigation: { area: 'system', section: 'connection' }, configInfo: { groups: CONFIG_GROUPS } }
+  const values = Object.fromEntries(panel.ownerFields(props.navigation).map(field => [field.path, field.sensitivity.startsWith('secret') ? { masked: true, present: true } : 'value']))
+  globalThis.fetch = async (path, init) => { const body = init.body && JSON.parse(init.body); calls.push({ path, body }); return { ok: true, json: async () => ({ ok: true, values, revision: 'cas' }) } }
+  const harness = ownerHarness(props)
+  try {
+    let tree = await harness.load()
+    assert.equal(field(tree, 'onebot.wsToken').props.value, '')
+    field(tree, 'onebot.wsToken').props.onChange({ target: { value: 'new-secret' } })
+    await moduleControl(harness.render(), '保存设置').props.onClick()
+    assert.deepEqual(calls.at(-1).body, { scope: 'system', revision: 'cas', patch: { 'onebot.wsToken': { op: 'set', value: 'new-secret' } } })
+    control(harness.render(), '清除 onebot.wsToken').props.onClick()
+    await moduleControl(harness.render(), '保存设置').props.onClick()
+    assert.deepEqual(calls.at(-1).body.patch, { 'onebot.wsToken': { op: 'clear' } })
+    tree = harness.render(); field(tree, 'onebot.wsToken').props.onChange({ target: { value: '' } })
+    await moduleControl(harness.render(), '保存设置').props.onClick()
+    assert.deepEqual(calls.at(-1).body.patch, { 'onebot.wsToken': { op: 'keep' } })
+    assert.doesNotMatch(JSON.stringify(panel.navigationSearchIndex()), /new-secret|masked|cas/)
+  } finally { harness.restore(); globalThis.fetch = original }
+})
+
+test('C03 persona library has management only; runtime expression editor stays in its owner destination', () => {
+  const persona = { id: 'active', profile: { displayName: 'current' }, traits: {}, style: {}, values: [] }
+  const props = { ownerIntegration: true, navigation: { area: 'profiles', section: 'library' }, configInfo: { config: DEFAULTS }, toast() {} }
+  const render = extra => {
+    stateOverrides = [persona, [{ id: 'active' }], 'active', persona.profile, {}, '', false, false, false]
+    try { return panel.PersonaTab({ ...props, ...extra }) } finally { stateOverrides = null }
+  }
+  const titles = tree => treeNodes(tree).filter(node => node.props?.title).map(node => node.props.title)
+  assert.ok(titles(render()).includes('人格库'))
+  for (const title of ['人格', 'Prompt 预览', '群聊参与', '高级认知参数', '演化历史']) assert.equal(titles(render()).includes(title), false, title)
+  assert.ok(titles(render({ runtimeEditor: true })).includes('人格'))
+  assert.equal(titles(render({ runtimeEditor: true })).includes('群聊参与'), false)
+  const staged = panel.OwnerSettings({ ...props, navigation: { area: 'profiles', section: 'persona' } })
+  assert.match(JSON.stringify(staged), /Staged 预览/)
+  assert.equal(treeNodes(staged).filter(node => node.type === panel.PersonaTab).length, 0)
+})
+
+test('C03 live appearance and module bindings save serial owner patches, without legacy full-config writes', async () => {
+  const original = globalThis.fetch, calls = []
+  const session = { values: ['overview', {}, {}], index: 0 }
+  const root = () => { session.index = 0; hookSession = session; try { return panel.OneBotPage() } finally { hookSession = null } }
+  const shared = () => treeNodes(root()).find(node => node.type === panel.AreaContent).props
+  let revision = 1
+  globalThis.fetch = async (path, init) => {
+    const body = init.body && JSON.parse(init.body); calls.push({ path, body })
+    return { ok: true, json: async () => path.includes('/settings/view?') ? { ok: true, revision }
+      : body ? (assert.equal(body.revision, revision++), { ok: true, revision })
+        : { ok: true, config: DEFAULTS, groups: CONFIG_GROUPS } }
+  }
+  try {
+    const first = shared().saveUiPatch({ 'ui.accent': 'green' })
+    const second = shared().saveUiPatch({ 'cognition.typing.enabled': true })
+    assert.equal(await first, true); assert.equal(await second, true)
+    assert.deepEqual(calls.filter(row => row.body).map(row => row.body), [
+      { scope: 'system', revision: 1, patch: { 'ui.accent': 'green' } },
+      { scope: 'module:builtin-typing', revision: 2, patch: { 'cognition.typing.enabled': true } },
+    ])
+    assert.ok(calls.some(row => row.path.endsWith('/settings/view?scope=module%3Abuiltin-typing')))
+    assert.equal(calls.some(row => row.path.endsWith('/config/save')), false)
+    assert.equal(await shared().saveUiPatch({ 'ui.accent': 'blue', 'cognition.typing.enabled': false }), false)
+    assert.equal(calls.filter(row => row.body).length, 2)
+  } finally { globalThis.fetch = original }
+})
+
+test('C03 legacy appearance categories and field searches select the direct category in the same mount', () => {
+  const originalEffect = reactShim.useEffect
+  reactShim.useEffect = () => {}
+  const instance = registration.factory(requireShim), targets = []
+  const props = { ownerIntegration: true, navigation: contractGo('settings:motion'), configInfo: { groups: CONFIG_GROUPS, config: DEFAULTS }, draft: DEFAULTS, goTo: value => targets.push(value), saveUiPatch() {} }
+  const render = mountNode({ type: instance.SettingsTab, props })
+  try {
+    assert.ok(treeNodes(render()).some(node => node.props?.['aria-current'] === 'page' && treeNodes(node).some(child => child.children?.includes('动效'))))
+    props.navigation = contractGo('ui.fontScale')
+    assert.ok(treeNodes(render()).some(node => node.props?.['aria-current'] === 'page' && treeNodes(node).some(child => child.children?.includes('布局与字号'))))
+    const button = treeNodes(render()).find(node => node.type === 'button' && treeNodes(node).some(child => child.children?.includes('数据与刷新')))
+    button.props.onClick()
+    assert.deepEqual(targets.at(-1), { area: 'system', section: 'appearance', anchor: 'data' })
+  } finally { reactShim.useEffect = originalEffect }
+})
+
+test('C03 every mounted owner form renders each of its fields exactly once and no foreign field', () => {
+  const seen = []
+  for (const area of NAVIGATION_REGISTRY) for (const section of area.sections) {
+    const navigation = { area: area.id, section: section.id }, fields = panel.ownerFields(navigation)
+    if (!fields.length) continue
+    const values = Object.fromEntries(fields.map(field => [field.path, field.sensitivity.startsWith('secret') ? { masked: true, present: true } : panel.getByPath(DEFAULTS, field.path)]))
+    stateOverrides = [[], 'active', { revision: 1, values }, {}, '', false, 'staged']
+    let tree
+    try { tree = panel.OwnerSettings({ navigation, configInfo: { groups: CONFIG_GROUPS } }) } finally { stateOverrides = null }
+    const rendered = treeNodes(tree).filter(node => node.props?.['data-setting-path']).map(node => node.props['data-setting-path'])
+    assert.deepEqual(rendered.sort(), fields.map(field => field.path).sort())
+    assert.equal(rendered.length, new Set(rendered).size)
+    seen.push(...rendered)
+    const page = panel.AreaContent({ navigation })
+    assert.equal(treeNodes(page).filter(node => node.type === panel.OwnerSettings).length, area.id === 'system' && section.id === 'appearance' ? 0 : 1)
+  }
+  assert.equal(seen.length, new Set(seen).size)
+  assert.equal(seen.length, SETTINGS_FIELDS.filter(field => field.ownerClass !== 'module' && field.apply !== 'read-only').length)
+})
+
+test('C03 module-file setting search scrolls the local schema field after loading, without a browser', async () => {
+  const originalEffect = reactShim.useEffect, originalDocument = globalThis.document, effects = [], ids = []
+  reactShim.useEffect = (effect, deps) => effects.push({ effect, deps })
+  const instance = registration.factory(requireShim)
+  const navigation = contractGo('modules.builtin-sample.message')
+  globalThis.document = { getElementById: id => { ids.push(id); return { scrollIntoView() {} } } }
+  try {
+    stateOverrides = [[], false, '', '', { id: 'builtin-sample', values: { message: '' } }, '', null, '', 'builtin-sample']
+    try { instance.ModulesPage({ navigation }) } finally { stateOverrides = null }
+    const cleanup = effects.find(row => row.deps?.length === 4 && row.deps[0] === navigation).effect()
+    await new Promise(resolve => setTimeout(resolve, 5))
+    cleanup?.()
+    assert.deepEqual(ids, ['ob-field-message'])
+  } finally { reactShim.useEffect = originalEffect; if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument }
 })
