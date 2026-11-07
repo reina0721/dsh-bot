@@ -11,6 +11,14 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
+## 闭环 v2 管理契约（C02 已批准，待实现）
+
+[ADR-018](architecture/ADR-018-module-closed-loop.md) 是后续模块健康/人工恢复的权威契约，尚未增加下述 API 或按钮。lifecycle 的 loaded 只证明 setup 完成；ModuleHealth 只呈现缓存遥测，实际 provider owner 由宿主协调状态确定。提醒注册不等于接管，核心 fallback 必须在实际启动后才显示 active；其它功能模块停用仍无 fallback。未知/不适用字段为 null，不能显示为 0/false；runtimeGeneration 绑定每次 setup，独立于 UI 授权可轮换的 generation。
+
+拟新增健康 GET 不扫描、不 import、不调用 provider status/stats 或网络探针。新 action allowlist 仅内置人工 restart，必须经过核心 operation registry、requestId 幂等与 runtimeGeneration 校验；先下游后目标停止排空，再按依赖正序恢复。10 秒未排空显示 STOP_PENDING，保持同一操作并阻止第二 owner，不强行重启或自动循环恢复。外部模块继续原 toggle/reload 与授权规则；纯 React preview 和隔离 iframe 均不获得 action bridge 或宿主执行权。
+
+[ADR-019](architecture/ADR-019-system-closed-loop.md) 的系统 loop/receipt 只供核心管理面关联，禁止正文与跨人格读取，每人格合计 7 天/5000 条；模块不自行写 delivery receipt、不把 decision.status 当发送事实，也不能借观测 API 更新 policy、发送或执行研究。未观察反馈不算负面，研究首次轮次缺失保持 null；重启中断只记录 interrupted，不重发/重跑。
+
 ## 内置媒体功能（one-shot 模块 1）
 
 当前目录共七个内置模块：learning、proactivity、media-features、reminders、reply-delivery、typing 默认启用，sample 默认关闭。`builtin-media-features` 是 Bilibili 功能服务、`/bili`、表情包策略和 `/sticker` 的唯一所有者；停用不恢复核心实现。其 `mediaFeatures` 槽位仅允许此模块注册，模块 setup 自行 start，start/stop 幂等；宿主提醒订阅只处理 `reminders`，媒体启停不改变提醒所有权。
