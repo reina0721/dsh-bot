@@ -203,3 +203,8 @@ C06 已实现反馈/策略/研究关联及上述只读 API，C07 UI 尚未实现
 - 扩展 cognition-learning、learning-port、persona、feedback/policy、E2E 回归，新增 `test/loop-api.test.js`；覆盖分页/隔离/无正文、保留与只读、事务失败/去重、legacy unknown、首次轮次、取消/retry/中断。运行 npm test、check:docs、check:parity、pack:release、check:package、git diff --check；仅本地构建验证，无 UI、版本变更、推送、部署或发布，未连接真实 QQ/模型验收。
 
 仍保留 C05 未接入路径的未知窗口：wait/silence/learn-only/gate/compose skip 等只有 loop 终结码，没有 no_send receipt；未观察到的历史送达、超时/无后续反馈、崩溃 I/O 不能补造为失败/负反馈。原研究内容与业务保留周期不受短期 loop 清理影响。
+
+
+### Live 缺口补验：发送边界
+
+`send_*` OneBot 调用一律不做网络重试或 HTTP → WS 回退（显式 retries 也不能覆盖），读取调用保留原重试/回退。`test/send-boundary.test.js` 在 mock 平台已接受后模拟应答丢失，验证只收到一次；主动 port 的 token 在 await 前同步 consumed，重复 send 同一 token 无 I/O。失败回执不等于平台未发送。没有 QQ 平台幂等键就不能承诺 exactly-once；operation 的 requestId 保留期去重不等于任意发送去重，新的人工意图仍可能重复。通用 multipart 无稳定意图键，不按文本/目标启发式建立 ledger；现有主动 token 和 operation registry 保持各自单 owner。

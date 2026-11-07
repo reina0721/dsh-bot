@@ -127,3 +127,25 @@ git diff --check
 - 无外部 same-origin UI/React 或宿主 API 代理；同进程本地模块 permissions 仍不是 OS 沙箱。
 - 无 UI 权限扩展、新 DSH 注册、Agent 工具或聊天恢复命令。
 - 无新生产功能、业务配置、依赖/版本变化、数据迁移、推送、部署、标签或发布；不修改 cordis.patch.yml 与 .archify/。
+
+
+## Live 缺口的离线补验（未发布，基于 e0e0d06 / 0.11.14）
+
+`test/builtin-health.test.js` 激活包内真实七个模块（包括默认关闭的 sample），在没有业务运行时断言全部 loaded/healthy、观测时间已知、业务运行数仍为 null。外部未埋点 unknown、停止 stopped 和旧代次拒绝继续回归。媒体增加 setup、同步 share、远程成功/失败的健康埋点。
+
+`node --test test/sandbox-integration.test.js test/send-boundary.test.js` 使用临时数据目录、fake DSH、回环 HTTP/WS mock OneBot、本地 mock 模型服务器和假知识源：
+
+| 场景 | 实际断言 |
+| --- | --- |
+| OneBot 私聊和群聊 → `/bili share` | 每次一条真实 mock 网关发送、URL 正确、零 B站 fetch |
+| 私聊和群聊 → `/sticker` | REST 种入 PNG 后每次一个 image 段，无额外文本发送 |
+| `/bili hot` | 构造 transport 前注入固定 fake fetch，返回视频经命令发至 mock OneBot；没有真实 B站 HTTP |
+| 主动行为手动 action | 假 eligible relationship → 本地 LLM HTTP → 一个私聊发送，decision sent、一个 proactive_intent、实际 delivery receipt；重复 requestId 无重发 |
+| 学习自动入队 / 手动运行 | 实际 unknown 检测事件自动入队；action 执行假 source search/fetch、本地模型提炼；断言 task/evidence/claim/unknown 和首次 turn、research loop 真实引用 |
+| 学习自动模式 | 第二个检测事件后直接调用原 engine `runPending({automatic:true})`，不等待真实 30 秒 timer；断言完成与独立 loop，timer 本身由既有 learning/scheduler 单测覆盖 |
+| 管理只读 | health/actions/operation、loop runs/detail/summary 均走已注册 HTTP route；研究/读取不增加发送 |
+| 应答丢失边界 | mock OneBot 已接受 HTTP send 后抛错，断言无 HTTP 重试/WS 补发；读取请求仍可 WS 回退。主动 token 在 I/O 前消费，同一运行不能再 send |
+
+最终沙盒的 fetch 在宿主构造前安装拦截，只允许回环服务，B站直接 fake 响应，意外外网请求会失败并被记录。开发中曾因媒体测试在 transport 构造后才 mock fetch，意外请求公开 B站接口一次并失败；已修正顺序并重新验证，不作为验收成功证据。
+
+以上是离线整合验收，不改写 2026-11-06 live 快照，也不证明真实 QQ/B站/付费模型、浏览器或 iframe/CSP 可用。发送只承诺同一运行/受控请求保留期内 at-most-once 尝试、无自动重试；真实 QQ 无平台幂等键，响应丢失无法判断是否送达，不能承诺 exactly-once。已有主动 token 的 consumed 标记是进程内发送意图闸门；通用消息/分条发送没有稳定的平台幂等 ID，不能用正文去重，否则会误吞合法重复内容。人工使用新 requestId 是新意图，可能重复。
