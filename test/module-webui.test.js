@@ -282,3 +282,27 @@ test('WebUI dependency reload/disable recycles runtime generation, including bui
   assert.notEqual(h.item(sample.manifest.id).generation, second.generation)
   assert.equal(h.item(sample.manifest.id).uiRevision, first.uiRevision)
 })
+
+test('C07 WebUI metadata cannot supply core actions, health or navigation executors', async t => {
+  for (const patch of [
+    { actions: [{ actionId: 'module.restart', available: true }] },
+    { health: { lifecycle: 'loaded', health: 'healthy' } },
+    { navigation: { tab: 'cognition', section: 'loop' } },
+    { surfaces: [surface('module.actions', { actionId: 'proactivity.runOnce' })] },
+    { surfaces: [surface('module.actions', { onClick: '/modules/action' })] },
+  ]) assert.throws(() => validate(descriptor(patch)), /MODULE_UI_INVALID/)
+  const h = await harness(t)
+  await h.external('external-actions', descriptor({ surfaces: [surface('module.actions')] }))
+  await h.kernel.start()
+  const ui = h.item('external-actions'), actions = h.kernel.actions('external-actions')
+  assert.equal(ui.trust, 'external')
+  assert.deepEqual(ui.surfaces, [{ id: 'detail', hook: 'module.actions', renderer: 'status', order: 0 }])
+  assert.equal(Object.hasOwn(ui, 'actions'), false)
+  assert.deepEqual(actions.items.filter(row => row.available).map(row => row.actionId), ['module.disable', 'module.reload'])
+  for (const actionId of ['module.restart', 'proactivity.runOnce', 'learning.runPending']) {
+    assert.throws(() => h.kernel.action({ moduleId: ui.moduleId, actionId, expectedGeneration: actions.expectedGeneration, requestId: actionId.replace('.', '-') }), /MODULE_ACTION_UNAVAILABLE/)
+  }
+  const media = builtinRegistry.find(row => row.manifest.id === 'builtin-media-features')
+  assert.equal(media.ui.surfaces.filter(row => row.componentKey === 'media-features.panel').length, 1)
+  assert.equal(media.ui.surfaces.filter(row => row.hook === 'module.config').length, 1)
+})

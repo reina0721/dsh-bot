@@ -19,6 +19,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { runInNewContext } from 'node:vm'
 
 import { createFakeDsh, waitFor, sleep } from './helpers/fake-dsh.js'
 import { startMockOneBot } from './helpers/mock-onebot.js'
@@ -1532,4 +1533,64 @@ test('e2e: C06 real delivery -> manual feedback is transactional, request-dedupe
   const cross = await fake.call(API + '/system/loop/detail?decisionId=' + decisionId, undefined, { method: 'GET' })
   const absent = await fake.call(API + '/system/loop/detail?decisionId=absent', undefined, { method: 'GET' })
   assert.deepEqual(cross.json, absent.json)
+})
+
+test('e2e: C07 client -> real health/actions/operation/loop APIs, current persona and exactly two DSH registrations (no browser)', async t => {
+  const { fake, handle, dir } = await boot(t)
+  let entry
+  const confirmations = [], calls = [], navigations = []
+  const React = {
+    createElement: (type, props, ...children) => ({ type, props, children }),
+    createContext: () => ({}), Component: class {}, Fragment: 'fragment',
+    useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
+    useRef: initial => ({ current: initial }), useEffect() {}, useLayoutEffect() {},
+    useCallback: fn => fn, useMemo: fn => fn(), useContext: () => ({}),
+  }
+  runInNewContext(await readFile(new URL('../client.js', import.meta.url), 'utf8'), {
+    window: { __ModuleLoader__: { load(value) { entry = value } }, confirm(text) { confirmations.push(text); return true } },
+    crypto: globalThis.crypto, setTimeout, clearTimeout, console, URL,
+    fetch: async (path, init) => {
+      calls.push(path)
+      const response = await fake.call(path, init.body ? JSON.parse(init.body) : undefined, { method: init.method })
+      return { ok: response.status === 200, json: async () => response.json }
+    },
+  })
+  const panel = entry.factory(name => { assert.equal(name, 'react'); return React })
+  const registrations = [], slots = { inject(name, register) { register() }, register(def) { registrations.push(def.name) } }
+  panel.apply({ get: name => name === 'slots' ? slots : undefined, effect() {} })
+  assert.deepEqual(registrations, ['main', 'sidebar.panellist'])
+  const initial = (await getJson(fake, '/modules/health?id=builtin-typing')).items[0]
+  const operation = await panel.invokeModuleAction('builtin-typing', 'module.restart', { wait: () => new Promise(resolve => setImmediate(resolve)) })
+  assert.equal(panel.operationSucceeded(operation), true)
+  const health = (await getJson(fake, '/modules/health?id=builtin-typing')).items[0]
+  assert.equal(health.lifecycle, 'loaded'); assert.notEqual(health.runtimeGeneration, initial.runtimeGeneration)
+  assert.ok(calls.some(path => path.includes('/modules/operation?id=')))
+  assert.match(confirmations[0], /模型或发送消息/)
+  const external = join(dir, 'modules', 'c07-external')
+  await mkdir(external, { recursive: true })
+  await writeFile(join(external, 'module.json'), JSON.stringify({ id: 'c07-external', entry: 'index.mjs', webui: { version: 1, surfaces: [{ id: 'actions', hook: 'module.actions', renderer: 'status' }] } }))
+  await writeFile(join(external, 'index.mjs'), 'export function setup() {}')
+  await postJson(fake, '/modules/reload', { id: 'c07-external' })
+  await assert.rejects(panel.invokeModuleAction('c07-external', 'proactivity.runOnce'), /MODULE_ACTION_UNAVAILABLE/)
+  const content = panel.ContentPage({ goTo: target => navigations.push(target) })
+  const nodes = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.children)]
+  nodes(content).find(node => node.children?.includes('打开模块')).props.onClick()
+  assert.equal(navigations[0].moduleId, 'builtin-media-features'); assert.equal(navigations[0].anchor, 'panel')
+  await patchConfig(fake, { cognition: { enabled: true, dryRun: false } })
+  t.mock.method(handle.gateway.actions, 'sendMessage', async () => ({ message_id: 'PRIVATE_C07_QQ_ID' }))
+  t.mock.method(handle.cognition.services.llm, 'complete', async () => ({ ok: true, text: 'PRIVATE_C07_CONTENT' }))
+  t.mock.method(handle.cognition.services.llm, 'completeJson', async () => ({ ok: false }))
+  const result = await handle.cognition.services.pipeline.handleTurn({ id: 'turn_c07', chatType: 'private', chatId: '10001', senderId: '10001', text: '你好', addressed: true, messages: [], messageIds: [] })
+  assert.equal(result.ok, true)
+  await postJson(fake, '/cognition/decision/correct', { decisionId: result.decision.id, observation: { positiveReaction: true }, requestId: 'manual_c07' })
+  const detail = await getJson(fake, '/system/loop/detail?decisionId=' + result.decision.id)
+  const rendered = JSON.stringify(panel.LoopDetail({ data: detail, goTo: target => navigations.push(target) }))
+  assert.match(rendered, /sent parts：1/); assert.match(rendered, /policy committed：已提交/)
+  assert.doesNotMatch(rendered, /PRIVATE_C07_CONTENT|PRIVATE_C07_QQ_ID|sourceEventId|10001/)
+  const summary = await getJson(fake, '/system/loop/summary')
+  assert.equal(summary.retained.feedback.policyCommitted, 1)
+  const { persona } = await postJson(fake, '/cognition/persona/create', { name: 'C07 Other' })
+  await postJson(fake, '/cognition/persona/switch', { personaId: persona.id })
+  assert.equal((await getJson(fake, '/system/loop/summary')).retained.loops, 0)
+  assert.equal((await fake.call(API + '/system/loop/detail?decisionId=' + result.decision.id, undefined, { method: 'GET' })).json.code, 'LOOP_NOT_FOUND')
 })

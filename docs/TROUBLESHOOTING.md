@@ -11,6 +11,17 @@
 
 报告问题请附版本、系统、DSH 版本、复现步骤及脱敏日志，不要附密钥、token 或完整私人聊天记录。
 
+## 模块健康、动作与闭环（C07）
+
+- **loaded 但不工作**：到「模块 → 详情 → 核心健康」分别检查 health/reasons/lastError、业务开关、Provider registeredModuleId 与实际 owner/fallback、依赖和 scheduler/engine。loaded 只表示 setup 完成；null 是未观察，接口失败为不可用，零表示已观测计数为零。
+- **动作不可用或代次冲突**：点「刷新动作」重新读取可用性与 expectedGeneration；MODULE_RUNTIME_CONFLICT/MODULE_PERSONA_CONFLICT 表示运行实例或人格已变化，先刷新检查目标，再由操作员决定新动作。外部只有核心允许的启停/重载，不支持 restart 或主动/学习执行器。
+- **STOP_PENDING**：同一操作仍在排空，不是成功也不是取消；继续观察，不反复重启或启动第二 owner。长时间排空可能需要宿主运维处理，UI 不强制停止。网络异常保留原 requestId/operation 查询，可「继续观察操作」；如果服务端记录已丢失，先核实健康/所有权，不自动重发。页面离开会停止 UI 轮询，服务端操作继续；UI 不跨页面保存观察记录。
+- **手动执行没显示成功**：BUSY、NO_TASK、MODULE_RUN_FAILED 或 skip 都不是成功；检查业务开关、安静时段、候选、预算、暂停及任务到期状态。「学习 → 运行待处理」作用于队列；逐任务只有重试/取消，不指定执行单个 pending。
+- **闭环为空/详情缺失**：「认知 → 闭环」只读取当前人格和 7 天/5000 条保留观测；切换人格、保留期淘汰或未执行过时可能没有记录。未观察不等于负反馈，不适用不等于失败，不可用表示接口读取失败，interrupted 不会触发补发/补跑。先刷新闭环，再从策略决策进入；尝试/已发送 parts 分开看，policy committed 仅显示真实提交状态。
+- **研究链接未定位任务**：学习 API 读取最近 100 条、界面最多显示 20 条，目标任务在读取范围内优先显示；超出时提示当前列表未包含，不新建任务、不补跑。提醒详情只显示当前人格记录数，逐条管理继续使用 QQ 命令。
+
+验证使用 Node React shim、fake DSH/网关与实际管理 API，无需浏览器；没有执行浏览器或真实 QQ/远程模型验收。
+
 ## 左侧「QQ 连接」入口消失
 
 **症状**：Host 侧 `/onebot-qq/api/health` 正常、QQ 网关 connected，但网页左侧没有「QQ 连接」，`client Slots` 的 `sidebar.panellist` 只剩 core 插件、没有 `onebot-qq`。
