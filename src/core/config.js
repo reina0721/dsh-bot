@@ -6,7 +6,7 @@
 // 3. 配置写在数据目录 config.json，原子写；损坏时回退默认值并记录问题。
 
 import { dataDir, readJson, writeJson, existsSync } from './store.js'
-import { registerSecret, clearSecrets } from './redact.js'
+import { registerSecret, clearSecrets, redact } from './redact.js'
 import { normalizeAccess } from './access.js'
 
 export const CONFIG_VERSION = 2
@@ -1570,7 +1570,25 @@ export function resetConfig() {
 
 /** 面板/接口展示用：不含任何运行时状态。 */
 export function publicConfig(config) {
-  return clone(config)
+  const walk = (value, key = '') => {
+    if (['wsToken', 'httpToken'].includes(key)) return value ? '***' : ''
+    if (Array.isArray(value)) return value.map(item => walk(item))
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, walk(child, name)]))
+    if (typeof value !== 'string') return value
+    if (/url$/i.test(key) && value) {
+      try {
+        const url = new URL(value)
+        let changed = false
+        if (url.username || url.password) { url.username = ''; url.password = ''; changed = true }
+        for (const name of [...url.searchParams.keys()]) {
+          if (/token|key|secret|password|auth/i.test(name)) { url.searchParams.set(name, '***'); changed = true }
+        }
+        return redact(changed ? url.href : value)
+      } catch { return '' }
+    }
+    return redact(value)
+  }
+  return walk(config)
 }
 
 /** 把当前配置里的 token 登记进脱敏器。 */

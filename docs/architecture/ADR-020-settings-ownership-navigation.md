@@ -1,8 +1,49 @@
 # ADR-020: settings ownership and navigation contract
 
-- 状态：已接受；AstrBot alignment **C01 only**，契约与离线验证。
+- 状态：已接受；C01 契约已落地，C02 后端 profile 存储/API 已实现；运行解析切换仍有门控。
 - 基线：main `b3d07a0`，v0.11.15；分支 `feat/astrbot-alignment`。
-- 实现：`src/core/settings-schema.js`、`src/core/navigation.js`。
+- 实现：`src/core/settings-schema.js`、`src/core/navigation.js`、`src/core/profile-settings.js`。
+
+## C02 实现与运行门控
+
+C02 只实现后端，不改变客户端导航、表单、沙盒或 DSH 注册。`PROFILE_RUNTIME_MODE = 'legacy'` 是代码门控，没有可写配置开关。现有认知、聚合器、后台服务和模块继续从原 getConfig/persona 服务读取；**profile 保存为 staged，不改变运行输出**。System 与模块设置仍按原路径热应用。不得把 staged 保存成功解释为运行已切换。
+
+原因：管线及其依赖在异步处理、命令和后台任务中多次读取实时配置，persona 的表达数据另存于 persona record。只替换管线的一次 getConfig 会产生同一轮混用两个版本的行为。后续完整切换必须统一服务、计时器、模块 provider 的读取边界，并验证在途人格切换与版本捕获；C02 不静默做部分切换。
+
+`capture()` 组合 legacy system policy、module/legacy 配置与指定 persona，另生成加入 profile overrides 的 candidate；记录 personaId/profileRevision/runtimeMode，递归冻结且脱敏。每个 social `handleTurn` 在入口捕获到 WeakMap，不写 turn、trace、日志或 API；`settingsContext(turn)` 仅供内部核验。当前运行仍读 legacy；capture 失败也不阻塞 legacy。recall/poke/reaction、聚合及后台任务尚未切换。capture 不是可执行沙盒、运行时凭据容器或完整服务上下文隔离。
+
+### 存储与迁移
+
+- 既有 records 表中使用 `persona_<id>:profile_settings` / `config`，一人格一行：`version:1, migrationVersion:1, revision, sourceHash, values`。values 是以完整配置路径为键的稀疏/完整 profile 字段映射，所有权只取自 SETTINGS_FIELDS；没有新增全局 config key、物理 SQL schema、依赖或版本。
+- 启动在 persona.ensure 后、服务组装前事务迁移全部 persona（包括 inactive）。从当前规范化 legacy 配置提取 profile 字段，其中 traits/style/values/profile 用各 persona 实际记录覆盖，保留旧有效行为。System 凭据、宿主路径、LLM 全局额度/并发，以及模块旧绑定不进入 profile；`cognition.policy.dailyGlobalLimit` 按 C01 所有权仍是人格 policy 限额（计数本来就按 persona 隔离），不是 LLM 宿主总预算。
+- 每人格原始来源另存 `persona_<id>:profile_settings_snapshot` / `c02`，只含 profile 字段与 SHA-256 sourceHash。全局 `setting/profile.settingsMigration.c02` 存 version、初始 personaIds、初始 sources 的 sourceHash 和时间，不含全量配置或凭据。显式 profile 值按属性存在性保留，包括 false、0、空字符串/数组/null；补齐缺失项并增加 revision。已完成 profile 不因 legacy 配置变化重新取样或覆盖；marker 和初始 snapshot 不被重写。
+- SQLite 与 JSON fallback 均要求 atomicTransactions；所有 profile、snapshot、marker 在同一 tx 中提交。失败回滚，不删除或改写 legacy 配置，editingAvailable:false，错误只给 SETTINGS_MIGRATION_UNAVAILABLE；不暴露异常文本。下次启动重试。含认证信息/查询串/fragment 的 profile baseUrl 或已知 OneBot token 的来源拒绝复制，不做有损清洗后假装保留行为。
+- 新建/导入按当时 legacy 行为初始化；复制继承来源 staged 设置（新名字除外），独立 revision；切换只换 activeId；检查或保存 inactive profile 不激活、不推进 persona generation。删除同时清理 profile/snapshot；普通认知数据复制组不包含设置。persona 旧编辑/演化/reset 仍写旧记录，不回写 staged 设置。
+
+### API 与并发契约
+
+均沿用 `/onebot-qq/api` 管理边界、exact 注册、no-store 和 opaque frame 拒绝；逻辑拒绝沿用 HTTP 200 + `{ok:false,code,message}`。未知底层错误只返回稳定通用 code。
+
+| API | 契约 |
+| --- | --- |
+| GET /settings/schema | C01 字段/组，profileStorage 和门控/迁移状态；字段 storage 保留 legacy 基础存储标识 |
+| GET /settings/view?scope=system | System 唯一所有者的 flat values 与 revision |
+| GET /settings/view?scope=profile&id=… | 指定 persona（必须显式 id），不激活 |
+| GET /settings/view?scope=module:… | 指定 moduleId；原 config.json 绑定保持原键；sample 文件配置委托原模块队列/schema/revision |
+| POST /settings/patch | `{scope,id?,revision,patch:{完整路径:值}}`；只写指定路径，不提交其他所有者的规范化结果 |
+| GET /profiles | items、activeId 和迁移/门控状态 |
+| GET /profiles/config?id=… | profile view 的别名 |
+| POST /profiles/config/save | `{id,revision,patch}`，固定 profile scope |
+| GET /config | 当前 active profile 的 staged 值覆盖 legacy 基础配置；含 personaId、revision、门控状态和脱敏配置 |
+| POST /config/save | `{config,personaId,revision}`；config 可为部分或全量；比较变化叶子后路由到唯一所有者 |
+
+profile revision 为持久单调整数，在事务内再次比较，缺失或过期均 SETTINGS_CONFLICT。System/旧 module 绑定使用当前唯一所有者值的内容摘要；不受 profile 保存干扰，但不提供多进程锁或跨进程线性 revision。legacy revision 绑定 activeId、profile revision 和完整 legacy 配置，切换/并发保存均拒绝过期请求；更保守地拒绝不相关 legacy 配置变化。多个 moduleId 也算多个所有者，一次更新跨所有者返回 SETTINGS_MULTI_OWNER，零写入；只读/未知路径拒绝。输入沿用 normalizeConfig 的类型/范围规则，patch 先检查基础类型，issues 仅返回 SETTINGS_VALUES_NORMALIZED，不回显输入。
+
+secret/secret-reference 新写入必须 `{op:'keep'}`、`{op:'set',value:'…'}` 或 `{op:'clear'}`；secret reads 为 `{masked:true,present:boolean}`。不读取环境变量内容。legacy token 读为 `***`，回传该 mask 代表 keep，明确修改仍需操作对象。publicConfig 同时屏蔽状态/旧配置中的 token、URL userinfo 和敏感 query 参数，已登记 token 在字符串中脱敏。这里不是任意自由文本的秘密识别器。
+
+**兼容限制**：未修改的旧客户端不发送 revision/personaId，旧保存将返回 SETTINGS_CONFLICT；混合所有者的全量修改也会拒绝。`/config/reset` 不再绕过检查全量改写，返回 SETTINGS_MULTI_OWNER，需逐 owner revisioned patch。后续 UI 需适配这些契约；本次无 UI。内部宿主 setConfig/resetConfig 和命令仍为 legacy 操作，不受新管理 API 迁移；不宣称这些路径已完成 profile 切换。
+
+测试覆盖 profile-settings（穷举所有权、两种存储重启、事务失败/重试、显式值、快照、CAS、mask、复制/删除）、config DTO 脱敏和 persona/E2E API/切换/检查/legacy/module 委托/门控。以下 C01 内容保留为契约历史；其中“尚无迁移/HTTP”的描述仅适用于 C01。
 
 ## 背景与边界
 

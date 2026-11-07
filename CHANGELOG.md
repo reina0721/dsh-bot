@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- C02：新增人格 profile_settings、逐人格有效行为 snapshot/hash 与事务幂等迁移；保留显式值，失败保留 legacy 运行并关闭 profile 编辑。新增 settings schema/view/patch、profiles/config API、revision 冲突检查、单 owner 保存、secret keep/set/clear 和脱敏读取；legacy config adapter 路由 active profile 与原 System/module owner，拒绝缺版本、跨 owner 和全量 reset 绕过。
+- C02 运行门控为 legacy：profile 保存 staged，管线只做脱敏影子 capture，不改变认知输出；未适配的旧 UI 保存会因缺 revision/personaId 拒绝。无 UI/沙盒/版本变更，未推送、部署、打标签或发布；实现与限制见 [ADR-020](docs/architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
+
 - 缺口收敛验证：1107 项测试，1103 通过、4 项既有跳过、0 失败；文档、parity、本地双格式打包及包检查通过。版本保持 0.11.14，无推送、部署、标签或发布。
 
 - 模块动作增加有界原子审计（128 条 / 一小时终态 / 256 KiB），接纳与执行前写盘；重启未完成项标 interrupted、不续跑/补发，终态 ID/代次/时间与 requestId 去重保留。审计错误 fail closed，终态写盘失败只报告未知窗口；面板将 interrupted 视为终态。仍无强制 drain 恢复、多进程锁或跨平台 exactly-once。

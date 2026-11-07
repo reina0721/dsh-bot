@@ -21,6 +21,12 @@
 
 ## 1. 标识与时间
 
+C02 在同一个 records store 中增加每人格一行 `persona_<id>:profile_settings` / `config`，data 为 `{version:1,migrationVersion:1,revision,sourceHash,values}`；values 使用 settings-schema 声明的完整 profile 路径。revision 为持久单调整数，save 事务内比较版本，只写同一人格/所有者的指定路径。检查 inactive profile 不改变 activeId/generation。运行仍读取 legacy，profile 写入 staged；不存在新物理表、全局 config key 或配置版本变化。
+
+初次迁移的原始 profile 来源保存在 `persona_<id>:profile_settings_snapshot` / `c02`（version/sourceHash/values），全局 `setting` / `profile.settingsMigration.c02` 只存 version、初始 personaIds/sourceHash/at。来源将各 persona 的 traits/style/values/profile 与 legacy profile 字段组合，不复制 system/module 字段、凭据、宿主路径或 LLM 全局额度；原 config 不改写。显式 profile 属性（包括 false/0/空/null）不覆盖；全部 profile/snapshot/marker 同一 SQLite/JSON tx，失败回滚并关闭 profile 编辑，下次启动重试；完成记录重启不重新取样。
+
+新建/导入独立初始化，复制继承 staged 设置（使用新名字），切换保持各自 revision，删除清理 profile 与 snapshot；设置不在普通认知数据复制组中。persona 旧 edit/evolve/reset 仍为 legacy 行为，不同步 staged 设置。管线 social turn 的脱敏 resolver capture 仅保存在 WeakMap，不进 records/trace/log。详见 [ADR-020](../architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
+
 - ID：`crypto.randomUUID()`；原始事件另有平台 `external_id` + `dedupe_key=platform:message_id`。
 - 时间：`now()` 可注入；测试使用 FakeClock；所有时间戳为 UTC epoch ms，展示时用用户/面板时区。
 - 作用域：`scope_type in ('global','group','private','topic')` + `scope_id`；`visibility`（normal/private/secret）+ `sensitivity`。

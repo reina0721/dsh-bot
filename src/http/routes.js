@@ -4,6 +4,7 @@
 import { createModuleUiHandler, MODULE_UI_PREFIX } from '../modules/sandbox.js'
 import { redact } from '../core/redact.js'
 import { publicConfig, defaultConfig, CONFIG_GROUPS } from '../core/config.js'
+import { SETTINGS_FIELDS } from '../core/settings-schema.js'
 import { readFile } from 'node:fs/promises'
 
 export const API_PREFIX = '/onebot-qq/api'
@@ -182,6 +183,52 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
+
+  const settings = () => {
+    const service = cognition?.services?.settings
+    if (!service) throw Object.assign(new Error('SETTINGS_UNAVAILABLE'), { code: 'SETTINGS_UNAVAILABLE' })
+    return service
+  }
+  const settingsAnswer = async work => {
+    try { return await work() }
+    catch (error) {
+      const code = /^(SETTINGS_|PERSONA_NOT_FOUND$|MODULE_CONFIG_)/.test(error?.code || '') ? error.code : 'SETTINGS_WRITE_UNAVAILABLE'
+      return { ok: false, code, message: code }
+    }
+  }
+  const fileFields = scope => SETTINGS_FIELDS.filter(field => field.storage === 'module-file' && scope === `module:${field.canonical.moduleId}`)
+  const moduleSettingsView = (scope, selected, result) => ({ ok: true, scope, revision: result.revision,
+    values: publicConfig(Object.fromEntries(selected.map(field => [field.path, result.values[field.path.split('.').at(-1)]]))), ...settings().status() })
+  const settingsView = async query => {
+    const selected = fileFields(query.scope)
+    if (!selected.length) return settings().view(query)
+    const result = await modules.getModuleConfig(selected[0].canonical.moduleId)
+    return moduleSettingsView(query.scope, selected, result)
+  }
+  const settingsPatch = async body => {
+    const selected = fileFields(body?.scope)
+    if (!selected.length) return settings().patch(body)
+    if (!body.patch || typeof body.patch !== 'object' || Array.isArray(body.patch) || !Object.keys(body.patch).length
+      || Object.keys(body.patch).some(path => !selected.some(field => field.path === path))) {
+      return { ok: false, code: 'SETTINGS_MULTI_OWNER' }
+    }
+    const moduleId = selected[0].canonical.moduleId
+    const current = await modules.getModuleConfig(moduleId)
+    const values = { ...current.values }
+    for (const [path, value] of Object.entries(body.patch)) values[path.split('.').at(-1)] = value
+    const result = await modules.setModuleConfig(moduleId, values, body.revision)
+    return moduleSettingsView(body.scope, selected, result)
+  }
+  route('GET', '/settings/schema', () => settingsAnswer(() => settings().schema()))
+  route('GET', '/settings/view', req => settingsAnswer(() => settingsView(queryOf(req))))
+  route('POST', '/settings/patch', req => settingsAnswer(async () => settingsPatch(await readBody(req))))
+  route('GET', '/profiles', () => settingsAnswer(() => ({ ok: true, items: publicConfig(cognition.personaList()), activeId: cognition.activePersonaId(), ...settings().status() })))
+  route('GET', '/profiles/config', req => settingsAnswer(() => settings().view({ scope: 'profile', id: queryOf(req).id })))
+  route('POST', '/profiles/config/save', req => settingsAnswer(async () => {
+    const body = await readBody(req)
+    if (body?.scope && body.scope !== 'profile') return { ok: false, code: 'SETTINGS_SCOPE_INVALID' }
+    return settings().patch({ ...body, scope: 'profile' })
+  }))
 
   const mediaFeatures = () => {
     const provider = providerRegistry?.get('mediaFeatures')
@@ -687,30 +734,20 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     })
   }
 
-  route('GET', '/config', async () => ({
-    ok: true,
+  route('GET', '/config', async () => settingsAnswer(() => ({
+    ...settings().legacyView(),
     version,
     apiVersion: API_VERSION,
     dataDir,
-    config: publicConfig(getConfig()),
-    defaults: defaultConfig(),
+    defaults: publicConfig(defaultConfig()),
     groups: CONFIG_GROUPS,
-  }))
+  })))
 
   // 注意：DSH webserver 的 exact 路由按 path 去重（不区分 method），同 path 的 GET/POST
   // 不能分别注册，因此保存动作用独立子路径。
-  route('POST', '/config/save', async (req) => {
-    const body = await readBody(req)
-    const next = body && body.config !== undefined ? body.config : body
-    if (!next || typeof next !== 'object' || Array.isArray(next)) throw new Error('缺少 config 对象')
-    const result = setConfig(next)
-    return { ok: true, config: publicConfig(result.config), issues: result.issues || [] }
-  })
+  route('POST', '/config/save', req => settingsAnswer(async () => settings().legacySave(await readBody(req))))
 
-  route('POST', '/config/reset', async () => {
-    const result = resetConfig()
-    return { ok: true, config: publicConfig(result.config), issues: result.issues || [] }
-  })
+  route('POST', '/config/reset', () => ({ ok: false, code: 'SETTINGS_MULTI_OWNER', message: 'Use revisioned patches for each owner' }))
 
   // ---- 连接控制 ----
   route('POST', '/connect', async () => {

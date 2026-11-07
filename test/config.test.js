@@ -5,8 +5,23 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULTS, CONFIG_GROUPS, normalizeConfig, getPath } from '../src/core/config.js'
+import { DEFAULTS, CONFIG_GROUPS, normalizeConfig, getPath, publicConfig, refreshSecrets } from '../src/core/config.js'
 import { createLogger } from '../src/core/logger.js'
+
+test('public config DTO masks credentials and embedded URL authentication without mutating storage', () => {
+  const config = normalizeConfig({ onebot: { wsToken: 'C02_CONFIG_SECRET', httpToken: 'C02_HTTP_SECRET', wsUrl: 'wss://user:password@example.org/ws?token=query-secret&other=ok' } }).config
+  config.cognition.persona.profile.identity = 'copy C02_CONFIG_SECRET'
+  const before = structuredClone(config)
+  refreshSecrets(config)
+  const dto = publicConfig(config)
+  assert.equal(dto.onebot.wsToken, '***')
+  assert.equal(dto.onebot.httpToken, '***')
+  assert.doesNotMatch(JSON.stringify(dto), /C02_CONFIG_SECRET|C02_HTTP_SECRET|query-secret|user:password/)
+  assert.equal(dto.cognition.persona.profile.identity, 'copy ***')
+  assert.match(dto.onebot.wsUrl, /other=ok/)
+  assert.deepEqual(config, before)
+  refreshSecrets(DEFAULTS)
+})
 
 test('delivery engine: internal auto default, core rollback and planner and strict normalization', () => {
   assert.deepEqual(DEFAULTS.cognition.delivery, { engine: 'auto' })

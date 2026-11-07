@@ -20,8 +20,11 @@ try {
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
     for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/modules/action-audit.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
     assert.equal(pkg.dsh.client.platform, 'web');
-    for (const file of ['src/core/settings-schema.js', 'src/core/navigation.js', 'docs/architecture/ADR-020-settings-ownership-navigation.md']) readFileSync(join(base, file));
+    for (const file of ['src/core/settings-schema.js', 'src/core/profile-settings.js', 'src/core/navigation.js', 'docs/architecture/ADR-020-settings-ownership-navigation.md']) readFileSync(join(base, file));
     const settings = await import(pathToFileURL(join(base, 'src/core/settings-schema.js')).href);
+    const profiles = await import(pathToFileURL(join(base, 'src/core/profile-settings.js')).href);
+    assert.equal(typeof profiles.createProfileSettings, 'function');
+    assert.equal(profiles.PROFILE_RUNTIME_MODE, 'legacy');
     const navigation = await import(pathToFileURL(join(base, 'src/core/navigation.js')).href);
     assert.equal(settings.validateSettingsSchema().fields, 298);
     assert.deepEqual(navigation.go('config'), { area: 'system', section: 'general' });

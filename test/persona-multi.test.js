@@ -1,6 +1,7 @@
 // 多人格库：默认迁移、创建/复制/切换/删除、active 持久化与内容隔离。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createStore } from '../src/cognition/store.js'
 
 import {
   PROFILE_TEXT_LIMITS,
@@ -50,6 +51,26 @@ function createMemoryStore(initial = []) {
 function serviceFor(store, clock) {
   return createPersonaService({ store, getConfig: () => CONFIG, clock })
 }
+
+test('C02 persona creation hooks share the persona transaction; failure cannot leave an active or orphan profile', t => {
+  const store = createStore({ file: ':memory:' }); t.after(() => store.close())
+  const clock = createClock()
+  const service = createPersonaService({ store, clock, getConfig: () => CONFIG, settingsHooks: {
+    created(id) {
+      store.put(`persona_${id}:profile_settings`, 'config', { revision: 1 })
+      throw new Error('profile initialization failed')
+    },
+  } })
+  service.ensure()
+  const generation = service.scopeGeneration()
+  assert.throws(() => service.create({ name: 'failed' }), /profile initialization failed/)
+  assert.equal(service.list().length, 1)
+  assert.equal(service.activeId(), 'self')
+  assert.equal(service.scopeGeneration(), generation)
+  const inspected = service.getById('self')
+  assert.equal(inspected.id, 'self')
+  assert.equal(service.scopeGeneration(), generation)
+})
 
 test('多人格：旧 self 自动成为默认 active，list 返回 active 标记', () => {
   const clock = createClock()

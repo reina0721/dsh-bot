@@ -8,6 +8,7 @@ import { createLoopObserver } from '../observability/loop.js'
 import { join } from 'node:path'
 import { appendJsonl, dataDir as pluginDataDir } from '../core/store.js'
 import { createStore } from './store.js'
+import { createProfileSettings } from '../core/profile-settings.js'
 import { createApprovalService } from '../core/approvals.js'
 import { createTurnAggregator } from './turn.js'
 import { createPersonService } from './person.js'
@@ -101,8 +102,14 @@ export function createCognition({
       const pausedRecord = state.store.get('setting', 'cognition.paused')
       if (pausedRecord) state.paused = Boolean(pausedRecord.value)
       state.services.identities = createIdentityService({ store: state.store, clock, logger: log })
-      state.services.persona = createPersonaService({ store: state.store, getConfig, clock })
+      state.services.persona = createPersonaService({ store: state.store, getConfig, clock, settingsHooks: {
+        created: (id, from) => {
+          if (state.services.settings?.status().editingAvailable) state.services.settings.initialize(id, from)
+        },
+      } })
       const activePersona = state.services.persona.ensure()
+      state.services.settings = createProfileSettings({ store: state.store, persona: state.services.persona, getConfig, setConfig, clock })
+      state.services.settings.migrate()
       const migrationTarget = state.services.persona.getById('self') ? 'self' : activePersona.id
       const migration = migrateLegacyPersonaData({ base: state.store, targetId: migrationTarget, clock })
       if (migration.migrated) log.info?.(`认知数据已迁移到人格 ${migrationTarget}：${migration.migrated} 条`)
@@ -188,6 +195,7 @@ export function createCognition({
       state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock })
       state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
+        settings: state.services.settings,
         observer: state.services.loopObserver,
         turnHooks,
         deliveryRegistry,
