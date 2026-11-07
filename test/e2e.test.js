@@ -1231,8 +1231,8 @@ test('e2e: built-in config GET/POST, revision conflict, validation and live samp
   assert.equal((await handle.cognition.services.commands.handle({ text: '/module-sample', senderId: '123456', chatType: 'private', chatId: '123456' })).reply, '即时更新')
   const moduleDir = join(dir, 'modules', 'config-external')
   await mkdir(moduleDir)
-  await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ id: 'config-external', entry: 'index.mjs', config: initial.schema }))
-  await writeFile(join(moduleDir, 'index.mjs'), 'export function setup(api) { if (api.config) throw Error("external config") }')
+  await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ id: 'config-external', entry: 'index.mjs' }))
+  await writeFile(join(moduleDir, 'index.mjs'), 'export function setup(api) { if (api.config) throw Error("undeclared config") }')
   assert.equal((await postJson(fake, '/modules/reload', { id: 'config-external' })).item.status, 'loaded')
   for (const deniedId of ['config-external', 'absent', '../escape', '/private/path']) {
     const get = await fake.call(API + '/modules/config?id=' + encodeURIComponent(deniedId), undefined, { method: 'GET' })
@@ -1252,6 +1252,53 @@ test('e2e: built-in config GET/POST, revision conflict, validation and live samp
   const unsupported = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'DELETE' })
   assert.equal(unsupported.status, 405)
   assert.equal(unsupported.json.code, 'MODULE_CONFIG_INVALID')
+})
+
+test('e2e: external declarative config GET/POST, own values, revisions, validation and no-schema denial', async (t) => {
+  const { fake, dir } = await boot(t)
+  const id = 'external-config', moduleDir = join(dir, 'modules', id)
+  const config = { version: 1, fields: [{ path: 'message', label: '回复', type: 'text', default: '默认', maxChars: 20 }] }
+  const webui = { version: 1, config: { binding: 'module-file', schemaVersion: 1, available: true }, surfaces: [
+    { id: 'detail', hook: 'module.detail', renderer: 'status' }, { id: 'config', hook: 'module.config', renderer: 'schema' },
+  ] }
+  await mkdir(moduleDir)
+  await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ id, entry: 'index.mjs', config, webui }))
+  await writeFile(join(moduleDir, 'index.mjs'), `export function setup(api) {
+    if (api.legacyConfig || api.personaStore || Object.keys(api.config.get()).join() !== 'message') throw Error('foreign config exposed')
+    api.config.onChange(values => { if (Object.keys(values).join() !== 'message') throw Error('foreign change exposed') })
+  }`)
+  const item = (await postJson(fake, '/modules/reload', { id })).item
+  assert.equal(item.status, 'loaded'); assert.equal(item.hasConfig, true)
+  const first = await getJson(fake, '/modules/config?id=' + id)
+  assert.equal(item.source, 'external'); assert.equal(first.revision, 0)
+  assert.deepEqual(first.values, { message: '默认' })
+  const catalog = await getJson(fake, '/modules/ui')
+  assert.equal(catalog.items.find(item => item.moduleId === id).config.available, true)
+  const saved = await postJson(fake, '/modules/config', { id, values: { message: '外部配置值' }, revision: 0 })
+  assert.equal(saved.revision, 1)
+  assert.deepEqual(await getJson(fake, '/modules/config?id=' + id), saved)
+  for (const [body, code] of [
+    [{ id, values: {}, revision: 0 }, 'MODULE_CONFIG_CONFLICT'],
+    [{ id, values: { unknown: true }, revision: 1 }, 'MODULE_CONFIG_INVALID'],
+    [{ id, values: { message: false }, revision: 1 }, 'MODULE_CONFIG_INVALID'],
+    [{ id, values: { message: 'x'.repeat(21) }, revision: 1 }, 'MODULE_CONFIG_INVALID'],
+    [{ id, values: {} }, 'MODULE_CONFIG_INVALID'],
+  ]) assert.equal((await fake.call(API + '/modules/config', body, { method: 'POST' })).json.code, code)
+  assert.deepEqual(await getJson(fake, '/modules/config?id=' + id), saved)
+  assert.deepEqual(await getJson(fake, '/modules/ui'), catalog)
+  assert.deepEqual(JSON.parse(await readFile(join(moduleDir, 'config.json'), 'utf8')), { version: 1, revision: 1, values: saved.values })
+  await postJson(fake, '/modules/reload', { id })
+  assert.deepEqual(await getJson(fake, '/modules/config?id=' + id), saved)
+  await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ id, entry: 'index.mjs', webui }))
+  assert.equal((await postJson(fake, '/modules/reload', { id })).item.hasConfig, false)
+  const unavailable = (await getJson(fake, '/modules/ui')).items.find(item => item.moduleId === id)
+  assert.equal(unavailable.config.available, false); assert.equal(unavailable.uiWarning, 'MODULE_UI_INVALID')
+  for (const method of ['GET', 'POST']) {
+    const result = await fake.call(API + (method === 'GET' ? '/modules/config?id=' + id : '/modules/config'), method === 'POST' ? { id, values: {}, revision: 0 } : undefined, { method })
+    assert.equal(result.json.code, 'MODULE_CONFIG_UNAVAILABLE')
+  }
+  for (const result of [item, first, saved, catalog]) assert.ok(!JSON.stringify(result).includes(dir))
+  assert.doesNotMatch(JSON.stringify(catalog), /values|fields|config\.json|外部配置值/)
 })
 
 test('e2e: typing uses builtin lifecycle, legacy config and toggle; external turn/status denied', async (t) => {

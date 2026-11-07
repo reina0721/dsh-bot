@@ -35,7 +35,7 @@ function keys(value, allowed) {
 }
 
 /** v1 accepts metadata only, including keys into the trusted compile-time registry. */
-export function validateWebuiDescriptor(raw, { source } = {}) {
+export function validateWebuiDescriptor(raw, { source, configSchema = null } = {}) {
   if (!['builtin', 'external'].includes(source)) invalid()
   jsonOnly(raw)
   if (Buffer.byteLength(JSON.stringify(raw), 'utf8') > MAX_UI_BYTES) invalid()
@@ -47,8 +47,8 @@ export function validateWebuiDescriptor(raw, { source } = {}) {
   if (config.schemaVersion !== null && (!Number.isSafeInteger(config.schemaVersion) || config.schemaVersion < 1)) invalid()
   if (config.binding === 'none' && (config.available || config.schemaVersion !== null)) invalid()
   if (config.binding === 'legacy-core' && source !== 'builtin') invalid()
-  // External config editing is not implemented. Opt-in cannot grant it.
-  if (source === 'external' && config.available) invalid()
+  // Schema is validated by the loader; UI metadata cannot grant config access.
+  if (source === 'external' && config.available && (!configSchema || config.binding !== 'module-file' || config.schemaVersion !== 1)) invalid()
   const requested = raw.requestedCapabilities === undefined ? [] : raw.requestedCapabilities
   // Phase 1 has no UI capabilities. Backend module permissions are independent.
   if (!Array.isArray(requested) || requested.length) invalid()
@@ -59,6 +59,7 @@ export function validateWebuiDescriptor(raw, { source } = {}) {
     keys(surface, ['id', 'hook', 'renderer', 'order', 'componentKey'])
     if (typeof surface.id !== 'string' || !ID_RE.test(surface.id) || ids.has(surface.id)) invalid()
     if (!UI_HOOKS.includes(surface.hook) || hooks.has(surface.hook) || !RENDERERS.has(surface.renderer)) invalid()
+    if (source === 'external' && surface.hook === 'module.config' && surface.renderer === 'schema' && !configSchema) invalid()
     if (surface.renderer === 'builtin-react') {
       if (source !== 'builtin' || typeof surface.componentKey !== 'string' || surface.componentKey.length > 64 || !COMPONENT_KEY_RE.test(surface.componentKey) || !BUILTIN_COMPONENT_KEYS.includes(surface.componentKey)) invalid()
     } else if (Object.hasOwn(surface, 'componentKey')) invalid()

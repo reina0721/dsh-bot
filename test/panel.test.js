@@ -1815,7 +1815,7 @@ test('ModulesPage WebUI: list → disabled detail → back, status text and unav
   const item = { id: 'disabled', name: '声明式模块', source: 'external', builtin: false, status: 'disabled', generation: 'current', uiRevision: 'revision', enabled: false, canToggle: true }
   const ui = moduleUi(item, { surfaces: [
     { id: 'detail', hook: 'module.detail', renderer: 'status', order: 0 },
-    { id: 'config', hook: 'module.config', renderer: 'schema', order: 1 },
+    { id: 'config', hook: 'module.config', renderer: 'status', order: 1 },
     { id: 'actions', hook: 'module.actions', renderer: 'status', order: 2 },
     { id: 'panel', hook: 'module.panel', renderer: 'schema', order: 3 },
   ] })
@@ -1945,8 +1945,8 @@ test('ModulesPage: 启停 payload、状态 toast、失败后清除 busy，空/�
   try { assert.doesNotMatch(JSON.stringify(panel.ModulesPage({})), /还没有模块/) } finally { stateOverrides = null }
 })
 
-test('ModulesPage config: sample detail only, generic FieldRow/FieldControl, save revision, reread and cancel', async () => {
-  const item = { id: 'builtin-sample', name: '内置示例', builtin: true, source: 'builtin', hasConfig: true, status: 'loaded', enabled: true, canToggle: true, generation: 'sample', uiRevision: 'sample-ui' }
+for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config: detail only, generic FieldRow/FieldControl, save revision, reread and cancel`, async () => {
+  const item = { id: source === 'builtin' ? 'builtin-sample' : 'external-sample', name: '配置示例', builtin: source === 'builtin', source, hasConfig: true, status: 'loaded', enabled: true, canToggle: true, generation: 'sample', uiRevision: 'sample-ui' }
   const external = { ...item, id: 'external', name: '外部', builtin: false, source: 'external' }
   const absent = { ...item, id: 'builtin-plain', name: '无配置', hasConfig: false }
   const fields = [
@@ -1978,6 +1978,8 @@ test('ModulesPage config: sample detail only, generic FieldRow/FieldControl, sav
     let tree = render()
     assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块配置').length, 1)
     assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块详情').length, 1)
+    if (source === 'external') assert.match(JSON.stringify(tree), /外部声明式（无执行权限）/)
+    assert.equal(treeNodes(tree).some((node) => ['iframe', 'script'].includes(node.type) || Object.values(panel.BUILTIN_MODULE_UI).includes(node.type)), false)
     assert.ok(!treeNodes(tree).some((node) => node.props?.title === '模块目录' || node.props?.title === external.name))
     const rows = treeNodes(tree).filter((node) => node.type?.name === 'FieldRow')
     assert.deepEqual(rows.map((node) => node.props.spec.type), fields.map((field) => field.type))
@@ -2078,8 +2080,8 @@ test('ModulesPage WebUI: card background and detail button navigate; card/detail
   assert.ok(treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块详情'))
 })
 
-test('ModulesPage config: disabled sample loads read-only; toggle enables editing and disabling blocks writes', async () => {
-  let item = { id: 'builtin-sample', builtin: true, source: 'builtin', hasConfig: true, enabled: false, status: 'disabled', generation: 'sample', uiRevision: 'ui', canToggle: true }
+for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config: disabled loads read-only; toggle enables editing and disabling blocks writes`, async () => {
+  let item = { id: source === 'builtin' ? 'builtin-sample' : 'external-sample', builtin: source === 'builtin', source, hasConfig: true, enabled: false, status: 'disabled', generation: 'sample', uiRevision: 'ui', canToggle: true }
   const session = { values: [[item], false, '', '', null, '', moduleCatalog(moduleUi(item))], index: 0 }, calls = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
   const payload = { ok: true, schema: { version: 1, fields: [{ path: 'message', type: 'text', label: '示例回复' }] }, values: { message: 'original' }, revision: 3 }
@@ -2291,6 +2293,7 @@ test('ModulesPage Phase 3B: unknown key fallback and external builtin-react neve
     [{}, 'unknown.preview', '内置预览组件不可用'],
     [{}, 'constructor.preview', '内置预览组件不可用'],
     [{ id: 'external', builtin: false, source: 'external' }, 'sample.preview', 'UI 描述不可用或未声明'],
+    [{ id: 'external-config', builtin: false, source: 'external', hasConfig: true }, 'sample.preview', 'UI 描述不可用或未声明'],
     [{ id: 'spoof', builtin: false, source: 'builtin' }, 'typing.preview', 'UI 描述不可用或未声明'],
   ]) {
     const item = { ...base, ...patch }

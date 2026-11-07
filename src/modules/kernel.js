@@ -3,7 +3,7 @@
 
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -61,7 +61,7 @@ function publicRecord(record) {
     requires: [...record.requires],
     canReload: !record.builtin,
     canToggle: record.builtin || (record.valid && record.manifestEnabled),
-    hasConfig: Boolean(record.builtin && record.configSchema),
+    hasConfig: Boolean(record.configSchema),
     configWarning: record.configWarning || '',
     permissions: [...record.permissions],
     enabled: Boolean(record.enabled),
@@ -139,7 +139,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     await access(entryPath, constants.R_OK)
     const realEntry = await realpath(entryPath)
     if (!inside(realModuleDir, realEntry)) throw new Error('manifest.entry 不能通过符号链接离开模块目录')
-    return { ...manifest, ...loadWebuiDescriptor(raw.webui, { source: 'external' }), source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry }
+    const configSchema = raw.config === undefined ? null : validateConfigSchema(raw.config)
+    return { ...manifest, configSchema, ...loadWebuiDescriptor(raw.webui, { source: 'external', configSchema }), source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry }
   }
 
   function makeRecord(manifest) {
@@ -160,7 +161,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return Object.assign(new Error(message), { code })
   }
 
-  // 写目录和 data.json 都需要 realpath containment；包内源码路径从不作为写入目标。
+  // 写目录与文件都需要 realpath containment；包内源码路径从不作为写入目标。
   async function storagePath(record, filename = 'data.json') {
     const realRoot = await realpath(root)
     if (record.builtin) {
@@ -173,8 +174,13 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     }
     const dir = await realpath(record.moduleDir)
     if (!inside(realRoot, dir)) throw new Error('模块存储目录符号链接逃逸')
+    if (filename === 'config.json' && !record.builtin) {
+      const installedDir = join(root, record.id)
+      if ((await lstat(installedDir)).isSymbolicLink() || dir !== record.moduleDir || (await realpath(installedDir)) !== dir) throw new Error('模块配置目录不能是符号链接或被替换')
+    }
     const file = join(dir, filename)
     try {
+      if (filename === 'config.json' && !record.builtin && (await lstat(file)).isSymbolicLink()) throw new Error('模块配置文件不能是符号链接')
       if (!inside(dir, await realpath(file))) throw new Error('模块存储文件符号链接逃逸')
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     return file
@@ -466,7 +472,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         },
       })
     }
-    if (record.builtin && record.configSchema) {
+    if (record.configSchema) {
       api.config = Object.freeze({
         get: () => clone(record.configValues),
         onChange(handler) {
@@ -587,7 +593,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (entry.name === '.builtin' || (!entry.isDirectory() && !entry.isSymbolicLink())) continue
       // 保留命名空间的外部目录不可能覆盖真正的内置记录。
       if (records.has(entry.name)) { log.warn?.(`忽略保留的内置模块目录：${entry.name}`); continue }
-      try { records.set(entry.name, makeRecord(await manifestFor(join(root, entry.name), entry.name))) }
+      try {
+        const record = makeRecord(await manifestFor(join(root, entry.name), entry.name))
+        await loadModuleConfig(record)
+        records.set(entry.name, record)
+      }
       catch (error) { records.set(entry.name, errorRecord(entry.name, error)) }
     }
     await reconcile()
@@ -635,7 +645,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         await reconcile()
         throw error
       }
-      try { records.set(normalized, makeRecord(await manifestFor(join(root, normalized), normalized))) }
+      try {
+        const record = makeRecord(await manifestFor(join(root, normalized), normalized))
+        await loadModuleConfig(record)
+        records.set(normalized, record)
+      }
       catch (error) { records.set(normalized, errorRecord(normalized, error, previous)) }
       await reconcile()
       return publicRecord(records.get(normalized))
@@ -669,12 +683,12 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   function configRecord(id) {
     if (disposed) throw actionError('模块内核已释放', 'MODULE_CONFIG_UNAVAILABLE')
     const record = typeof id === 'string' ? records.get(id) : null
-    if (!record?.builtin || !record.configSchema) throw actionError('模块不存在或不支持内置配置', 'MODULE_CONFIG_UNAVAILABLE')
+    if (!record?.configSchema) throw actionError('模块不存在或不支持模块配置', 'MODULE_CONFIG_UNAVAILABLE')
     return record
   }
 
   function configSnapshot(record) {
-    return { id: record.id, source: 'builtin', schema: clone(record.configSchema), values: clone(record.configValues), revision: record.configRevision }
+    return { id: record.id, source: record.source, schema: clone(record.configSchema), values: clone(record.configValues), revision: record.configRevision }
   }
 
   function getModuleConfig(id) {

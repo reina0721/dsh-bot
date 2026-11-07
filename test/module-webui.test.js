@@ -5,11 +5,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { builtinRegistry } from '../src/modules/registry.js'
 import { createModuleKernel } from '../src/modules/kernel.js'
+import { validateConfigSchema } from '../src/modules/config.js'
 import { BUILTIN_COMPONENT_KEYS, MAX_UI_BYTES, UI_HOOKS, loadWebuiDescriptor, validateWebuiDescriptor } from '../src/modules/webui.js'
 
 const surface = (hook = 'module.detail', extra = {}) => ({ id: 'detail', hook, renderer: 'status', ...extra })
 const descriptor = (extra = {}) => ({ version: 1, surfaces: [surface()], ...extra })
-const validate = (raw, source = 'external') => validateWebuiDescriptor(raw, { source })
+const configSchema = validateConfigSchema({ version: 1, fields: [{ path: 'message', type: 'text', label: '回复', default: 'private-default-marker' }] })
+const validate = (raw, source = 'external', schema = null) => validateWebuiDescriptor(raw, { source, configSchema: schema })
 
 test('WebUI builtin-react: frozen compile-time allowlist and strict source/key matrix', () => {
   assert.ok(Object.isFrozen(BUILTIN_COMPONENT_KEYS))
@@ -50,13 +52,13 @@ async function harness(t, registry = []) {
 
 test('WebUI v1: five hooks, unique contribution, bounded order and fresh metadata', () => {
   const raw = descriptor({ surfaces: UI_HOOKS.map((hook, i) => surface(hook, { id: 's' + i, renderer: i % 2 ? 'schema' : 'status', order: 100 - i * 50 })) })
-  const ui = validate(raw)
+  const ui = validate(raw, 'external', configSchema)
   assert.equal(ui.surfaces.length, 5)
   assert.deepEqual(ui.surfaces.map((item) => item.order), [-100, -50, 0, 50, 100])
   assert.deepEqual(ui.config, { binding: 'none', schemaVersion: null, available: false })
   assert.deepEqual(ui.requestedCapabilities, [])
   ui.surfaces[0].id = 'changed'
-  assert.notEqual(validate(raw).surfaces[0].id, 'changed')
+  assert.notEqual(validate(raw, 'external', configSchema).surfaces[0].id, 'changed')
   assert.equal(validate(descriptor()).surfaces[0].order, 0)
 })
 
@@ -105,6 +107,41 @@ test('WebUI config is metadata only; no external grant or legacy ownership spoof
   assert.deepEqual(validateWebuiDescriptor(descriptor({ config: legacy }), { source: 'builtin' }).config, legacy)
   assert.throws(() => validate(descriptor({ config: legacy })), /MODULE_UI_INVALID/)
   assert.throws(() => validate(descriptor({ config: { binding: 'none', schemaVersion: 1, available: false } })), /MODULE_UI_INVALID/)
+})
+
+test('WebUI external config requires validated schema; no React/componentKey/sandbox grant even with config', async (t) => {
+  const config = { binding: 'module-file', schemaVersion: 1, available: true }
+  const webui = descriptor({ config, surfaces: [surface(), surface('module.config', { id: 'config', renderer: 'schema' })] })
+  assert.deepEqual(validate(webui, 'external', configSchema).config, config)
+  assert.throws(() => validate(webui), /MODULE_UI_INVALID/)
+  assert.throws(() => validate(descriptor({ surfaces: [surface('module.config', { renderer: 'schema' })] })), /MODULE_UI_INVALID/)
+  assert.throws(() => validate({ ...webui, config: { ...config, schemaVersion: 2 } }, 'external', configSchema), /MODULE_UI_INVALID/)
+  const h = await harness(t)
+  await h.external('configured', webui, { config: configSchema })
+  await h.external('no-schema', webui)
+  await h.external('no-webui', undefined, { config: configSchema })
+  const invalid = [
+    { ...webui, componentKey: 'sample.preview' }, { ...webui, sandbox: {} },
+    { ...webui, surfaces: [surface('module.detail', { renderer: 'builtin-react', componentKey: 'sample.preview' })] },
+    { ...webui, surfaces: [surface('module.config', { renderer: 'schema', componentKey: 'sample.preview' })] },
+    { ...webui, surfaces: [surface('module.detail', { renderer: 'sandbox' })] },
+  ]
+  for (const [i, ui] of invalid.entries()) await h.external('invalid-' + i, ui, { config: configSchema })
+  await h.kernel.start()
+  assert.deepEqual(h.item('configured').config, config)
+  assert.equal(h.item('configured').trust, 'external')
+  assert.ok(h.item('configured').surfaces.some(surface => surface.hook === 'module.config' && surface.renderer === 'schema'))
+  for (const id of ['no-schema', 'no-webui', ...invalid.map((_, i) => 'invalid-' + i)]) {
+    assert.equal(h.item(id).status, 'loaded')
+    assert.equal(h.item(id).config.available, false)
+    assert.deepEqual(h.item(id).surfaces, [])
+    assert.equal(h.item(id).uiWarning, id === 'no-webui' ? '' : 'MODULE_UI_INVALID')
+  }
+  const catalog = h.kernel.uiCatalog()
+  await h.kernel.setModuleConfig('configured', { message: 'private-value-marker' }, 0)
+  assert.deepEqual(h.kernel.uiCatalog(), catalog)
+  assert.doesNotMatch(JSON.stringify(catalog), /private-value-marker|private-default-marker|values|fields|default|config\.json|componentKey/)
+  assert.ok(!JSON.stringify(catalog).includes(h.root))
 })
 
 test('WebUI built-in registry catalog includes disabled sample; no import/config read on catalog', async (t) => {
@@ -185,7 +222,7 @@ test('WebUI generations/revisions survive reads, change on activation/reload, ne
   await h.kernel.reload('external')
   assert.notEqual(h.item('external').generation, active.generation)
   assert.equal(h.item('external').uiRevision, first.uiRevision)
-  await h.external('external', descriptor({ surfaces: [surface('module.config', { renderer: 'schema' })] }))
+  await h.external('external', descriptor({ surfaces: [surface('module.config', { renderer: 'schema' })] }), { config: configSchema })
   await h.kernel.reload('external')
   assert.notEqual(h.item('external').uiRevision, first.uiRevision)
   await h.external('external', descriptor({ sandbox: {} }))

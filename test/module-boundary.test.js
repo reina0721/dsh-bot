@@ -83,13 +83,17 @@ test('final module boundary: every external privileged use fails, including mani
   }
 })
 
-test('final module boundary: undeclared privileges and media resources/routes are unavailable to external API', async t => {
+for (const spoof of [false, true]) test(`final module boundary: external ${spoof ? 'with config/source spoof' : 'without config'} has no undeclared privileges or media resources/routes`, async t => {
   const h = await harness(t)
   await external(h.root, 'external-probe', ['commands', 'cognition:read'], `
-    for (const key of ['scheduler', 'personaStore', 'reminderRepository', 'legacyConfig', 'config',
+    for (const key of ['scheduler', 'personaStore', 'reminderRepository', 'legacyConfig',
       'media', 'stickers', 'gateway', 'routes', 'http', 'ctx', 'store', 'providerRegistry', 'deliveryRegistry', 'turnHooks']) {
       assert.equal(Object.hasOwn(api, key), false, key)
     }
+    if (${spoof}) {
+      assert.deepEqual(api.config.get(), {})
+      assert.equal(typeof api.config.onChange, 'function')
+    } else assert.equal(Object.hasOwn(api, 'config'), false)
     assert.deepEqual(Object.keys(api.providers), ['register'])
     assert.deepEqual(Object.keys(api.cognition).sort(),
       ['snapshot', 'overview', 'memories', 'personDetail', 'relationshipsList', 'timeline'].sort())
@@ -100,9 +104,9 @@ test('final module boundary: undeclared privileges and media resources/routes ar
     assert.throws(() => api.delivery.send({ chatType: 'private', chatId: '123', text: 'denied' }), /delivery:send/)
     assert.throws(() => api.access.canSend({ chatType: 'private', chatId: '123' }), /access:check/)
     assert.throws(() => api.registerCommand('remind', () => '', { overrideBuiltin: true }), /内置/)
-  `, true)
+  `, spoof)
   const [record] = await h.kernel.start()
-  assert.equal(record.status, 'loaded'); assert.equal(record.hasConfig, false)
+  assert.equal(record.status, 'loaded'); assert.equal(record.hasConfig, spoof)
   assert.deepEqual(h.providers.list(), []); assert.deepEqual(h.planners.list(), [])
   assert.deepEqual(h.hooks.list(), []); assert.deepEqual(h.calls, [])
 })

@@ -1,4 +1,4 @@
-// 仅供受信任的内置 registry 使用；不接受外部 manifest 的 config。
+// 内置 registry 与外部 manifest 共用的声明式配置契约。
 export const MAX_CONFIG_BYTES = 64 * 1024
 const PATH_RE = /^[a-z][a-zA-Z0-9_]{0,63}$/
 const TYPES = new Set(['switch', 'text', 'textarea', 'number', 'select', 'string-list', 'number-list'])
@@ -25,13 +25,14 @@ function validateValue(field, value) {
 
 export function validateConfigSchema(raw) {
   if (!object(raw) || raw.version !== 1 || !Array.isArray(raw.fields) || raw.fields.length > 32) fail('配置 schema 必须为 version:1，且最多 32 个字段')
+  if (Buffer.byteLength(JSON.stringify(raw)) > MAX_CONFIG_BYTES) fail('模块配置 schema 超过 64 KiB')
   const paths = new Set()
   const fields = raw.fields.map((input) => {
     if (!object(input) || typeof input.path !== 'string' || !PATH_RE.test(input.path) || paths.has(input.path)) fail('配置字段 path 必须是唯一的平面键')
     paths.add(input.path)
     if (!TYPES.has(input.type)) fail('配置字段类型不支持（禁止 secret）')
     if (typeof input.label !== 'string' || !input.label.trim()) fail('配置字段 label 必须非空')
-    // 只公开已知的 UI 元数据，避免 registry 私有属性进入 GET。
+    // 只公开已知的 UI 元数据，避免清单或 registry 私有属性进入 GET。
     const field = { path: input.path, type: input.type, label: input.label }
     for (const key of ['help', 'placeholder', 'unit']) {
       if (input[key] !== undefined) {
@@ -71,6 +72,7 @@ export function validateConfigSchema(raw) {
     return field
   })
   const schema = { version: 1, fields }
+  if (Buffer.byteLength(JSON.stringify(schema)) > MAX_CONFIG_BYTES) fail('模块配置 schema 超过 64 KiB')
   validateConfigValues(schema, {})
   return schema
 }

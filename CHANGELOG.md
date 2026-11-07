@@ -2,6 +2,8 @@
 
 ## 未发布（Unreleased）
 
+- 模块 WebUI Phase 4：外部 module.json 可声明有界 config schema，复用内置验证器、64 KiB 限制、原子 config.json、revision 与 MODULE_CONFIG_*；setup 前恢复，api.config.get/onChange 仅暴露本模块值，不授予内置特权，拒绝外部配置符号链接/目录逃逸。外部有效 schema 可 opt-in module-file 配置元数据与 module.config/schema，详情由核心通用编辑器渲染，enabled 且 loaded 时可编辑，其余只读，保留「外部声明式」徽章。无 schema 配置不可用，无效 UI 安全回退，目录无配置值/路径。补充清单、存储/权限、HTTP 与面板回归及作者示例；无外部 React、componentKey、可执行 WebUI、新 DSH slot 或依赖，沙箱/iframe/能力消息桥/执行器尚未实现。无版本升级、推送、部署、tag 或发布。
+
 - 模块 WebUI Phase 3B：仅受信内置可声明 builtin-react 与冻结编译期白名单 reply-delivery.preview、typing.preview、reminders.preview、sample.preview；四个 module.detail 替换为纯 React 只读预览，保留 module.config/schema 与全部编辑/保存流程。组件只接收冻结的有界模块元数据、各自配置草稿与只读摘要，无 DOM 注入、请求或副作用。服务端拒绝外部 builtin-react、未知 key、非 builtin-react 的 componentKey、重复 hook 与可执行值；客户端经 uiFor 查冻结表，未知 key 安全回退，外部从不执行。/modules/ui 仍无配置值、函数或路径。补充契约、目录/E2E 与面板测试；同步 ADR-014、MODULES、架构说明。无配置值、版本、依赖、DSH 注册变化，无推送、部署、tag 或 release；外部声明式扩展/沙箱/iframe/能力消息桥留待后续。
 
 - 模块 WebUI Phase 3A：reply-delivery/typing/reminders 的 12 个既有核心字段新增有界 module 归属元数据，内置 legacy-core 描述改为 available:true、schemaVersion:1。模块详情复用 FieldRow、全局 draft/saveUiPatch/prefStatus；停用或未 loaded 时只读，系统设置去除重复字段与空 cog-reminders 组，保留通知/请求及其余轮次设置。sample 保持 module-file 编辑与 revision 流程；`/modules/ui` 无配置值，无新增后端配置端点。存储键 cognition.reply.*、cognition.typing.enabled、cognition.reminders.*、默认值、规范化及运行行为不变，无数据迁移。补充字段归属、详情/系统去重、精确保存路径、只读与 sample 回归；同步 MODULES、ARCHITECTURE、ADR-014。受信 React、自定义组件与外部 UI/沙箱/iframe/能力消息桥仍待后续，无版本、依赖或 DSH 注册变化，仅本地验证与提交。

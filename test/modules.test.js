@@ -454,11 +454,11 @@ test('modules config：损坏/超限回退、符号链接 containment、写失�
   assert.equal((await kernel.setModuleConfig(descriptor.manifest.id, {}, 0)).revision, 1)
 })
 
-test('modules config：仅 registry 内置描述符生效；外部/未声明/未知拒绝且无路径泄露', async (t) => {
+test('modules config：未声明/未知拒绝且无路径泄露', async (t) => {
   let plainApi
   const h = await harness([builtin('builtin-plain', async () => ({ setup(api) { plainApi = api } }), { config: configSchema }, true)])
   t.after(() => h.kernel.dispose())
-  await moduleDir(h.root, 'external', { config: configSchema }, `export function setup(api) { if (api.config !== undefined) throw Error('external config exposed') }`)
+  await moduleDir(h.root, 'external', {}, `export function setup(api) { if (api.config !== undefined) throw Error('undeclared config exposed') }`)
   await h.kernel.start()
   assert.equal(plainApi.config, undefined)
   assert.equal(row(h.kernel, 'external').status, 'loaded')
@@ -467,6 +467,106 @@ test('modules config：仅 registry 内置描述符生效；外部/未声明/未
     await assert.rejects(h.kernel.getModuleConfig(id), { code: 'MODULE_CONFIG_UNAVAILABLE' })
     await assert.rejects(h.kernel.setModuleConfig(id, {}, 0), (error) => error.code === 'MODULE_CONFIG_UNAVAILABLE' && !error.message.includes(id))
   }
+})
+
+test('external config：own values, cloned reads/listeners, atomic revisions, reload and revoked listeners', async (t) => {
+  const changes = []
+  const h = await harness([], { info: message => { if (message.startsWith('external-change:')) changes.push(message) } }); t.after(() => h.kernel.dispose())
+  const dir = await moduleDir(h.root, 'configured', {
+    config: configSchema, permissions: ['commands'],
+    source: 'builtin', builtin: true, configValues: { secret: 'untrusted' }, moduleDir: '/private/escape',
+  }, `export function setup(api) {
+    if (api.builtin || api.source !== 'external' || api.legacyConfig || api.personaStore || api.scheduler) throw Error('privileged API exposed')
+    try { api.providers.register('reminders', {}) ; throw Error('provider exposed') } catch (error) { if (!/permission|内置/.test(error.message)) throw error }
+    if ('secret' in api.config.get()) throw Error('foreign values exposed')
+    api.config.get().names.push('mutated')
+    let message = api.config.get().message
+    api.config.onChange(values => { message = values.message; values.names.push('local'); api.log.info('external-change:' + message) })
+    api.registerCommand('configured', () => message)
+  }`)
+  await h.kernel.start()
+  assert.equal(row(h.kernel, 'configured').status, 'loaded')
+  assert.equal(row(h.kernel, 'configured').hasConfig, true)
+  const first = await h.kernel.getModuleConfig('configured')
+  assert.equal(first.source, 'external'); assert.equal(first.revision, 0)
+  assert.deepEqual(first.values.names, ['a'])
+  first.values.names.push('local'); first.schema.fields[0].maxChars = 999
+  const saved = await h.kernel.setModuleConfig('configured', { message: '新值' }, 0)
+  assert.equal(saved.revision, 1); assert.equal(saved.schema.fields[0].maxChars, 4)
+  assert.deepEqual(saved.values.names, ['a'])
+  assert.equal((await h.commands.handle(h.turn('/configured'))).reply, '新值')
+  await assert.rejects(h.kernel.setModuleConfig('configured', {}, 0), { code: 'MODULE_CONFIG_CONFLICT' })
+  await assert.rejects(h.kernel.setModuleConfig('configured', { unknown: true }, 1), { code: 'MODULE_CONFIG_INVALID' })
+  assert.deepEqual(JSON.parse(await readFile(join(dir, 'config.json'), 'utf8')), { version: 1, revision: 1, values: saved.values })
+  assert.deepEqual(await readdir(dir), ['config.json', 'index.mjs', 'module.json'])
+  await h.kernel.reload('configured')
+  assert.deepEqual(await h.kernel.getModuleConfig('configured'), saved)
+  assert.equal((await h.commands.handle(h.turn('/configured'))).reply, '新值')
+  await h.kernel.setEnabled('configured', false)
+  await h.kernel.setModuleConfig('configured', { message: '停用值' }, 1)
+  assert.deepEqual(changes, ['external-change:新值'])
+  await h.kernel.setEnabled('configured', true)
+  assert.equal((await h.commands.handle(h.turn('/configured'))).reply, '停用值')
+  await h.kernel.setModuleConfig('configured', { message: '再启用' }, 2)
+  assert.deepEqual(changes, ['external-change:新值', 'external-change:再启用'])
+  await h.kernel.setEnabled('configured', false)
+  await h.kernel.dispose()
+  const restarted = createModuleKernel({ dataDir: h.root, registry: [] }); t.after(() => restarted.dispose())
+  await restarted.start()
+  const restored = await restarted.getModuleConfig('configured')
+  assert.equal(restored.revision, 3); assert.equal(restored.values.message, '再启用')
+})
+
+test('external config：invalid/oversized schemas rejected before importing backend', async (t) => {
+  const h = await harness(); t.after(() => h.kernel.dispose())
+  const invalid = [null, { ...configSchema, version: 2 }, { version: 1, fields: [{ path: 'password', label: 'secret', type: 'secret' }] },
+    { version: 1, fields: [{ path: 'message', label: 'x'.repeat(MAX_CONFIG_BYTES), type: 'text' }] },
+    { version: 1, fields: [{ path: 'message', label: 'x', type: 'select', options: [{ value: 'x'.repeat(23000) }] }] },
+    { version: 1, fields: [{ path: 'message', label: 'x', type: 'text', maxChars: MAX_CONFIG_BYTES, default: '中'.repeat(30000) }] }]
+  for (const [i, config] of invalid.entries()) await moduleDir(h.root, 'invalid-' + i, { config }, `throw Error('must not import')`)
+  await h.kernel.start()
+  for (const item of h.kernel.list()) {
+    assert.equal(item.status, 'error'); assert.equal(item.hasConfig, false)
+    assert.doesNotMatch(item.error, /must not import/)
+    await assert.rejects(h.kernel.getModuleConfig(item.id), { code: 'MODULE_CONFIG_UNAVAILABLE' })
+  }
+})
+
+test('external config：symlink files (including internal/dangling), directory swaps and escapes denied', async (t) => {
+  const h = await harness(); t.after(() => h.kernel.dispose())
+  const outside = await mkdtemp(join(tmpdir(), 'dsh-config-outside-'))
+  t.after(() => rm(outside, { recursive: true, force: true }))
+  const content = JSON.stringify({ version: 1, revision: 7, values: { message: '外部值' } })
+  await writeFile(join(outside, 'config.json'), content)
+  await writeFile(join(outside, 'module.json'), JSON.stringify({ id: 'directory-escape', entry: 'index.mjs', config: configSchema }))
+  await writeFile(join(outside, 'index.mjs'), `throw Error('must not import')`)
+  for (const id of ['escape', 'internal', 'dangling', 'swapped']) {
+    const dir = await moduleDir(h.root, id, { config: configSchema }, 'export function setup() {}')
+    if (id === 'swapped') continue
+    const target = id === 'escape' ? join(outside, 'config.json') : join(dir, id === 'internal' ? 'private.json' : 'missing.json')
+    if (id === 'internal') await writeFile(target, content)
+    await symlink(target, join(dir, 'config.json'))
+  }
+  await symlink(outside, join(h.root, 'directory-escape'), 'dir')
+  await h.kernel.start()
+  assert.equal(row(h.kernel, 'directory-escape').status, 'error')
+  assert.match(row(h.kernel, 'directory-escape').error, /符号链接/)
+  for (const id of ['escape', 'internal', 'dangling']) {
+    assert.equal((await h.kernel.getModuleConfig(id)).revision, 0)
+    assert.match(row(h.kernel, id).configWarning, /默认值/)
+    await assert.rejects(h.kernel.setModuleConfig(id, {}, 0), { code: 'MODULE_CONFIG_WRITE_FAILED' })
+    assert.equal((await h.kernel.getModuleConfig(id)).revision, 0)
+  }
+  await rm(join(h.root, 'swapped'), { recursive: true })
+  // Even an alias to another module inside modules cannot become this module's config.
+  await symlink(join(h.root, 'internal'), join(h.root, 'swapped'), 'dir')
+  await assert.rejects(h.kernel.setModuleConfig('swapped', {}, 0), { code: 'MODULE_CONFIG_WRITE_FAILED' })
+  await rm(join(h.root, 'swapped'))
+  await symlink(outside, join(h.root, 'swapped'), 'dir')
+  await assert.rejects(h.kernel.setModuleConfig('swapped', {}, 0), { code: 'MODULE_CONFIG_WRITE_FAILED' })
+  assert.equal(await readFile(join(outside, 'config.json'), 'utf8'), content)
+  assert.equal(await readFile(join(h.root, 'internal', 'private.json'), 'utf8'), content)
+  await assert.rejects(readFile(join(h.root, 'dangling', 'missing.json')), { code: 'ENOENT' })
 })
 
 test('modules config：依赖 reload 会清理内置下游监听器，dispose 清理当前注册', async (t) => {

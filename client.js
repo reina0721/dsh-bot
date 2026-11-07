@@ -7442,13 +7442,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         if (config.schemaVersion !== null && (!Number.isSafeInteger(config.schemaVersion) || config.schemaVersion < 1)) return null
         if (config.binding === 'none' && (config.available || config.schemaVersion !== null)) return null
         if (config.binding === 'legacy-core' && source !== 'builtin') return null
-        if (source === 'external' && config.available) return null
+        if (source === 'external' && config.available && (!item.hasConfig || config.binding !== 'module-file' || config.schemaVersion !== 1)) return null
         if (!Array.isArray(ui.requestedCapabilities) || ui.requestedCapabilities.length || !Array.isArray(ui.grantedCapabilities) || ui.grantedCapabilities.length) return null
         const hooks = new Set(), ids = new Set()
         for (const surface of ui.surfaces) {
           if (!surface || typeof surface.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(surface.id) || ids.has(surface.id) || hooks.has(surface.hook)) return null
           if (Object.keys(surface).some((key) => !['id', 'hook', 'renderer', 'order', 'componentKey'].includes(key))) return null
           if (!['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'].includes(surface.hook) || !['status', 'schema', 'builtin-react'].includes(surface.renderer)) return null
+          if (source === 'external' && surface.hook === 'module.config' && surface.renderer === 'schema' && !item.hasConfig) return null
           if (surface.renderer === 'builtin-react') {
             if (source !== 'builtin' || typeof surface.componentKey !== 'string' || surface.componentKey.length > 64 || !/^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$/.test(surface.componentKey)) return null
           } else if (Object.prototype.hasOwnProperty.call(surface, 'componentKey')) return null
@@ -7458,7 +7459,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         return ui
       }
 
-      const hasConfigUi = (item, ui) => item.builtin && item.source === 'builtin' && item.hasConfig && ui?.config.available === true && ui.config.binding === 'module-file' && ui.surfaces.some((surface) => surface.hook === 'module.config' && surface.renderer === 'schema')
+      const hasConfigUi = (item, ui) => item.hasConfig && ui?.config.available === true && ui.config.binding === 'module-file' && ui.surfaces.some((surface) => surface.hook === 'module.config' && surface.renderer === 'schema')
       const configReadOnly = (item) => !item.enabled || item.status !== 'loaded'
       const legacyFields = buildFieldSpecs(props.configInfo?.groups).flatMap((group) => group.fields)
       const hasLegacyConfigUi = (item, ui) => item.builtin && item.source === 'builtin' && ui?.config.binding === 'legacy-core' && ui.config.available === true && ui.surfaces.some((surface) => surface.hook === 'module.config' && surface.renderer === 'schema')

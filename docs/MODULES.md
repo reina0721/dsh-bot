@@ -11,11 +11,11 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
-## WebUI Phase 3B 当前状态
+## WebUI Phase 4 当前状态
 
 现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，外部仅 status/schema renderer，内置额外允许 builtin-react。拒绝未知字段/能力、重复 ID/hook、非法 componentKey、sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不 rescan、不读配置值；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
 
-核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：受信内置 `module-file` 使用通用编辑器（当前 builtin-sample），受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。未来 actions/panel、未支持的 hook/renderer 组合与不可用配置保留禁用占位，不执行 sandbox；builtin-react 仅在 module.detail 查找编译期组件。
+核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。未来 actions/panel、未支持的 hook/renderer 组合与不可用配置保留禁用占位，不执行 sandbox；builtin-react 仅在 module.detail 查找编译期组件。
 
 reply-delivery、typing、reminders 使用 `legacy-core`（available:true），sample 使用 `module-file`（available:true）；均为 schemaVersion:1 并包含 module.config/schema surface。前三者从现有 `configInfo.groups` 按字段 `module` 归属读取表单，值来自全局 draft，以 `saveUiPatch({[path]:value})` 即时保存并显示既有保存状态，不访问 `/modules/config`。归属元数据只允许最多 64 字符的模块 ID 字符串，不包含配置值或新存储位置。
 
@@ -27,7 +27,7 @@ Phase 3A 精确归属：
 | builtin-typing | cognition.typing.enabled |
 | builtin-reminders | cognition.reminders.enabled、cognition.reminders.maxActive、cognition.reminders.minIntervalSeconds、cognition.reminders.maxIntervalSeconds、cognition.reminders.tickMs |
 
-系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；外部声明式扩展、iframe、沙箱与能力消息桥留待后续，外部同源 React 继续禁止。
+系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；Phase 4 已开放外部声明式配置；iframe、沙箱与能力消息桥留待后续，外部同源 React 继续禁止。
 
 
 Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 module.config/schema，无重复 hook。服务端冻结 `BUILTIN_COMPONENT_KEYS` 与客户端冻结 `BUILTIN_MODULE_UI` 编译期注册表一致：
@@ -306,9 +306,9 @@ put 是创建/完整替换入口，update 刻意只提供取消和投递结果�
 
 数据继续留在核心人格作用域的 reminder kind，使用现有 SQLite/JSON、备份及人格复制/删除/统计语义，无迁移、无 module_store 副本。Phase 13 的 builtin-reminders 已使用此端口接管调度与命令，核心保留兼容回退；仓库读写前后快照比较防止取消、删除或替换被旧发送结果覆盖。本阶段无配置字段/UI/REST/依赖或版本变化。详见 [ADR-011](architecture/ADR-011-reminder-repository.md)。
 
-## 内置模块声明式配置（Phase 3）
+## 模块声明式配置（内核 Phase 3 / WebUI Phase 4）
 
-只有受信任的内置 registry 描述符可以声明可选的 `config`，不能写在共享 manifest 中。外部 manifest 即使声明同名属性，也没有配置 API、运行时 `api.config` 或面板配置入口。未声明配置的内置模块同样没有这些能力。不接受 `secret`，配置字段只适合非秘密值；不把令牌或密码放入配置。
+内置 registry 描述符和外部 `module.json` 顶层均可声明可选的 `config` schema，共用 `validateConfigSchema`。原始及归一化 schema 的紧凑 JSON UTF-8 大小均最多 64 KiB，超限或无效的外部 schema 使整个模块清单无效，在导入入口前拒绝。加载器只提取已知清单字段，不透传任意属性；未声明配置的模块没有配置 API 或运行时 `api.config`。面板编辑还需有效的 webui opt-in，见下方完整示例。不接受 `secret`，配置字段只适合非秘密值；不把令牌或密码放入配置。
 
 ```js
 config: {
@@ -332,21 +332,60 @@ config: {
 
 字符串 `maxChars` 默认 2000，可设 0–65536；列表 `minItems` 默认 0、`maxItems` 默认 100，可设 0–1000 且 minItems ≤ maxItems。类型默认值若不符合字段边界，描述符无效，需显式提供合法 default（例如 min 为 1 的 number）。更新的 `values` 必须是对象，拒绝未知键、类型转换及非法值；缺失字段填 schema 默认值，属于完整替换而不是合并旧值。
 
-内核在启动发现内置模块时加载并验证配置，因此关闭时也可以读取/保存，且 `setup(api)` 一开始就能读到有效值；不会为此导入默认关闭模块的代码。文件为 `<数据目录>/modules/.builtin/<id>/config.json`，与模块 `data.json` 分离，从不写包内源码：
+内核在启动发现模块及外部重载时加载并验证配置，因此关闭时也可以读取/保存，且 `setup(api)` 一开始就能读到有效值；不会为此导入默认关闭模块的代码。内置文件为 `<数据目录>/modules/.builtin/<id>/config.json`，外部文件为已验证的 `<数据目录>/modules/<id>/config.json`，与模块 `data.json` 分离，从不写包内源码：
 
 ```json
 { "version": 1, "revision": 1, "values": { "message": "新的示例回复" } }
 ```
 
-文件最多 64 KiB（包括 version/revision 和格式化 JSON），校验目录及文件 realpath 包含关系，在同目录写临时文件后原子替换，失败清理临时文件，保留当前内存值。缺失、损坏、超限或无法读取时使用全部默认值、revision 0，并通过安全日志和模块记录的 `configWarning` 提示，不因配置文件故障阻止 setup。回退不会自动改写文件，成功保存后清除警告。磁盘有效配置在重启时恢复；不监视手动文件修改，不提供 schema 迁移。
+文件最多 64 KiB（包括 version/revision 和格式化 JSON），校验目录及文件 realpath 包含关系，外部配置额外拒绝符号链接目录/文件（包括内部和悬空链接）及目录被链接替换；在同目录写临时文件后原子替换，失败清理临时文件，保留当前内存值。缺失、损坏、超限或无法读取时使用全部默认值、revision 0，并通过安全日志和模块记录的 `configWarning` 提示，不因配置文件故障阻止 setup。回退不会自动改写文件，成功保存后清除警告。磁盘有效配置在重启时恢复；不监视手动文件修改，不提供 schema 迁移。
 
-声明了配置的内置模块获得只读的 `api.config` 对象，无需另增 permission：
+声明了有效配置的内置和外部模块获得只读的 `api.config` 对象，无需另增 permission；只暴露本模块值，不授予内置 `config:read` / `legacyConfig`、`persona:store`、provider 或其它特权：
 
 - `api.config.get()` 同步返回当前已校验值的深拷贝，调用者修改不会影响内核。
 - `api.config.onChange(handler)` 注册监听，返回幂等 disposer。保存成功后传入新值的独立深拷贝；同步/异步 handler 错误仅安全记录，不让模块进入 error。通知不等待异步 handler，避免 handler 调用生命周期操作时互锁。
 - 监听属于当前 setup 生命周期，停用、依赖重载引发的重新 setup、失败清理及 dispose 都会自动注销；已开始的异步 handler 不会被强制取消。
 
-内核 `getModuleConfig(id)` 返回 `{id,source:'builtin',schema,values,revision}` 深拷贝；`setModuleConfig(id,values,revision)` 与启停/重载/dispose 串行。POST 必须携带 GET 返回的非负整数 revision，过期返回 `MODULE_CONFIG_CONFLICT`；成功持久化后 revision 加 1、再更新内存和通知监听器，首次写入为 1。未知模块、外部模块及无配置模块统一拒绝。revision 用于同一内核中的乐观并发控制，不是跨进程文件锁；缺失/损坏回退后从 0 开始。
+内核 `getModuleConfig(id)` 返回 `{id,source,schema,values,revision}` 深拷贝，source 按真实来源为 builtin 或 external；`setModuleConfig(id,values,revision)` 与启停/重载/dispose 串行。POST 必须携带 GET 返回的非负整数 revision，过期返回 `MODULE_CONFIG_CONFLICT`；成功持久化后 revision 加 1、再更新内存和通知监听器，首次写入为 1。未知模块及无有效配置 schema 的模块统一返回 `MODULE_CONFIG_UNAVAILABLE`。revision 用于同一内核中的乐观并发控制，不是跨进程文件锁；缺失/损坏回退后从 0 开始。
+
+
+### 外部模块作者示例（WebUI Phase 4）
+
+将以下 `module.json` 与 `index.mjs` 安装到外部 `greeting` 目录；配置字段由核心编辑器渲染，无需前端代码：
+
+```json
+{
+  "id": "greeting",
+  "entry": "index.mjs",
+  "permissions": ["commands"],
+  "config": {
+    "version": 1,
+    "fields": [
+      { "path": "message", "type": "text", "label": "问候语", "default": "你好", "maxChars": 200 }
+    ]
+  },
+  "webui": {
+    "version": 1,
+    "config": { "binding": "module-file", "schemaVersion": 1, "available": true },
+    "surfaces": [
+      { "id": "detail", "hook": "module.detail", "renderer": "status", "order": 0 },
+      { "id": "config", "hook": "module.config", "renderer": "schema", "order": 10 }
+    ]
+  }
+}
+```
+
+```js
+export function setup(api) {
+  let values = api.config.get()
+  api.config.onChange(next => { values = next })
+  api.registerCommand('greeting', () => values.message)
+}
+```
+
+外部 webui 的 `available:true` 必须同时具有有效顶层 config schema、`binding:'module-file'`、`schemaVersion:1`；`module.config` / schema surface 也必须有有效顶层 schema。否则整个 UI 描述符回退为不可用并给出固定 `MODULE_UI_INVALID`，有效后端仍可加载。仅有 config 而无 webui 时仍支持配置 API，但不自动开放 UI 编辑器。没有 schema 时 `hasConfig:false`，GET/POST `/modules/config` 返回 `MODULE_CONFIG_UNAVAILABLE`。字段只有 enabled 且 loaded 时可编辑，关闭、error、blocked 或 loading 时只读；服务端沿用原有关闭时也可读写的配置 API 语义。
+
+外部徽章仍为「外部声明式（无执行权限）」，这里指 WebUI。外部 componentKey、builtin-react、sandbox 声明仍拒绝，没有外部 React、可执行 WebUI、新 DSH slot 或 iframe。**尚未实现沙箱**：隔离加载、iframe、能力授权、消息桥、执行器及其安全验证均为后续独立工作。后端 JS 仍是操作员安装的同进程代码；文件检查不是面对并发恶意文件系统修改的进程隔离，revision 也不是跨进程锁。
 
 
 ## 生命周期与故障隔离
@@ -374,7 +413,7 @@ config: {
 
 面板显示来源徽章、数量、依赖和 blocked/error，按 canReload/canToggle 控制按钮；内置隐藏重载，外部清单关闭时提示先编辑并重载。刷新重新读取列表，操作后按返回状态提示结果。没有安装、卸载或删除路由。
 
-具有有效 `module.config` / schema surface、`module-file` 绑定与 available:true 的内置配置模块显示「配置」按钮，进入详情并调用既有 GET `/modules/config`；「详情」与卡片背景入口也加载同一编辑器，列表没有重复表单。按 schema.fields 复用既有 FieldRow/FieldControl，关闭或未 loaded 时只读。GET 加载到本地草稿，保存携带 revision，成功后重新 GET；即使重读失败也保留保存返回的新 revision。取消丢弃草稿并可再次加载，返回列表清除编辑器。保存期间禁用控件与返回按钮，冲突或保存错误保留草稿并提示重新加载；重新加载丢弃当前草稿。MODULE_CONFIG_* 错误语义保持。外部和未声明可用模块配置的模块没有可写配置区；legacy-core 在详情使用上文的全局字段与即时保存链路。module-file 编辑独立于全局 `/config`；Phase 3A 只调整 legacy-core 的设置呈现归属，存储键、位置、默认值与值保持不变。
+具有有效 `module.config` / schema surface、`module-file` 绑定与 available:true 的内置或外部配置模块显示「配置」按钮，进入详情并调用既有 GET `/modules/config`；「详情」与卡片背景入口也加载同一编辑器，列表没有重复表单。按 schema.fields 复用既有 FieldRow/FieldControl，关闭或未 loaded 时只读。GET 加载到本地草稿，保存携带 revision，成功后重新 GET；即使重读失败也保留保存返回的新 revision。取消丢弃草稿并可再次加载，返回列表清除编辑器。保存期间禁用控件与返回按钮，冲突或保存错误保留草稿并提示重新加载；重新加载丢弃当前草稿。MODULE_CONFIG_* 错误语义保持。未声明可用模块配置的模块没有可写配置区；legacy-core 在详情使用上文的全局字段与即时保存链路。module-file 编辑独立于全局 `/config`；Phase 3A 只调整 legacy-core 的设置呈现归属，存储键、位置、默认值与值保持不变。
 
 当前限制：没有依赖下载/安装、版本解析、签名、进程/VM 沙箱、远程仓库、自动更新、marketplace 或上传安装 UI。模块自己的文件变更不会被监视；需要手动点击重载或调用 API。
 
