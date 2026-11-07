@@ -1,5 +1,6 @@
 // Core-owned actions only. Neither manifests nor request bodies supply executors.
 import { randomUUID } from 'node:crypto'
+import { ACTION_AUDIT_LIMIT, ACTION_AUDIT_TTL_MS } from './action-audit.js'
 import { ID_RE } from './manifest.js'
 import { PERSONA_ID_RE } from '../cognition/persona.js'
 
@@ -7,7 +8,9 @@ export const MODULE_ACTIONS = Object.freeze([
   'module.enable', 'module.disable', 'module.restart', 'module.reload',
   'proactivity.runOnce', 'learning.runPending',
 ])
-const terminal = new Set(['succeeded', 'failed', 'cancelled'])
+const executionCodes = new Set(['MODULE_RUNTIME_CONFLICT', 'MODULE_PERSONA_CONFLICT', 'MODULE_ACTION_UNAVAILABLE', 'MODULE_ACTION_BUSY', 'MODULE_STATE_WRITE_FAILED', 'MODULE_AUDIT_WRITE_FAILED', 'MODULE_MANIFEST_DISABLED', 'MODULE_BUILTIN_RELOAD', 'PROVIDER_STOP_FAILED', 'MODULE_CLEANUP_FAILED', 'MODULE_KERNEL_DISPOSED'])
+const auditCodes = new Set([...executionCodes, 'MODULE_ACTION_FAILED', 'MODULE_RUN_FAILED', 'BUSY', 'NO_TASK', 'PROCESS_RESTART'])
+const terminal = new Set(['succeeded', 'failed', 'cancelled', 'interrupted'])
 const fields = ['moduleId', 'actionId', 'expectedGeneration', 'requestId', 'expectedPersonaId', 'expectedPersonaGeneration']
 const token = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value)
 export const moduleActionError = code => Object.assign(new Error(code), { code })
@@ -26,13 +29,51 @@ export function normalizeActionResult(actionId, value) {
   return { ok, code: ok ? null : busy ? 'BUSY' : results.length ? 'MODULE_RUN_FAILED' : 'NO_TASK' }
 }
 
-export function createModuleActions({ getModule, getPersona = () => ({}), eligibility, affected, execute, now = Date.now, timers = globalThis } = {}) {
+export function createModuleActions({ getModule, getPersona = () => ({}), eligibility, affected, execute, now = Date.now, timers = globalThis, audit = null, onAuditError = () => {} } = {}) {
   const counts = { admitted: 0, rejected: 0, completed: 0, failed: 0, firstAt: null, lastAt: null }
   const stamp = () => { try { counts.lastAt = now(); counts.firstAt ??= counts.lastAt } catch {} }
   const operations = new Map(), requests = new Map(), reservations = new Map(), completions = new Map()
   function prune() {
-    for (const [id, operation] of operations) if (terminal.has(operation.status) && now() - operation.completedAt >= 3600000) {
+    for (const [id, operation] of operations) if (terminal.has(operation.status) && now() - operation.completedAt >= ACTION_AUDIT_TTL_MS) {
       operations.delete(id); requests.delete(operation.requestId)
+    }
+  }
+  function persist() {
+    if (!audit) return
+    try { audit.save([...operations.values()].map(snapshot)) }
+    catch { fail('MODULE_AUDIT_WRITE_FAILED') }
+  }
+  // After I/O, a failed terminal write cannot undo the effect or trigger a retry.
+  // The prior durable queued/running record will become interrupted on restart.
+  function observePersist() {
+    try { persist() } catch { try { onAuditError('MODULE_AUDIT_WRITE_FAILED') } catch {} }
+  }
+  function restore() {
+    if (!audit) return
+    try {
+      const saved = audit.load()
+      if (!Array.isArray(saved) || saved.length > ACTION_AUDIT_LIMIT) throw Error('invalid audit')
+      for (const row of saved) {
+        const input = validate(Object.fromEntries(fields.filter(key => Object.hasOwn(row, key)).map(key => [key, row[key]])))
+        if (!token(row.id) || operations.has(row.id) || requests.has(input.requestId)
+          || !['queued', 'running', 'STOP_PENDING', ...terminal].includes(row.status)
+          || !['queued', 'draining', 'starting', 'running', 'done'].includes(row.phase)
+          || !Number.isFinite(row.createdAt) || !Number.isFinite(row.updatedAt)
+          || !(row.completedAt === null || Number.isFinite(row.completedAt))
+          || (terminal.has(row.status) && row.completedAt === null)) throw Error('invalid audit')
+        // Whitelist persisted metadata; never load an executor, body or original error.
+        const done = terminal.has(row.status)
+        const code = done ? (row.code === null ? null : auditCodes.has(row.code) ? row.code : 'MODULE_ACTION_FAILED') : 'PROCESS_RESTART'
+        const operation = { id: row.id, ...input, status: done ? row.status : 'interrupted', phase: 'done', code,
+          createdAt: row.createdAt, updatedAt: done ? row.updatedAt : now(), completedAt: done ? row.completedAt : now(),
+          result: { ok: row.status === 'succeeded', code }, resultRuntimeGeneration: token(row.resultRuntimeGeneration) ? row.resultRuntimeGeneration : null }
+        Object.defineProperty(operation, 'signature', { value: JSON.stringify(input) })
+        operations.set(operation.id, operation); requests.set(input.requestId, operation.id)
+      }
+      prune()
+      if (saved.length) persist() // Persist interruption before admitting anything new.
+    } catch (error) {
+      fail(error?.code === 'MODULE_AUDIT_WRITE_FAILED' ? error.code : 'MODULE_AUDIT_READ_FAILED')
     }
   }
   function validate(input) {
@@ -85,12 +126,17 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
     check(input)
     const closure = [...new Set(affected(input.moduleId, input.actionId))]
     if (closure.some(id => reservations.has(id))) fail('MODULE_ACTION_BUSY')
-    if (operations.size >= 128) fail('MODULE_OPERATION_LIMIT')
+    if (operations.size >= ACTION_AUDIT_LIMIT) fail('MODULE_OPERATION_LIMIT')
     const operation = { id: randomUUID(), ...input, status: 'queued', phase: 'queued', code: null,
       createdAt: now(), updatedAt: now(), completedAt: null, result: null, resultRuntimeGeneration: null }
     Object.defineProperty(operation, 'signature', { value: signature })
-    counts.admitted += 1; stamp()
     operations.set(operation.id, operation); requests.set(input.requestId, operation.id)
+    // Admission is durable before scheduling an executor or taking ownership.
+    try { persist() } catch (error) {
+      operations.delete(operation.id); requests.delete(input.requestId)
+      throw error
+    }
+    counts.admitted += 1; stamp()
     for (const id of closure) reservations.set(id, operation.id)
     let timer = null
     const update = phase => {
@@ -99,6 +145,7 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
         timer = timers.setTimeout(() => {
           if (operation.phase === 'draining' && !terminal.has(operation.status)) {
             operation.status = 'STOP_PENDING'; operation.code = 'STOP_PENDING'; operation.updatedAt = now()
+            observePersist()
           }
         }, 10000)
         timer?.unref?.()
@@ -107,13 +154,15 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
         timers.clearTimeout(timer); timer = null
         operation.status = 'running'; operation.code = null
       }
+      observePersist()
     }
     // Capture persona for run actions even when the client omitted its optional guard.
     const persona = getPersona()
     const run = !input.actionId.startsWith('module.')
     const guarded = run ? { ...input, expectedPersonaId: persona.id, expectedPersonaGeneration: persona.generation } : input
     const completion = Promise.resolve().then(async () => {
-      operation.status = 'running'; operation.updatedAt = now()
+      operation.status = 'running'; operation.phase = 'running'; operation.updatedAt = now()
+      persist()
       const result = await execute(input, { check: () => check(guarded), update, closure, max: legacyMax })
       const normalized = normalizeActionResult(input.actionId, result)
       operation.result = normalized; operation.code = normalized.code
@@ -121,7 +170,7 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
       operation.resultRuntimeGeneration = getModule(input.moduleId)?.runtimeGeneration || null
       return result
     }).catch(error => {
-      const code = ['MODULE_RUNTIME_CONFLICT', 'MODULE_PERSONA_CONFLICT', 'MODULE_ACTION_UNAVAILABLE', 'MODULE_ACTION_BUSY', 'MODULE_STATE_WRITE_FAILED', 'MODULE_MANIFEST_DISABLED', 'MODULE_BUILTIN_RELOAD', 'PROVIDER_STOP_FAILED', 'MODULE_CLEANUP_FAILED', 'MODULE_KERNEL_DISPOSED'].includes(error?.code) ? error.code : 'MODULE_ACTION_FAILED'
+      const code = executionCodes.has(error?.code) ? error.code : 'MODULE_ACTION_FAILED'
       operation.status = ['MODULE_RUNTIME_CONFLICT', 'MODULE_PERSONA_CONFLICT', 'MODULE_KERNEL_DISPOSED'].includes(code) ? 'cancelled' : 'failed'
       operation.code = code; operation.result = { ok: false, code }
       throw moduleActionError(code)
@@ -129,6 +178,7 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
       if (timer !== null) timers.clearTimeout(timer)
       counts[operation.status === 'succeeded' ? 'completed' : 'failed'] += 1; stamp()
       operation.phase = 'done'; operation.completedAt = now(); operation.updatedAt = now()
+      observePersist()
       for (const id of closure) if (reservations.get(id) === operation.id) reservations.delete(id)
       completions.delete(operation.id)
     })
@@ -154,5 +204,6 @@ export function createModuleActions({ getModule, getPersona = () => ({}), eligib
     const accepted = submit({ moduleId, actionId, expectedGeneration: record?.runtimeGeneration || record?.generation || null, requestId: randomUUID() }, Math.max(1, Math.min(50, Math.floor(Number(max) || 1))))
     return completions.get(accepted.operation.id)
   }
+  restore()
   return Object.freeze({ catalog, submit: value => submit(value), stats: () => ({ ...counts }), getOperation, performLegacy, isReserved: id => reservations.has(id) })
 }

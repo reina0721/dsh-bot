@@ -18,7 +18,7 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
-    for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
+    for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/modules/action-audit.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
     assert.equal(pkg.dsh.client.platform, 'web');
     // Execute the shipped client entry with a Node shim; this is not a browser check.
     let entry;
@@ -40,7 +40,7 @@ try {
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
       const file = join(dir,entry.name);
       assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist|\.archify|\.builtin|plugins-data)$/.test(entry.name),file);
-      assert.ok(!/^(state|config|data)\.json$/.test(entry.name), `Private module state: ${file}`);
+      assert.ok(!/^(state|config|data|operations)\.json$/.test(entry.name), `Private module state: ${file}`);
       assert.ok(!/\.(png|sqlite(?:-wal|-shm)?|db|log|tmp|jsonl)$/.test(entry.name),file);
       if(entry.isDirectory())scan(file);
       else if(/\.(js|json|md|yml|ps1|sh)$/.test(entry.name)) assert.ok(!/C:[\\/]Users[\\/]Run|C:[\\/]rin[\\/]coder/.test(readFileSync(file,'utf8')),`Personal path: ${file}`);

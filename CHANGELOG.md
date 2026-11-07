@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- 缺口收敛验证：1107 项测试，1103 通过、4 项既有跳过、0 失败；文档、parity、本地双格式打包及包检查通过。版本保持 0.11.14，无推送、部署、标签或发布。
+
+- 模块动作增加有界原子审计（128 条 / 一小时终态 / 256 KiB），接纳与执行前写盘；重启未完成项标 interrupted、不续跑/补发，终态 ID/代次/时间与 requestId 去重保留。审计错误 fail closed，终态写盘失败只报告未知窗口；面板将 interrupted 视为终态。仍无强制 drain 恢复、多进程锁或跨平台 exactly-once。
+
 - 新增完整宿主离线沙盒：mock OneBot 私聊/群聊 share 与种入贴纸、假 B站远程、本地模型主动单发、自动入队与手动/自动模式研究、task/evidence/claim/loop 关联及管理 API 读取。
 - 修复底层 OneBot 发送网络失败可能 HTTP → WS 再发或自动重试的问题；send_* 始终只尝试一次，读取保留回退。新增应答丢失与主动 token 重用测试，明确 at-most-once 尝试和真实 QQ exactly-once 限制。
 

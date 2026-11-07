@@ -1,5 +1,7 @@
 # 闭环 v2 最终验收（C08）
 
+本页保留 C08 原始验收记录；末节补充 `feat/closed-loop-gaps` 基于 main `e0e0d06` / 0.11.14 的未发布缺口收敛与验证，版本未变，原 live 快照不改写。
+
 验收日期：2026-11-07。分支：`feat/closed-loop-v2`，生产实现基线 C07 `6cf5637`。C08 仅补文档、包断言与缺失集成验收；不新增生产功能。版本保持 `0.11.12`，无依赖或数据迁移，无 push、部署、版本升级、tag 或 release。
 
 ## C01–C07 提交链
@@ -34,13 +36,13 @@
 
 ## 模块健康、Provider 与人工动作
 
-`lifecycle:loaded` 只表示 setup 完成；health 区分 unknown/healthy/degraded/unhealthy/stopped。合法空闲可以 healthy，未观察/不适用为 null，不能推断为 0/false。GET 仅复制缓存，不 import、扫描目录、读业务正文、调用 provider 探针或触发恢复。每次实际 setup 换 `runtimeGeneration`，与 UI generation 独立；旧报告无效，停用保留带 `telemetryGeneration` 的历史快照。
+`lifecycle:loaded` 只表示 setup 完成；health 区分 unknown/healthy/degraded/unhealthy/stopped。受信任内置 setup 成功默认 healthy idle，外部未埋点仍 unknown；未观察/不适用计数为 null，不能推断为 0/false。GET 仅复制缓存，不 import、扫描目录、读业务正文、调用 provider 探针或触发恢复。每次实际 setup 换 `runtimeGeneration`，与 UI generation 独立；旧报告无效，停用保留带 `telemetryGeneration` 的历史快照。
 
 Provider 注册与实际 owner 分开。提醒由宿主串行协调：停止并排空旧 owner 后才能接管；只有核心真正启动才显示 fallback.active。停止失败保留 failed owner，不能假装已释放或另起调度器。mediaFeatures/proactivity/learning 停用没有核心 fallback。健康 GET 不接管业务 timer，也不更改所有权。
 
 核心动作固定六项：`module.enable`、`module.disable`、`module.restart`、`module.reload`、`proactivity.runOnce`、`learning.runPending`。外部仅允许原启停/重载，不得声明 manifest actions、获得健康报告 API、restart 或运行内置引擎。HTTP 只接受固定数据字段；资格、expectedGeneration、人格/代次在接纳及执行边界检查。
 
-POST 成功仅表示接纳，必须读取同一 operation。仅 succeeded 且 result.ok 才是成功；busy/skip/NO_TASK/failed 不算成功。requestId 同输入返回原操作，不同输入冲突；注册表最多 128 条，终态保留一小时，active 不驱逐，记录仅在当前进程保留期内幂等。
+POST 成功仅表示接纳，必须读取同一 operation。仅 succeeded 且 result.ok 才是成功；busy/skip/NO_TASK/failed 不算成功。requestId 同输入返回原操作，不同输入冲突；注册表最多 128 条，终态保留一小时，active 不驱逐，`modules/operations.json` 审计使相同 requestId/输入在重启后的保留期仍返回原记录；未完成项终结为 interrupted，不续跑。
 
 人工内置 restart 复用缓存代码；仅对满足资格的 enabled/loaded 当前 runtime 执行，依赖逆序停止排空，正序 setup 原运行闭包，保留配置、数据与授权。10 秒未完成为非终态 STOP_PENDING：继续等待同一个 drain，保留 owner/闭包预留，不强制释放、不重复 stop、不提前启动替换/fallback。挂死 drain 可能持续占据生命周期队列，须在宿主运维边界处置。失败不自动重试。
 
@@ -146,6 +148,14 @@ git diff --check
 | 管理只读 | health/actions/operation、loop runs/detail/summary 均走已注册 HTTP route；研究/读取不增加发送 |
 | 应答丢失边界 | mock OneBot 已接受 HTTP send 后抛错，断言无 HTTP 重试/WS 补发；读取请求仍可 WS 回退。主动 token 在 I/O 前消费，同一运行不能再 send |
 
-最终沙盒的 fetch 在宿主构造前安装拦截，只允许回环服务，B站直接 fake 响应，意外外网请求会失败并被记录。开发中曾因媒体测试在 transport 构造后才 mock fetch，意外请求公开 B站接口一次并失败；已修正顺序并重新验证，不作为验收成功证据。
+最终沙盒的 fetch 在宿主构造前安装拦截，只允许回环服务，B站直接 fake 响应，意外外网请求会失败并被记录。开发中曾因媒体测试在 transport 构造后才 mock fetch，意外请求公开 B站接口两次（失败断言与恢复断言各一次，均失败）；已修正顺序并重新验证，不作为验收成功证据。
 
 以上是离线整合验收，不改写 2026-11-06 live 快照，也不证明真实 QQ/B站/付费模型、浏览器或 iframe/CSP 可用。发送只承诺同一运行/受控请求保留期内 at-most-once 尝试、无自动重试；真实 QQ 无平台幂等键，响应丢失无法判断是否送达，不能承诺 exactly-once。已有主动 token 的 consumed 标记是进程内发送意图闸门；通用消息/分条发送没有稳定的平台幂等 ID，不能用正文去重，否则会误吞合法重复内容。人工使用新 requestId 是新意图，可能重复。
+
+
+操作审计由 `test/module-action-audit.test.js` 覆盖真实子进程在 queued/running/draining 退出、重启 interrupted 且零 executor/重放、终态代次/结果/时间保留、requestId 去重/冲突、128 条/一小时上限、active 不驱逐、STOP_PENDING owner 预留、接纳/执行前/终态写盘失败与损坏审计 fail closed。HTTP 查询跨内核重启保留原 ID；React shim 验证 interrupted 终态停止轮询且不报成功。
+
+持久性边界：原子快照先 fsync 文件再 rename，不保证 OS 断电/目录元数据落盘；终态写盘失败可能在重启后仅能显示 interrupted。仍无活进程强制排空/force-recovery、多进程文件锁或自动恢复；挂死 drain 须在宿主运维边界处理，单目录只允许一个宿主进程。审计不是恢复队列，不推断中断前的发送结果；正常启动模块的既有调度策略保持。
+
+
+本轮最终验证：`npm test` **1107 项 / 1103 通过 / 4 项既有 live 跳过 / 0 失败**；新增健康/媒体、审计、面板、沙盒与发送边界定向测试通过。`npm run check:docs`、`npm run check:parity`、`npm run pack:release`、`npm run check:package`、`git diff --check` 均通过。parity 矩阵状态未改变，不宣称全量对齐。打包仅生成本地校验产物，无 push/deploy/version/tag/release，未修改 cordis.patch.yml 或 .archify/。
