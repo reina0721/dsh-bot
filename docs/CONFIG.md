@@ -15,6 +15,8 @@
 
 媒体功能现归默认启用的 `builtin-media-features`；六个原键 `content.bilibili.enabled/timeoutMs/maxResults`、`media.stickers.enabled/maxCount/maxBytes` 在「模块 → 媒体功能」详情编辑，元数据 `module:'builtin-media-features'`，仍使用原全局 config.json 和默认值，无迁移。模块停用则 `/bili`、`/sticker` 与相关 HTTP 操作关闭，无 core 回退；`/media/status` 继续报告可用性。媒体/图片父开关留核心，只以布尔状态投影给模块；贴纸还需两个父开关开启。Bilibili 操作 UI 位于模块详情，贴纸管理保留媒体页并按 provider 授权。详见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。
 
+主动行为归默认启用的 `builtin-proactivity`，业务开关仍默认关闭。七个原键 `cognition.proactivity.enabled/quietStart/quietEnd/maxPrivatePerDay/maxGroupPerDay/minFamiliarity/backoffHours` 标记 `module:'builtin-proactivity'`，在模块详情通过 legacy-core 编辑并沿用全局 config.json 保存；停用/未 loaded 时只读，系统设置不重复展示。纯预览无副作用，无 panel 或新 DSH 入口。模块停用后不运行 timer/手动任务且无 fallback，原统计/运行路由返回安全 disabled 状态。`/quiet`、`/active` 仍修改原配置，但不能启用停用模块。仅私聊，maxGroupPerDay 保留但不发送；日额度是滚动 24 小时 decision 数，包括 dry-run 和失败。无默认值或数据迁移，详见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
+
 ## 1. 配置文件位置
 
 | 用途 | 路径 |

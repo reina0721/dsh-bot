@@ -63,7 +63,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
    * @param {string} [o.source]
    * @param {boolean|null} [o.dryRun] 显式覆盖；null/undefined 读 cognition.dryRun
    */
-  async function deliver({ chatType, chatId, segments, decisionId = '', source = 'pipeline', dryRun = null } = {}) {
+  async function deliver({ chatType, chatId, segments, decisionId = '', source = 'pipeline', dryRun = null, decisionPolicy = policy } = {}) {
     const type = chatType === 'group' ? 'group' : chatType === 'private' ? 'private' : ''
     const id = String(chatId ?? '').trim()
     if (!type || !id) return finish({ ok: false, error: 'INVALID_TARGET' })
@@ -103,7 +103,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
     const isDry = dryRun === true || (dryRun == null && Boolean(config?.cognition?.dryRun))
     if (isDry) {
       try {
-        if (decisionId) policy?.markSent?.(decisionId, { dryRun: true })
+        if (decisionId) decisionPolicy?.markSent?.(decisionId, { dryRun: true })
       } catch (error) {}
       state.dryRuns += 1
       access?.noteDryRun?.()
@@ -121,7 +121,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
       state.sent += 1
       access?.noteSent?.()
       try {
-        if (decisionId) policy?.markSent?.(decisionId, { messageId })
+        if (decisionId) decisionPolicy?.markSent?.(decisionId, { messageId })
       } catch (error) {}
       return finish({ ok: true, messageId, result, source, ...leakStatus })
     } catch (error) {
@@ -129,7 +129,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
       state.failed += 1
       access?.noteFailed?.({ chatType: type, chatId: id, reason: 'send_failed' })
       try {
-        if (decisionId) policy?.markFailed?.(decisionId, message)
+        if (decisionId) decisionPolicy?.markFailed?.(decisionId, message)
       } catch (inner) {}
       logger?.warn?.('出站发送失败：', `${type}:${id}`, message)
       return finish({ ok: false, error: 'SEND_FAILED', message, source })

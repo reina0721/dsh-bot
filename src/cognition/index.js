@@ -32,7 +32,6 @@ import { createKnowledgeService, defaultSourceRegistry } from './knowledge.js'
 import { createPipeline } from './pipeline.js'
 import { createOutbound } from './outbound.js'
 import { createDeliveryService } from '../delivery/service.js'
-import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
 import { createReminderService } from './reminders.js'
 import { createCommandService } from './commands.js'
@@ -57,6 +56,7 @@ export function createCognition({
   access = null,
   setConfig = null,
   media = null,
+  providerRegistry = null,
   deliveryRegistry = null,
   turnHooks = null,
 } = {}) {
@@ -226,13 +226,7 @@ export function createCognition({
       })
       // 让 pipeline 能在发送后通知 aggregator 记录 bot message id（避免回复自己/识别回复）。
       state.services.pipeline.setTurnAggregator(state.services.aggregator)
-      state.services.proactivity = createProactivityService({
-        delivery: state.services.delivery,
-        store: personaStore, getConfig, clock, person: state.services.person, relationships: state.services.relationships,
-        memory: state.services.memory, persona: state.services.persona, emotion: state.services.emotion,
-        llm: state.services.llm, gateway, policy: state.services.policy, logger: log, outbound: state.services.outbound,
-      })
-      state.services.proactivity.start(scheduler)
+      state.services.proactivityState = () => ({ ...publicState(), ready: state.ready, now: clock.now() })
       state.ready = true
       state.services.aggregator.restore()
       log.info?.(`认知存储就绪：${state.store.info().mode} ${dbFile}`)
@@ -572,8 +566,12 @@ export function createCognition({
   function retryTask(taskId) { return state.services.knowledge?.retry?.(taskId) || null }
   function cancelTask(taskId) { return state.services.knowledge?.cancel?.(taskId) || null }
   function metrics() { return state.services.meta?.metrics?.() || null }
-  function proactivityStats() { return state.services.proactivity?.stats?.() || null }
-  async function runProactivity() { return state.services.proactivity?.tick?.() || null }
+  function proactivityStats() {
+    return providerRegistry?.get('proactivity')?.stats() || { active: false, running: false, lastTickAt: 0, lastError: '', sent: 0, skipped: 0, dailyCount: 0, reason: 'MODULE_DISABLED' }
+  }
+  async function runProactivity() {
+    return providerRegistry?.get('proactivity')?.tick() || { ok: false, reason: 'MODULE_DISABLED' }
+  }
   function insights(query = {}) { return state.services.meta?.listInsights?.(query) || [] }
   function generateInsight() { return state.services.meta?.generateInsight?.() || null }
   function traces(turnId, { limit = 100 } = {}) {

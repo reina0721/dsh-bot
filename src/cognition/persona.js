@@ -262,6 +262,7 @@ export function personaPublicItem(persona, activeId = '') {
 export function createPersonaService({ store, getConfig, clock }) {
   const cfg = () => getConfig()?.cognition || {}
   const activeSettingKey = 'persona.activeId'
+  let scopeGeneration = 0
 
   function readActiveId() {
     try {
@@ -273,6 +274,7 @@ export function createPersonaService({ store, getConfig, clock }) {
   }
 
   function writeActiveId(id) {
+    if (readActiveId() !== id) scopeGeneration++
     store.put('setting', activeSettingKey, { value: id, at: clock.now() })
   }
 
@@ -466,5 +468,6 @@ export function createPersonaService({ store, getConfig, clock }) {
     ensure, get, getById, list, summary, save, edit, maybeEvolve, reset,
     create, duplicate, importPersona, activate, remove,
     activeId: () => ensureActiveId(),
+    scopeGeneration: () => scopeGeneration,
   }
 }

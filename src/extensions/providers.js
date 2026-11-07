@@ -1,5 +1,5 @@
 // Internal composition slots. Only the host/module kernel may expose registration.
-const ALLOWED_NAMES = new Set(['reminders', 'mediaFeatures'])
+const ALLOWED_NAMES = new Set(['reminders', 'mediaFeatures', 'proactivity'])
 
 export function createProviderRegistry({ logger } = {}) {
   const registrations = new Map()
@@ -19,6 +19,8 @@ export function createProviderRegistry({ logger } = {}) {
     if (!ALLOWED_NAMES.has(name)) throw new Error('未知 provider 名称')
     if (source !== 'builtin') throw new Error('provider 仅允许内置模块注册')
     if (typeof moduleId !== 'string' || !moduleId.trim()) throw new Error('provider 需要 moduleId')
+    if (name === 'proactivity' && moduleId !== 'builtin-proactivity') throw new Error('proactivity 仅允许 builtin-proactivity 注册')
+    if (name === 'proactivity' && (typeof provider?.tick !== 'function' || typeof provider?.stats !== 'function')) throw new Error('proactivity 需要 tick/stats 函数')
     if (name === 'mediaFeatures' && moduleId !== 'builtin-media-features') throw new Error('mediaFeatures 仅允许 builtin-media-features 注册')
     if (name === 'mediaFeatures' && (typeof provider?.authorizeStickers !== 'function' || !provider?.bilibili)) throw new Error('mediaFeatures 需要功能端口')
     if (!provider || typeof provider !== 'object' || Array.isArray(provider)

@@ -87,6 +87,7 @@ export function apply(ctx, rowConfig) {
   const providerRegistry = createProviderRegistry({ logger: logger.child('providers') })
   const turnHooks = createTurnHooks({ logger: logger.child('turn-hooks') })
   const cognition = createCognition({
+    providerRegistry,
     turnHooks,
     deliveryRegistry,
     ctx,

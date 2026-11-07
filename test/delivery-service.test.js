@@ -100,9 +100,11 @@ test('delivery service: production wiring injects the shared service into every 
   const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
   const cognition = read('../src/cognition/index.js')
   assert.match(cognition, /state\.services\.delivery = createDeliveryService\(\{ outbound: state\.services\.outbound \}\)/)
-  for (const factory of ['createAgentRuntime', 'createCommandService', 'createProactivityService']) {
+  for (const factory of ['createAgentRuntime', 'createCommandService']) {
     assert.match(cognition, new RegExp(`${factory}\\(\\{\\s*delivery: state\\.services\\.delivery,`))
   }
+  assert.doesNotMatch(cognition, /createProactivityService|services\.proactivity\.start/)
+  assert.match(read('../src/modules/kernel.js'), /createProactivityPort\(\{[\s\S]*?delivery, outbound/)
   assert.match(read('../src/host.js'), /delivery: cognition\.services\.delivery/)
   assert.match(read('../src/runtime/agent.js'), /createQqTools\(\{[^\n]*\bdelivery\b/)
   const service = read('../src/delivery/service.js')

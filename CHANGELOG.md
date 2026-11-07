@@ -1,5 +1,11 @@
 # 变更记录
 
+## 未发布（one-shot 模块 2，2026-11-07）
+
+- 默认启用 builtin-proactivity，独占主动策略/提示词/排序/退避与单递归 timer；新增仅固定模块可注册的 proactivity 槽位和 proactivity:service 窄端口。删除 core 主动引擎与 timer；统计/手动运行及原 HTTP 通过 facade，停用返回 MODULE_DISABLED，无 fallback，提醒所有权不变。
+- run token 捕获人格/切换代次/runtime，投影有效私聊候选、有限记忆/风格；固定核心 proactive/220 tokens/0.8 调用与一次 delivery/outbound 发送，保留预算和 access/rate/leak/dryRun。修正旧私聊 scope/关系维度混用；迟到 memory/LLM 不发送，已接纳发送以原人格写规范 decision/proactive_intent 回执，无 raw error/通用存储/凭据/provider 选择。
+- 七个原配置字段归属模块详情 legacy-core 与纯预览，键/默认关闭/数据及 /quiet、/active 保持，无 panel/新 DSH slot。补充 engine/port/provider/生命周期/出站/UI/包验证和 ADR-016。无学习策略、依赖、版本变化，无推送、部署、标签或发布；真实 QQ/模型 provider/浏览器未验。
+
 ## 未发布（one-shot 模块 1，2026-11-07）
 
 - 默认启用 builtin-media-features，独占 Bilibili 解释/命令和贴纸策略/命令；新增固定 mediaFeatures 槽位和内置专用 media:features 窄端口，提醒订阅隔离。删除核心 Bilibili 服务与两个功能命令实现，模块停用后命令静默、相关 HTTP fail closed，无核心回退。

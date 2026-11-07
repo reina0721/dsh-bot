@@ -412,8 +412,8 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
 
   // 新安装也有默认关闭的包内示例；来源、动作与响应不暴露路径。
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.summary, { builtin: 5, external: 0 })
-  assert.equal(modules.items.length, 5)
+  assert.deepEqual(modules.summary, { builtin: 6, external: 0 })
+  assert.equal(modules.items.length, 6)
   const typing = modules.items.find((item) => item.id === 'builtin-typing')
   assert.equal(typing.status, 'loaded'); assert.equal(typing.enabled, true)
   assert.equal(typing.hasConfig, false)
@@ -427,7 +427,7 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   const uiCatalog = await getJson(fake, '/modules/ui')
   assert.equal(uiCatalog.version, 1)
   assert.match(uiCatalog.catalogRevision, /^[a-f0-9]{64}$/)
-  assert.equal(uiCatalog.items.length, 5)
+  assert.equal(uiCatalog.items.length, 6)
   for (const item of uiCatalog.items) {
     const module = modules.items.find((row) => row.id === item.moduleId)
     assert.equal(item.generation, module.generation)
@@ -1142,7 +1142,7 @@ test('e2e: external module reload/toggle, cross-source blocked and manifest ceil
   assert.equal((await postJson(fake, '/modules/toggle', { id: 'builtin-sample', enabled: true })).item.status, 'loaded')
   let catalog = await getJson(fake, '/modules')
   assert.equal(catalog.items.find((item) => item.id === manifest.id).status, 'loaded')
-  assert.deepEqual(catalog.summary, { builtin: 5, external: 1 })
+  assert.deepEqual(catalog.summary, { builtin: 6, external: 1 })
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: false })).item.status, 'disabled')
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: true })).item.status, 'loaded')
   await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ ...manifest, enabled: false }))
@@ -1413,7 +1413,7 @@ test('builtin reminders catalog, command ownership and disable fallback share re
   const { fake, handle } = await boot(t)
   await handle.ready
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.summary, { builtin: 5, external: 0 })
+  assert.deepEqual(modules.summary, { builtin: 6, external: 0 })
   const item = modules.items.find(row => row.id === 'builtin-reminders')
   assert.equal(item.status, 'loaded'); assert.equal(item.enabled, true); assert.equal(item.hasConfig, false)
   await patchConfig(fake, { access: { ownerQQ: '10001' }, cognition: { dryRun: true, reminders: { enabled: true } } })

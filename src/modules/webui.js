@@ -4,7 +4,7 @@ import { ID_RE } from './manifest.js'
 
 export const MAX_UI_BYTES = 64 * 1024
 export const UI_HOOKS = Object.freeze(['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'])
-export const BUILTIN_COMPONENT_KEYS = Object.freeze(['reply-delivery.preview', 'typing.preview', 'reminders.preview', 'sample.preview', 'media-features.preview', 'media-features.panel'])
+export const BUILTIN_COMPONENT_KEYS = Object.freeze(['reply-delivery.preview', 'typing.preview', 'proactivity.preview', 'reminders.preview', 'sample.preview', 'media-features.preview', 'media-features.panel'])
 const COMPONENT_KEY_RE = /^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$/
 const RENDERERS = new Set(['status', 'schema', 'builtin-react', 'sandbox'])
 const BINDINGS = new Set(['none', 'legacy-core', 'module-file'])

@@ -14,6 +14,19 @@ function builtinUi(componentKey, binding, panel = null) {
 export const builtinRegistry = Object.freeze([
   Object.freeze({
     manifest: Object.freeze({
+      id: 'builtin-proactivity', name: '主动行为', version: '1.0.0',
+      description: '私聊主动行为策略与调度；人格、模型预算和交付闸门由核心管理',
+      entry: 'builtin/proactivity/index.js', apiVersion: 1,
+      permissions: Object.freeze(['providers:register', 'scheduler', 'config:read', 'proactivity:service']),
+      requires: Object.freeze([]),
+    }),
+    provides: Object.freeze(['proactivity']),
+    ui: builtinUi('proactivity.preview', 'legacy-core'),
+    defaultEnabled: true,
+    load: () => import('./builtin/proactivity/index.js'),
+  }),
+  Object.freeze({
+    manifest: Object.freeze({
       id: 'builtin-media-features', name: '媒体功能', version: '1.0.0',
       description: 'B站公共内容与表情包策略、命令；存储和媒体传输由核心管理',
       entry: 'builtin/media-features/index.js', apiVersion: 1,

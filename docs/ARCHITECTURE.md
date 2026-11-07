@@ -12,6 +12,12 @@ WebUI Phase 1–2、Phase 3A/3B、Phase 4 已实现 [ADR-014](architecture/ADR-0
 
 贴纸 storage/index/files 与媒体 transport/provider/credentials/文件检查继续由核心持有。核心在命令受众、deniedCommands/access 检查后发放单次、绑定聊天/生命周期的 commandToken；模块仅 pick ID，再提交 send，文件解析和一次 delivery/outbound 发送均在 core，不外传路径或字节。HTTP 全部 Bilibili/贴纸入口咨询当前 provider，缺失或策略关闭即拒绝；`/media/status` 仍可用。详情显示纯预览、原六字段设置和 Bilibili 操作面板；核心媒体页保留经 provider 授权的贴纸管理。配置和贴纸数据不迁移，无新 DSH slot。完整切换、端口与在途操作限制见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。以下 Phase 记录描述各历史阶段。
 
+## 主动行为提取（one-shot 模块 2，当前边界）
+
+第六个内置模块 `builtin-proactivity` 默认启用，但原业务 enabled 默认关闭。引擎位于 `src/modules/builtin/proactivity/engine.js`，独占策略、提示词、排序、退避、计数与单 timer（5 分钟首次/完成后 10 分钟）；核心不再构造/启动主动服务，删除 `src/cognition/proactivity.js`。固定 proactivity provider 只允许此 ID；停用无回退，认知统计/手动运行和原 HTTP 路由通过 facade，缺失返回安全空统计/MODULE_DISABLED。提醒所有权订阅保持隔离。
+
+核心 `src/modules/proactivity-port.js` 向固定模块 runtime 提供 snapshot/begin/candidates/context/complete/send/release；run token 捕获人格和切换代次，候选仅有效私聊/扁平维度/最多 1000，最多四条 160 字符记忆和三项风格。核心保留 cognition 状态、人格仓库、LLM 路由/预算（固定 proactive、220 tokens、0.8）和 delivery/outbound access/rate/leak/dryRun；每 token 一次发送，decision/proactive_intent 原地保存。memory/LLM 等待前后和发送前校验，迟到结果不发送；已接纳发送使用捕获的内部 decisionPolicy 写回原人格回执。七个旧字段归属模块详情 legacy-core，纯 preview，无 panel/新 DSH slot。/quiet、/active 保持配置行为但不能启用停用模块。详见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
+
 ## 1. 目标
 
 为 DSH 构造一个 QQ 接入插件：通过 **OneBot v11** 协议连接 **NapCat / SnowLuma / Lagrange /
@@ -301,7 +307,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 - `src/delivery/service.js`：认知命令、模块 `api.sendText`、proactivity、Agent `qq_send_text` 在生产中共享 `services.delivery`；单条 DeliveryPlan → `executeDeliveryPlan` → `outbound.deliver`。segments 优先于 text，无分条/引用/@/等待；保留 outbound 结果字段，透传执行器的状态与实际条数，单条真实成功 `parts:1`，失败/dry-run `parts:0`。详见 [ADR-004](architecture/ADR-004-unified-egress.md) 与 [ADR-006](architecture/ADR-006-delivery-result-status.md)。
 - `src/cognition/outbound.js`：`deliver({ chatType, chatId, segments, decisionId, source, dryRun })` 保持自动文本发送的安全闸门；
   顺序为访问控制 → 频率上限 → leak guard → dryRun → 发送 → `policy.markSent/markFailed`；只发一次，不自动重试。
-- pipeline 回复仍经原 planner/executor/outbound；Phase 5 的四类入口由 cognition 创建服务并注入，runtime 转给 tools、host 转给 kernel。未注入的旧调用方保留 outbound 兼容路径，proactivity 仅在两者都缺失时保留 legacy 路径。DeliveryService 自身没有 gateway 回退，outbound 不可用时安全失败，拒绝后不绕过或重试。
+- pipeline 回复仍经原 planner/executor/outbound；Phase 5 的四类入口由 cognition 创建服务并注入，runtime 转给 tools、host 转给 kernel。未注入的旧调用方保留 outbound 兼容路径，proactivity 提取后仅经核心 delivery/outbound 端口，缺失即安全失败，无 legacy gateway 回退。DeliveryService 自身没有 gateway 回退，outbound 不可用时安全失败，拒绝后不绕过或重试。
 - 面板人工 `POST /send` 保留 direct gateway 路径；媒体/文件命令与提醒服务不在本阶段迁移范围内。planner/分条、限频/重试/部分成功/leak guard 语义不变。
 - 默认 `access.mode='open'`，升级后行为不变；`allowlist` 才启用主人 + 白名单规则。
 

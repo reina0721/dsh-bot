@@ -14,6 +14,7 @@ import { buildModuleUiCatalog, loadWebuiDescriptor, sandboxEligible } from './we
 import { readUiArtifact } from './sandbox.js'
 import { createModulePersonaStore } from './persona-store.js'
 import { createReminderRepository } from './reminder-repository.js'
+import { createProactivityPort } from './proactivity-port.js'
 import { createMediaFeaturesPort } from './media-features-port.js'
 import { createLegacyConfig } from './legacy-config.js'
 import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from './config.js'
@@ -340,7 +341,18 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         requireActive(runtime)
         if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('媒体端口生命周期已结束')
       } }) : null
+    const proactivityPort = record.builtin && record.id === 'builtin-proactivity' && record.permissions.includes('proactivity:service')
+      ? createProactivityPort({
+        getConfig, store: personaStore, services: cognition?.services, delivery, outbound,
+        getState: () => cognition?.services?.proactivityState?.() || { ready: false },
+        assertActive() {
+          requireActive(runtime)
+          requirePermission(record, 'proactivity:service')
+          if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('MODULE_DISABLED')
+        },
+      }) : null
     const api = {
+      ...(proactivityPort ? { proactivity: proactivityPort } : {}),
       ...(mediaPort ? { mediaFeatures: mediaPort.api } : {}),
       id: record.id,
       source: record.source,
@@ -477,7 +489,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     if (record.builtin && record.permissions.includes('scheduler')) api.scheduler = schedulerApi(record, runtime)
     for (const [permission, property, create] of [
       ['reminders:service', 'reminderRepository', assertActive => createReminderRepository({ store: personaStore, assertActive })],
-      ['config:read', 'legacyConfig', assertActive => createLegacyConfig({ getConfig, assertActive })],
+      ['config:read', 'legacyConfig', assertActive => createLegacyConfig({ getConfig, assertActive, moduleId: record.id })],
     ]) {
       if (record.builtin && record.permissions.includes(permission)) {
         api[property] = create(() => {

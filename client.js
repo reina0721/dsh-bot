@@ -7392,6 +7392,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           '输入状态有效状态：' + (module.enabled && module.status === 'loaded' && config.enabled === true ? '开启（仅私聊，依赖网关支持）' : '未生效'),
         ])
       },
+      'proactivity.preview': function ProactivityPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '主动行为开关：' + previewSwitch(config.enabled) + '（仅私聊）',
+          '安静时段（本地小时）：' + previewValue(config.quietStart) + '–' + previewValue(config.quietEnd),
+          '滚动 24 小时私聊上限：' + previewValue(config.maxPrivatePerDay),
+          '群聊每日上限（保留配置，暂不发送）：' + previewValue(config.maxGroupPerDay),
+          '最低熟悉度：' + previewValue(config.minFamiliarity) + '；无回应退避：' + previewValue(config.backoffHours, ' 小时'),
+        ])
+      },
       'reminders.preview': function RemindersPreview({ module, config, summary }) {
         return previewBody(summary, [
           '模块启用：' + previewSwitch(module.enabled),
@@ -7428,6 +7438,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       } else if (key === 'typing.preview') {
         config.enabled = previewBool(draft?.cognition?.typing?.enabled)
         configAvailable = config.enabled !== null
+      } else if (key === 'proactivity.preview') {
+        const raw = safeObject(draft?.cognition?.proactivity)
+        const finite = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : null
+        Object.assign(config, { enabled: previewBool(raw.enabled), quietStart: previewNumber(raw.quietStart, 0, 23), quietEnd: previewNumber(raw.quietEnd, 0, 23), maxPrivatePerDay: previewNumber(raw.maxPrivatePerDay, 0, 10), maxGroupPerDay: previewNumber(raw.maxGroupPerDay, 0, 10), minFamiliarity: finite(raw.minFamiliarity, 0, 1), backoffHours: previewNumber(raw.backoffHours, 1, 720) })
+        configAvailable = isPlainObject(draft?.cognition?.proactivity)
       } else if (key === 'reminders.preview') {
         const raw = safeObject(draft?.cognition?.reminders)
         Object.assign(config, { enabled: previewBool(raw.enabled), maxActive: previewNumber(raw.maxActive, 1, 1000), minIntervalSeconds: previewNumber(raw.minIntervalSeconds, 60, 2592000), maxIntervalSeconds: previewNumber(raw.maxIntervalSeconds, 60, 2592000), tickMs: previewNumber(raw.tickMs, 1000, 3600000) })

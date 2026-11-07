@@ -10,7 +10,7 @@ import { createClock } from '../src/cognition/util.js'
 import { createBeliefService } from '../src/cognition/beliefs.js'
 import { createSkillService } from '../src/cognition/skills.js'
 import { createKnowledgeService } from '../src/cognition/knowledge.js'
-import { isQuietHour } from '../src/cognition/proactivity.js'
+import { isQuietHour } from '../src/modules/builtin/proactivity/engine.js'
 
 function withStore(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-learn-'))
