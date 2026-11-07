@@ -163,8 +163,8 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     if (!provider) throw new Error('媒体功能模块未启用')
     return provider
   }
-  const authorizeStickers = () => {
-    if (mediaFeatures().authorizeStickers() !== true) throw new Error('表情包功能未启用。')
+  const authorizeStickerLibrary = () => {
+    if (mediaFeatures().authorizeStickerLibrary() !== true) throw new Error('表情包功能未启用。')
   }
   {
     route('GET', '/content/bilibili', async (req) => {
@@ -256,13 +256,23 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   if (media) {
     route('GET', '/media/status', async () => {
       const stickerStatus = stickers ? await stickers.status() : null
-      let featureStatus = { active: false }, available = false
+      let featureStatus = { active: false }
+      let libraryAvailable = false, sendAvailable = false
+      let libraryReason = 'MODULE_DISABLED', sendReason = 'MODULE_DISABLED'
       try {
         const provider = providerRegistry?.get('mediaFeatures')
         featureStatus = provider?.status() || featureStatus
-        available = provider?.authorizeStickers() === true
-      } catch { /* Status remains readable during provider teardown. */ }
-      return { ok: true, ...media.status(), mediaFeatures: featureStatus, stickers: stickerStatus ? { ...stickerStatus, available } : null }
+        libraryAvailable = provider?.authorizeStickerLibrary() === true
+        sendAvailable = provider?.authorizeStickerSend() === true
+        libraryReason = libraryAvailable ? null : featureStatus.libraryReason || (provider ? 'LIBRARY_UNAVAILABLE' : 'MODULE_DISABLED')
+        sendReason = sendAvailable ? null : featureStatus.sendReason || libraryReason || 'DELIVERY_UNAVAILABLE'
+      } catch {
+        // Status stays readable and fails closed during provider teardown.
+        featureStatus = { active: false }
+        libraryAvailable = sendAvailable = false
+        libraryReason = sendReason = 'MODULE_DISABLED'
+      }
+      return { ok: true, ...media.status(), mediaFeatures: featureStatus, stickers: { ...stickerStatus, available: libraryAvailable, libraryAvailable, sendAvailable, libraryReason, sendReason } }
     })
     route('GET', '/media/files', async () => ({ ok: true, ...await media.listFiles() }))
     route('GET', '/media/file/download', async (req) => ({ ok: true, ...await media.readFile(queryOf(req).name) }))
@@ -299,49 +309,54 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   if (stickers) {
     route('GET', '/media/stickers', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const query = queryOf(req)
       const items = await stickers.list({ query: query.query || '', tag: query.tag || '', limit: toInt(query.limit, 100, 1, 500) })
-      authorizeStickers()
+      authorizeStickerLibrary()
       return { ok: true, items }
     })
     route('POST', '/media/stickers/upload', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const maxBytes = Math.max(1024, Number(getConfig()?.media?.stickers?.maxBytes) || 5 * 1024 * 1024)
       const body = await readBody(req, Math.ceil(maxBytes * 4 / 3) + 16384)
       const data = String(body?.data || '').trim()
       if (!body?.name || !body?.mime || !data) throw new Error('缺少 name、mime 或 data')
       if (data.length > Math.ceil(maxBytes * 4 / 3) + 8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data) || data.length % 4 !== 0) throw new Error('data 不是合法 base64 或超过大小限制')
-      authorizeStickers()
+      authorizeStickerLibrary()
       const buffer = Buffer.from(data, 'base64')
       if (buffer.length > maxBytes) throw new Error(`图片超过大小限制 ${maxBytes} bytes`)
-      return { ok: true, item: await stickers.importBuffer(buffer, { name: body.name, mime: body.mime, tags: body.tags }) }
+      const item = await stickers.importBuffer(buffer, { name: body.name, mime: body.mime, tags: body.tags })
+      authorizeStickerLibrary()
+      return { ok: true, item }
     })
     route('POST', '/media/stickers/tag', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
-      authorizeStickers()
+      authorizeStickerLibrary()
       const item = await stickers.updateTags(body.id, body.tags)
+      authorizeStickerLibrary()
       if (!item) throw new Error('表情包不存在')
       return { ok: true, item }
     })
     route('POST', '/media/stickers/delete', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
-      authorizeStickers()
-      return { ok: true, removed: await stickers.remove(body.id) }
+      authorizeStickerLibrary()
+      const removed = await stickers.remove(body.id)
+      authorizeStickerLibrary()
+      return { ok: true, removed }
     })
     routeRaw('GET', '/media/stickers/file', async (req) => {
-      authorizeStickers()
+      authorizeStickerLibrary()
       const id = queryOf(req).id
       if (!id) throw new Error('缺少 id')
       const file = await stickers.fileFor(id)
       if (!file) throw new Error('表情包不存在')
-      authorizeStickers()
+      authorizeStickerLibrary()
       const body = await readFile(file.path)
-      authorizeStickers()
+      authorizeStickerLibrary()
       return { __raw: true, type: file.mime, body }
     })
   }

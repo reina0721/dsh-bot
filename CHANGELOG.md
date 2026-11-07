@@ -1,5 +1,11 @@
 # 变更记录
 
+## Unreleased（未发布）
+
+- C01：拆分表情包库与发送授权，修复关闭 `media.images.enabled` 时列表、上传、标签、删除及文件预览被误禁用的问题；模块、媒体或表情包开关关闭仍关闭库，发送继续要求图片开关及媒体/delivery 服务可用。
+- `/media/status.stickers.available` 保留为库可用性别名，新增库/发送可用性及拒绝原因；媒体页按库状态开放管理并说明图片关闭导致发送禁用，模块草稿预览区分库和发送，配置帮助同步修正。
+- 补充 16 种开关组合、库管理/预览、服务缺失、异步复查、一次性/过期令牌与 access/rate/leak/dryRun 回归。配置键、数据、依赖及版本不变。
+
 ## 0.11.12（2026-11-08，媒体/主动/学习内置模块）
 
 - 新增默认启用的 `builtin-media-features`、`builtin-proactivity`、`builtin-learning`；三个模块各自独占行为/timer/命令，核心保留资源、状态、LLM/预算、delivery 与安全边界。

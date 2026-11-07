@@ -11,22 +11,28 @@ export function createBuiltinMediaFeatures(api) {
     transport: port.bilibili,
   })
   const bilibili = Object.freeze(Object.fromEntries(Object.entries(service).map(([name, method]) => [name, (...args) => { requireActive(); return method(...args) }])))
-  function authorizeStickers() {
-    if (!active) return false
-    requireActive()
-    const status = port.status()
-    return status.stickersEnabled && status.mediaEnabled && status.imagesEnabled
+  function status() {
+    const current = port.status() // Rechecks the owning runtime, including stale instances.
+    const libraryReason = !active ? 'MODULE_DISABLED'
+      : !current.mediaEnabled ? 'MEDIA_DISABLED'
+        : !current.stickersEnabled ? 'STICKERS_DISABLED'
+          : !current.stickerLibraryAvailable ? 'LIBRARY_UNAVAILABLE' : null
+    const sendReason = libraryReason || (!current.imagesEnabled ? 'IMAGES_DISABLED'
+      : !current.stickerSendAvailable ? 'DELIVERY_UNAVAILABLE' : null)
+    return { active, ...current, libraryAvailable: !libraryReason, sendAvailable: !sendReason, libraryReason, sendReason }
   }
+  const authorizeStickerLibrary = () => active && status().libraryAvailable
+  const authorizeStickerSend = () => active && status().sendAvailable
   const engine = Object.freeze({
     start() { active = true },
     stop() { active = false },
-    status() { return { active, ...port.status() } },
-    authorizeStickers, bilibili,
+    status,
+    authorizeStickerLibrary, authorizeStickerSend, bilibili,
   })
   api.providers.register('mediaFeatures', engine)
   engine.start()
   api.registerCommand('bili', input => biliCommand({ ...input, bilibili, getConfig }), { overrideBuiltin: true, audience: 'owner-or-operator' })
-  api.registerCommand('sticker', input => stickerCommand({ ...input, port, authorize: authorizeStickers }), { overrideBuiltin: true, audience: 'owner' })
+  api.registerCommand('sticker', input => stickerCommand({ ...input, port, authorize: authorizeStickerSend }), { overrideBuiltin: true, audience: 'owner' })
   return engine
 }
 

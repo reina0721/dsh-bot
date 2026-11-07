@@ -24,7 +24,7 @@ export function createProviderRegistry({ logger } = {}) {
     if (name === 'proactivity' && moduleId !== 'builtin-proactivity') throw new Error('proactivity 仅允许 builtin-proactivity 注册')
     if (name === 'proactivity' && (typeof provider?.tick !== 'function' || typeof provider?.stats !== 'function')) throw new Error('proactivity 需要 tick/stats 函数')
     if (name === 'mediaFeatures' && moduleId !== 'builtin-media-features') throw new Error('mediaFeatures 仅允许 builtin-media-features 注册')
-    if (name === 'mediaFeatures' && (typeof provider?.authorizeStickers !== 'function' || !provider?.bilibili)) throw new Error('mediaFeatures 需要功能端口')
+    if (name === 'mediaFeatures' && (['authorizeStickerLibrary', 'authorizeStickerSend'].some(key => typeof provider?.[key] !== 'function') || !provider?.bilibili)) throw new Error('mediaFeatures 需要功能端口')
     if (!provider || typeof provider !== 'object' || Array.isArray(provider)
       || typeof provider.start !== 'function' || typeof provider.stop !== 'function'
       || (provider.status !== undefined && typeof provider.status !== 'function')) {

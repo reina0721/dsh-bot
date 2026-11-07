@@ -6857,7 +6857,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           setMediaStatus(statusResult)
           setItems([])
           if (statusResult.ok === false) setError(String(statusResult.message || '媒体数据加载失败'))
-          else if (statusResult.stickers?.available === true) {
+          else if (statusResult.stickers?.libraryAvailable === true) {
             const stickerResult = safeObject(await get('/media/stickers?limit=200'))
             if (stickerResult.ok === false) setError(String(stickerResult.message || '表情包加载失败'))
             else setItems(safeArray(stickerResult.items))
@@ -6897,11 +6897,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const upload = (event) => {
         const file = event.target.files && event.target.files[0]
         event.target.value = ''
-        if (!file || busy || mediaStatus?.stickers?.available !== true) return
+        if (!file || busy || mediaStatus?.stickers?.libraryAvailable !== true) return
         const reader = new FileReader()
         reader.onerror = () => props.toast('读取图片失败', 'err')
         reader.onload = async () => {
-          if (mediaStatus?.stickers?.available !== true) return
+          if (mediaStatus?.stickers?.libraryAvailable !== true) return
           const encoded = String(reader.result || '')
           const comma = encoded.indexOf(',')
           setBusy('upload')
@@ -6984,7 +6984,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const editTags = async (item) => {
-        if (mediaStatus?.stickers?.available !== true) return
+        if (mediaStatus?.stickers?.libraryAvailable !== true) return
         const current = safeArray(item.tags).join(', ')
         const value = typeof window !== 'undefined' && window.prompt ? window.prompt('标签（用逗号分隔）', current) : current
         if (value === null) return
@@ -6995,7 +6995,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const removeSticker = async (item) => {
-        if (mediaStatus?.stickers?.available !== true) return
+        if (mediaStatus?.stickers?.libraryAvailable !== true) return
         if (typeof window !== 'undefined' && window.confirm && !window.confirm('删除表情包“' + String(item.name || '') + '”？')) return
         const result = safeObject(await post('/media/stickers/delete', { id: item.id }))
         if (!result.ok) return props.toast('删除失败：' + String(result.message || '未知错误'), 'err')
@@ -7008,7 +7008,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const images = safeObject(status.images)
       const audio = safeObject(status.audio)
       const stickerStatus = safeObject(status.stickers)
-      const stickersAvailable = stickerStatus.available === true
+      const stickerLibraryAvailable = stickerStatus.libraryAvailable === true
       return h(
         'div',
         { className: 'ob-page' },
@@ -7020,7 +7020,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h(StatTile, { label: '改图', value: images.edit?.configured ? '已配置' : '未配置', icon: 'sparkles', tone: images.edit?.configured ? 'ok' : 'warn', hint: images.edit?.enabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'ASR', value: audio.asrConfigured ? '已配置' : '未配置', icon: 'message', tone: audio.asrConfigured ? 'ok' : 'warn', hint: audio.asrEnabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'TTS', value: audio.ttsConfigured ? '已配置' : '未配置', icon: 'bolt', tone: audio.ttsConfigured ? 'ok' : 'warn', hint: audio.ttsEnabled ? '功能已启用' : '功能未启用' }),
-          h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: !stickersAvailable ? '功能未启用' : '本地表情包库' }),
+          h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: !stickerLibraryAvailable ? '功能未启用' : '本地表情包库' }),
         ),
         h(Panel, { title: '生图/改图', description: '只生成本地 PNG 文件，不会发送到 QQ。改图仅接受媒体根内相对路径。' },
           h('div', { className: 'ob-stack' },
@@ -7062,9 +7062,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ),
         h(Panel, {
           title: '表情包库', description: '支持 PNG、JPG、JPEG、GIF、WebP；标签可用于 QQ 命令 /sticker [标签]。',
-          actions: h('div', { className: 'ob-row' }, h('label', { className: cx('ob-btn small secondary', (busy === 'upload' || !stickersAvailable) && 'disabled') }, h(Icon, { name: 'sparkles', size: 14 }), h('span', null, busy === 'upload' ? '上传中…' : '上传图片'), h('input', { className: 'ob-sr-only', type: 'file', accept: '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp', disabled: busy === 'upload' || !stickersAvailable, onChange: upload })), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: loading, onClick: refresh }, '刷新')),
+          actions: h('div', { className: 'ob-row' }, h('label', { className: cx('ob-btn small secondary', (busy === 'upload' || !stickerLibraryAvailable) && 'disabled') }, h(Icon, { name: 'sparkles', size: 14 }), h('span', null, busy === 'upload' ? '上传中…' : '上传图片'), h('input', { className: 'ob-sr-only', type: 'file', accept: '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp', disabled: busy === 'upload' || !stickerLibraryAvailable, onChange: upload })), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: loading, onClick: refresh }, '刷新')),
         },
-          !stickersAvailable ? h('p', { className: 'ob-muted' }, '表情包功能未启用，请在模块详情检查状态与设置。') : items.length
+          stickerLibraryAvailable && !stickerStatus.sendAvailable ? h('p', { className: 'ob-note' }, stickerStatus.sendReason === 'IMAGES_DISABLED' ? '库可用；图片开关关闭导致发送禁用' : '库可用；发送服务不可用') : null,
+          !stickerLibraryAvailable ? h('p', { className: 'ob-muted' }, '表情包功能未启用，请在模块详情检查状态与设置。') : items.length
             ? h('div', { className: 'ob-media-grid' }, items.map((item) => h('article', { className: 'ob-media-card', key: item.id },
                 h('img', { className: 'ob-media-image', src: API + '/media/stickers/file?id=' + encodeURIComponent(item.id), alt: String(item.name || '表情包'), loading: 'lazy' }),
                 h('p', { className: 'ob-media-name', title: String(item.name || '') }, String(item.name || '未命名')),
@@ -7426,12 +7427,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         return previewBody(summary, ['示例回复：' + (summary.configAvailable ? config.message : '未加载配置')])
       },
       'media-features.preview': function MediaFeaturesPreview({ module, config, summary }) {
+        const libraryEnabled = module.enabled && module.status === 'loaded' && config.stickersEnabled && config.mediaEnabled
         return previewBody(summary, [
           '模块启用：' + previewSwitch(module.enabled),
           'B站公共内容：' + previewSwitch(config.bilibiliEnabled),
           '表情包开关：' + previewSwitch(config.stickersEnabled),
           '媒体总开关：' + previewSwitch(config.mediaEnabled) + '；图片开关：' + previewSwitch(config.imagesEnabled),
-          '表情包有效状态：' + (module.enabled && module.status === 'loaded' && config.stickersEnabled && config.mediaEnabled && config.imagesEnabled ? '开启' : '未生效'),
+          '表情包库有效状态：' + (libraryEnabled ? '开启' : '未生效'),
+          '表情包发送有效状态：' + (libraryEnabled && config.imagesEnabled ? '开启' : '未生效'),
         ])
       },
       'media-features.panel': MediaFeaturesPanel,

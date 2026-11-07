@@ -1321,6 +1321,62 @@ test('MediaPage: image status, text-only source, generation/edit payloads and lo
   } finally { globalThis.fetch = originalFetch }
 })
 
+test('MediaPage stickers: libraryAvailable controls list/upload/tag/delete/preview with images off', async () => {
+  const originalFetch = globalThis.fetch, OriginalReader = globalThis.FileReader
+  const originalPrompt = window.prompt, originalConfirm = window.confirm
+  const calls = []
+  const item = { id: 'cat', name: 'cat.png', tags: ['猫'] }
+  // Deliberately disagree with the legacy alias to verify all controls use the new field.
+  const status = { enabled: true, images: { enabled: false }, stickers: { available: false, libraryAvailable: true, sendAvailable: false, sendReason: 'IMAGES_DISABLED', count: 1 } }
+  const session = { values: [status, [item], false], index: 0 }
+  const render = () => {
+    session.index = 0
+    hookSession = session
+    try { return panel.MediaPage({ toast() {} }) } finally { hookSession = null }
+  }
+  const libraryPanel = tree => treeNodes(tree).find(node => node.type?.name === 'Panel' && node.props.title === '表情包库')
+  const uploadInput = tree => treeNodes(libraryPanel(tree).props.actions).find(node => node.type === 'input')
+  let reader
+  globalThis.FileReader = class { readAsDataURL() { reader = this } }
+  window.prompt = () => '新标签'
+  window.confirm = () => true
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, body: init.body ? JSON.parse(init.body) : undefined })
+    const payload = path.endsWith('/media/status') ? status
+      : path.includes('/media/stickers?') ? { ok: true, items: [item] } : { ok: true, items: [] }
+    return { ok: true, json: async () => payload }
+  }
+  try {
+    const tree = render()
+    assert.match(JSON.stringify(tree), /库可用；图片开关关闭导致发送禁用/)
+    assert.equal(uploadInput(tree).props.disabled, false)
+    assert.ok(treeNodes(tree).some(node => node.type === 'img' && node.props.src.endsWith('/media/stickers/file?id=cat')))
+    await control(libraryPanel(tree).props.actions, '刷新').props.onClick()
+    assert.ok(calls.some(call => call.path.endsWith('/media/stickers?limit=200')))
+    const refreshed = render()
+    await control(refreshed, '编辑标签').props.onClick()
+    await control(refreshed, '删除').props.onClick()
+    uploadInput(render()).props.onChange({ target: { files: [{ name: 'cat.png', type: 'image/png' }], value: 'cat.png' } })
+    reader.result = 'data:image/png;base64,aW1hZ2U='
+    await reader.onload()
+    assert.deepEqual(calls.filter(call => call.body), [
+      { path: panel.API_PREFIX + '/media/stickers/tag', body: { id: 'cat', tags: ['新标签'] } },
+      { path: panel.API_PREFIX + '/media/stickers/delete', body: { id: 'cat' } },
+      { path: panel.API_PREFIX + '/media/stickers/upload', body: { name: 'cat.png', mime: 'image/png', data: 'aW1hZ2U=' } },
+    ])
+    // Let the action-triggered refreshes settle before testing a closed library.
+    await new Promise(resolve => setImmediate(resolve))
+    session.values[0] = { ...status, stickers: { available: true, libraryAvailable: false, sendAvailable: false } }
+    const closed = render()
+    assert.equal(uploadInput(closed).props.disabled, true)
+    assert.equal(treeNodes(libraryPanel(closed)).some(node => node.type === 'img'), false)
+    assert.equal(treeNodes(libraryPanel(closed)).some(node => node.children?.includes('编辑标签') || node.children?.includes('删除')), false)
+  } finally {
+    globalThis.fetch = originalFetch; globalThis.FileReader = OriginalReader
+    window.prompt = originalPrompt; window.confirm = originalConfirm
+  }
+})
+
 test('CogTimeline: all remains default, Event filter queries API and renders event tone', async () => {
   const calls = [], restore = mockCognitionApi(calls)
   const refresh = (tree) => control(treeNodes(tree).find((node) => node.type?.name === 'Panel').props.actions, '刷新')
@@ -2263,7 +2319,7 @@ test('ModulesPage trusted previews render bounded read-only drafts without reque
       ['proactivity', ['模块启用：开启', '主动行为开关：开启（仅私聊）', '安静时段（本地小时）：23–8', '滚动 24 小时私聊上限：1', '最低熟悉度：0.5；无回应退避：24 小时']],
       ['reminders', ['模块启用：开启', '主人提醒开关：开启', '每人格活跃提醒上限：25', '最短重复间隔：120 s', '最长重复间隔：3600 s', '到期检查间隔：5000 ms']],
       ['sample', ['示例回复：<img src=x onerror=evil()> 只读样例']],
-      ['media-features', ['模块启用：开启', 'B站公共内容：关闭', '表情包开关：开启', '表情包有效状态：开启']],
+      ['media-features', ['模块启用：开启', 'B站公共内容：关闭', '表情包开关：开启', '表情包库有效状态：开启', '表情包发送有效状态：开启']],
     ]
     for (const [name, expected] of cases) {
       const item = { id: 'builtin-' + name, name: 'n'.repeat(200), builtin: true, source: 'builtin', enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
@@ -2285,6 +2341,21 @@ test('ModulesPage trusted previews render bounded read-only drafts without reque
       if (name === 'typing') {
         for (const module of [{ ...preview.props.module, enabled: false }, { ...preview.props.module, status: 'error' }]) assert.match(JSON.stringify(preview.type({ ...preview.props, module })), /输入状态有效状态：未生效/)
         assert.match(JSON.stringify(preview.type({ ...preview.props, config: { enabled: false } })), /输入状态有效状态：未生效/)
+      }
+      if (name === 'media-features') {
+        const imagesOff = preview.type({ ...preview.props, config: { ...preview.props.config, imagesEnabled: false } })
+        assert.match(JSON.stringify(imagesOff), /表情包库有效状态：开启/)
+        assert.match(JSON.stringify(imagesOff), /表情包发送有效状态：未生效/)
+        for (const module of [{ ...preview.props.module, enabled: false }, { ...preview.props.module, status: 'error' }]) {
+          const closed = JSON.stringify(preview.type({ ...preview.props, module }))
+          assert.match(closed, /表情包库有效状态：未生效/)
+          assert.match(closed, /表情包发送有效状态：未生效/)
+        }
+        for (const flag of ['mediaEnabled', 'stickersEnabled']) {
+          const closed = JSON.stringify(preview.type({ ...preview.props, config: { ...preview.props.config, [flag]: false } }))
+          assert.match(closed, /表情包库有效状态：未生效/)
+          assert.match(closed, /表情包发送有效状态：未生效/)
+        }
       }
       if (name === 'reply-delivery') assert.match(JSON.stringify(preview.type({ ...preview.props, config: { ...preview.props.config, split: false } })), /分条关闭，无条间等待/)
     }

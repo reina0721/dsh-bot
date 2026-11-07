@@ -34,7 +34,7 @@ export async function biliCommand({ parsed, bilibili, getConfig }) {
 
 export async function stickerCommand({ parsed, commandToken, port, authorize }) {
   if (!authorize()) return '表情包功能未启用。'
-  if (!port.status().stickersAvailable) return '表情包服务不可用。'
+  if (!port.status().stickerSendAvailable) return '表情包服务不可用。'
   try {
     const item = await port.stickers.pick({ tag: parsed.args })
     if (!item) return '还没有表情包，先在媒体面板上传'

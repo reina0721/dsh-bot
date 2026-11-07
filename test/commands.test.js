@@ -97,7 +97,7 @@ function harness(overrides = {}, services = {}) {
   if (services.bilibili) service.registerCommand('bili', input => biliCommand({ ...input, bilibili: services.bilibili, getConfig: () => ({ bilibili: config.content?.bilibili }) }), { allowProtected: true, audience: 'owner-or-operator' })
   if (services.stickers) {
     const authorize = () => config.media?.enabled && config.media?.images?.enabled && config.media?.stickers?.enabled
-    const port = createMediaFeaturesPort({ getConfig: () => config, assertActive() {}, media: services.media, stickers: services.stickers, delivery: services.delivery || outbound, access, authorizeStickers: authorize })
+    const port = createMediaFeaturesPort({ getConfig: () => config, assertActive() {}, media: services.media, stickers: services.stickers, delivery: services.delivery || outbound, access, authorizeStickerSend: authorize })
     service.registerCommand('sticker', input => port.withCommand(input.turn, commandToken => stickerCommand({ ...input, commandToken, port: port.api, authorize })), { allowProtected: true, audience: 'owner' })
   }
   return { service, sent, memory, getConfig: () => config, setConfig, configWrites }
@@ -407,6 +407,7 @@ test('commands：/sticker 发送图片；空库提示上传', async () => {
   const mediaCalls = []
   const media = { async sendMedia(payload) { mediaCalls.push(payload) } }
   const stickers = {
+    async list() {}, async importBuffer() {}, async updateTags() {}, async remove() {}, async status() {},
     async pick({ tag }) { return tag === '空' ? null : { id: 's1', name: 'cat.png' } },
     async fileFor() { return { path: '/media/stickers/s1.png', mime: 'image/png', size: 3 } },
   }

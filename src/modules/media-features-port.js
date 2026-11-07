@@ -66,7 +66,7 @@ export function createBilibiliTransport({ getConfig, assertActive = () => {}, fe
   })
 }
 
-export function createMediaFeaturesPort({ getConfig, assertActive, media, stickers, delivery, access, fetchImpl, authorizeStickers } = {}) {
+export function createMediaFeaturesPort({ getConfig, assertActive, media, stickers, delivery, access, fetchImpl, authorizeStickerSend } = {}) {
   const tokens = new WeakMap()
   const config = () => {
     assertActive()
@@ -77,14 +77,21 @@ export function createMediaFeaturesPort({ getConfig, assertActive, media, sticke
   const status = () => {
     assertActive()
     const current = getConfig?.()?.media || {}
-    return { mediaEnabled: current.enabled === true, stickersEnabled: current.stickers?.enabled !== false, imagesEnabled: current.images?.enabled === true, stickersAvailable: Boolean(stickers?.pick && stickers?.fileFor && media?.sendMedia && delivery?.deliver) }
+    const stickerLibraryAvailable = ['list', 'importBuffer', 'updateTags', 'remove', 'fileFor', 'pick', 'status'].every(key => typeof stickers?.[key] === 'function')
+    return {
+      mediaEnabled: current.enabled === true,
+      stickersEnabled: current.stickers?.enabled !== false,
+      imagesEnabled: current.images?.enabled === true,
+      stickerLibraryAvailable,
+      stickerSendAvailable: stickerLibraryAvailable && typeof media?.sendMedia === 'function' && typeof delivery?.deliver === 'function',
+    }
   }
   const canSend = target => {
     assertActive()
     if (access?.canSend?.(target)?.allowed !== true) throw new Error('ACCESS_DENIED')
-    if (authorizeStickers?.() !== true) throw new Error('表情包功能未启用。')
+    if (authorizeStickerSend?.() !== true) throw new Error('表情包功能未启用。')
     const parent = status()
-    if (!parent.mediaEnabled || !parent.imagesEnabled) throw new Error('表情包功能未启用。')
+    if (!parent.mediaEnabled || !parent.stickersEnabled || !parent.imagesEnabled || !parent.stickerSendAvailable) throw new Error('表情包功能未启用。')
   }
   const api = Object.freeze({
     config, status,

@@ -338,7 +338,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   function apiFor(record, runtime) {
     const moduleLog = log?.child?.(record.id) || log
     const mediaPort = record.builtin && record.id === 'builtin-media-features' && record.permissions.includes('media:features')
-      ? createMediaFeaturesPort({ getConfig, media, stickers, delivery, access: accessControl, authorizeStickers: () => providerRegistry?.get('mediaFeatures')?.authorizeStickers(), assertActive() {
+      ? createMediaFeaturesPort({ getConfig, media, stickers, delivery, access: accessControl, authorizeStickerSend: () => providerRegistry?.get('mediaFeatures')?.authorizeStickerSend(), assertActive() {
         requireActive(runtime)
         if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('媒体端口生命周期已结束')
       } }) : null

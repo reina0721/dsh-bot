@@ -391,7 +391,7 @@ export const CONFIG_GROUPS = [
       { path: 'media.enabled', label: '启用媒体基础能力', type: 'switch', default: false },
       { path: 'media.maxBytes', label: '单个媒体大小上限', type: 'number', default: 10485760, min: 1024, max: 104857600, step: 1048576, unit: 'bytes' },
       { path: 'media.dir', label: '媒体目录', type: 'text', default: '', placeholder: '留空使用数据目录 media/' },
-      { path: 'media.stickers.enabled', module: 'builtin-media-features', label: '启用表情包库', type: 'switch', default: true, help: '仍受媒体总开关与图片开关约束。' },
+      { path: 'media.stickers.enabled', module: 'builtin-media-features', label: '启用表情包库', type: 'switch', default: true, help: '库管理需要模块与媒体总开关开启；QQ 发送还需要图片开关开启。' },
       { path: 'media.stickers.maxCount', module: 'builtin-media-features', label: '表情包数量上限', type: 'number', default: 200, min: 1, max: 5000, step: 1 },
       { path: 'media.stickers.maxBytes', module: 'builtin-media-features', label: '单个表情包大小上限', type: 'number', default: 5242880, min: 1024, max: 52428800, step: 1048576, unit: 'bytes' },
       { path: 'media.tts.maxChars', label: 'TTS 文本字符上限', type: 'number', default: 300, min: 1, max: 5000, step: 10 },

@@ -13,7 +13,7 @@
 
 此功能默认空，不增加 `DEFAULTS`、`CONFIG_GROUPS` 或环境变量字段。仅主人通过 `/identity` 命令手动维护，受既有访问控制和 `cognition.permissions.deniedCommands` 约束。记录独立保存在 `cognition/cognition.sqlite` 的全局 `manual_identity` kind（存储 fallback 时为对应 JSON），不随人格切换/复制/删除，也不进入既有人物 identity 迁移/查询。没有新增 HTTP/API 或面板；不创建、修改或合并人物、不自动验证/关联或路由消息，无 Telegram/Discord adapter。用法与校验规则见[用户手册](USER-MANUAL.md#手动跨平台身份登记m7-v)。
 
-媒体功能现归默认启用的 `builtin-media-features`；六个原键 `content.bilibili.enabled/timeoutMs/maxResults`、`media.stickers.enabled/maxCount/maxBytes` 在「模块 → 媒体功能」详情编辑，元数据 `module:'builtin-media-features'`，仍使用原全局 config.json 和默认值，无迁移。模块停用则 `/bili`、`/sticker` 与相关 HTTP 操作关闭，无 core 回退；`/media/status` 继续报告可用性。媒体/图片父开关留核心，只以布尔状态投影给模块；贴纸还需两个父开关开启。Bilibili 操作 UI 位于模块详情，贴纸管理保留媒体页并按 provider 授权。详见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。
+媒体功能现归默认启用的 `builtin-media-features`；六个原键 `content.bilibili.enabled/timeoutMs/maxResults`、`media.stickers.enabled/maxCount/maxBytes` 在「模块 → 媒体功能」详情编辑，元数据 `module:'builtin-media-features'`，仍使用原全局 config.json 和默认值，无迁移。模块停用则 `/bili`、`/sticker` 与相关 HTTP 操作关闭，无 core 回退；`/media/status` 继续报告可用性。媒体/图片父开关留核心，只以布尔状态投影给模块；表情包库管理需要模块、媒体总开关与表情包开关开启，图片开关仅额外约束发送。Bilibili 操作 UI 位于模块详情，贴纸管理保留媒体页并按 provider 授权。详见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。
 
 主动行为归默认启用的 `builtin-proactivity`，业务开关仍默认关闭。七个原键 `cognition.proactivity.enabled/quietStart/quietEnd/maxPrivatePerDay/maxGroupPerDay/minFamiliarity/backoffHours` 标记 `module:'builtin-proactivity'`，在模块详情通过 legacy-core 编辑并沿用全局 config.json 保存；停用/未 loaded 时只读，系统设置不重复展示。纯预览无副作用，无 panel 或新 DSH 入口。模块停用后不运行 timer/手动任务且无 fallback，原统计/运行路由返回安全 disabled 状态。`/quiet`、`/active` 仍修改原配置，但不能启用停用模块。仅私聊，maxGroupPerDay 保留但不发送；日额度是滚动 24 小时 decision 数，包括 dry-run 和失败。无默认值或数据迁移，详见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
 
@@ -203,7 +203,7 @@ M7-i：只在 `outbound.deliver` 的访问控制、限频检查通过后扫描 t
 | `media.enabled` | `false` | 媒体总开关 |
 | `media.maxBytes` | `10485760` | 单文件上限，1024–104857600 bytes；入站下载、本地文件上传/列表/下载、TTS/生图/改图输出、改图源和发送均检查；本地删除不受大小限制 |
 | `media.dir` | `""` | 留空为 `<数据目录>/media`；可指定自定义目录 |
-| `media.stickers.enabled` | `true` | 启用本地表情包库；QQ 发送仍要求 `media.enabled` 与 `media.images.enabled` 同时开启 |
+| `media.stickers.enabled` | `true` | 启用本地表情包库；库管理要求 `builtin-media-features` 运行且 `media.enabled=true`，QQ 发送还要求 `media.images.enabled=true` |
 | `media.stickers.maxCount` | `200` | 表情包最多 1–5000 个；默认 200 |
 | `media.stickers.maxBytes` | `5242880` | 单个表情包 1024–52428800 bytes；默认 5 MiB |
 | `media.tts.maxChars` | `300` | 面板和 `/tts` 单次文本上限，1–5000 字符 |
@@ -225,6 +225,8 @@ M7-i：只在 `outbound.deliver` 的访问控制、限频检查通过后扫描 t
 | `media.audio.ttsEnabled` | `false` | 调用 `/audio/speech`，输出 MP3；不自动发送 |
 | `media.audio.ttsBaseUrl/ttsModel/ttsVoice/ttsApiKeyEnv` | `""` / `"tts-1"` / `"alloy"` / `""` | TTS 根地址、模型、音色、API Key 环境变量名 |
 | `media.files.enabled` | `false` | 允许白名单扩展名的文件入站下载、本地上传/列表/下载/删除和 OneBot 文件上传 |
+
+表情包库的列表、上传、标签、删除与文件预览使用 `authorizeStickerLibrary()`，不要求图片开关开启；`/sticker` 与宿主发送端口使用 `authorizeStickerSend()`，还要求图片开关及媒体/delivery 服务可用。`GET /media/status` 的 `stickers.available` 保留为库可用性的兼容别名，新增 `libraryAvailable`、`sendAvailable`、`libraryReason`、`sendReason`。原因成功时为 `null`；拒绝时按模块、媒体总开关、表情包开关、库服务、图片开关、发送服务的顺序报告 `MODULE_DISABLED`、`MEDIA_DISABLED`、`STICKERS_DISABLED`、`LIBRARY_UNAVAILABLE`、`IMAGES_DISABLED`、`DELIVERY_UNAVAILABLE`。可用性不表示目标访问/频率检查已经通过。图片关闭时媒体页显示「库可用；图片开关关闭导致发送禁用」，库管理仍可操作。
 
 允许扩展名：图片 `jpg/jpeg/png/gif/webp/bmp`；语音 `mp3/wav/ogg/m4a/aac/amr/silk`；文件 `txt/md/json/csv/pdf/doc/docx/xls/xlsx/ppt/pptx/zip/7z/rar`。网络超时沿用 `timeouts.callMs`。
 
