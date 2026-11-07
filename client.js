@@ -252,6 +252,7 @@ window.__ModuleLoader__.load({
         type,
         label: typeof field.label === 'string' && field.label.trim() ? field.label : path,
       }
+      if (typeof field.module === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(field.module)) spec.module = field.module
       if (Object.prototype.hasOwnProperty.call(field, 'default')) spec.default = clone(field.default)
       if (field.help != null && String(field.help).trim()) spec.help = String(field.help)
       if (field.placeholder != null && String(field.placeholder).trim()) spec.placeholder = String(field.placeholder)
@@ -288,6 +289,12 @@ window.__ModuleLoader__.load({
         })
       })
       return out
+    }
+
+    function systemFieldSpecs(groups) {
+      return buildFieldSpecs(groups)
+        .map((group) => ({ ...group, fields: group.fields.filter((field) => !field.module) }))
+        .filter((group) => group.fields.length)
     }
 
     function flattenFieldSpecs(groups) {
@@ -880,7 +887,7 @@ window.__ModuleLoader__.load({
      * 返回的每个分类字段仍带服务端 label/type/options/default，客户端不写死选项。
      */
     function settingsSections(groups) {
-      const specs = buildFieldSpecs(groups)
+      const specs = systemFieldSpecs(groups)
       const uiGroup = specs.find((group) => group.id === 'ui')
       const fields = uiGroup ? uiGroup.fields : []
       const used = new Set()
@@ -4072,7 +4079,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const configInfo = props.configInfo
       const draft = props.draft
       const groups = useMemo(
-        () => buildFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui' && !String(group.id).startsWith('cog-')),
+        () => systemFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui' && !String(group.id).startsWith('cog-')),
         [configInfo],
       )
       const [active, setActive] = useState('')
@@ -5386,7 +5393,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     }
 
     function CognitionTab(props) {
-      const [section, setSection] = useState('overview')
+      const [section, setSection] = useState(props.configTarget ? 'settings' : 'overview')
       const overview = useCognitionOverview(props)
       const data = overview.data || {}
       const cfg = safeObject(props.configInfo && props.configInfo.config && props.configInfo.config.cognition)
@@ -6189,14 +6196,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     }
 
     function CogSettings(props) {
-      const groups = useMemo(() => safeArray(props.configInfo && props.configInfo.groups).filter((group) => String(group.id).startsWith('cog-')), [props.configInfo])
-      const [active, setActive] = useState(groups[0] ? groups[0].id : 'cog-core')
+      const groups = useMemo(() => systemFieldSpecs(props.configInfo && props.configInfo.groups).filter((group) => String(group.id).startsWith('cog-')), [props.configInfo])
+      const [active, setActive] = useState(props.configTarget || (groups[0] ? groups[0].id : 'cog-core'))
       const current = groups.find((group) => group.id === active) || groups[0]
       if (!groups.length) return h(CogEmpty, { title: '认知设置不可用', description: '服务端未返回 cog-* 字段组；请检查插件版本。' })
       return h(SettingsShell, {
         label: '认知设置分类',
         items: groups.map((group) => ({ id: group.id, label: group.title, icon: configGroupIcon ? configGroupIcon(group.id) : 'sliders' })),
-        active,
+        active: current.id,
         onSelect: setActive,
         footer: props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
       },
@@ -7342,6 +7349,131 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    // Trusted compile-time registry. Components receive only frozen, bounded data;
+    // no host callbacks, API clients, raw config or module exports cross this boundary.
+    const previewText = (value, max) => typeof value === 'string' ? value.slice(0, max) : ''
+    const previewBool = (value) => typeof value === 'boolean' ? value : null
+    const previewNumber = (value, min, max) => Number.isInteger(value) && value >= min && value <= max ? value : null
+    const previewSwitch = (value) => value === null ? '未加载' : value ? '开启' : '关闭'
+    const previewValue = (value, unit = '') => value === null ? '未加载' : value + unit
+    const previewBody = (summary, lines) => h('div', { className: 'ob-stack', 'aria-label': '内置模块只读预览' },
+      h('p', { className: 'ob-muted ob-small' }, summary.text),
+      lines.map((line, index) => h('p', { key: index, className: 'ob-small' }, line)),
+    )
+    const BUILTIN_MODULE_UI = Object.freeze({
+      'reply-delivery.preview': function ReplyDeliveryPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '长回复分条：' + previewSwitch(config.split),
+          '单条字数上限：' + previewValue(config.maxChars),
+          '最多分条：' + previewValue(config.maxParts),
+          '引用原消息：' + previewSwitch(config.quote) + '；群聊 @ 对方：' + previewSwitch(config.atSender),
+          '分条等待：' + (config.split === false ? '分条关闭，无条间等待' : previewValue(config.delayMs, ' ms / 条间')),
+        ])
+      },
+      'typing.preview': function TypingPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '输入状态开关：' + previewSwitch(config.enabled),
+          '输入状态有效状态：' + (module.enabled && module.status === 'loaded' && config.enabled === true ? '开启（仅私聊，依赖网关支持）' : '未生效'),
+        ])
+      },
+      'reminders.preview': function RemindersPreview({ module, config, summary }) {
+        return previewBody(summary, [
+          '模块启用：' + previewSwitch(module.enabled),
+          '主人提醒开关：' + previewSwitch(config.enabled),
+          '每人格活跃提醒上限：' + previewValue(config.maxActive),
+          '最短重复间隔：' + previewValue(config.minIntervalSeconds, ' s'),
+          '最长重复间隔：' + previewValue(config.maxIntervalSeconds, ' s'),
+          '到期检查间隔：' + previewValue(config.tickMs, ' ms'),
+        ])
+      },
+      'sample.preview': function SamplePreview({ config, summary }) {
+        return previewBody(summary, ['示例回复：' + (summary.configAvailable ? config.message : '未加载配置')])
+      },
+    })
+
+    function builtinPreviewProps(item, key, draft, editor) {
+      const config = {}
+      let configAvailable = false
+      // Select fields individually. Never pass the global draft (which may contain secrets).
+      if (key === 'reply-delivery.preview') {
+        const raw = safeObject(draft?.cognition?.reply)
+        Object.assign(config, { split: previewBool(raw.split), maxChars: previewNumber(raw.maxChars, 80, 2000), maxParts: previewNumber(raw.maxParts, 1, 10), quote: previewBool(raw.quote), atSender: previewBool(raw.atSender), delayMs: previewNumber(raw.delayMs, 0, 5000) })
+        configAvailable = isPlainObject(draft?.cognition?.reply)
+      } else if (key === 'typing.preview') {
+        config.enabled = previewBool(draft?.cognition?.typing?.enabled)
+        configAvailable = config.enabled !== null
+      } else if (key === 'reminders.preview') {
+        const raw = safeObject(draft?.cognition?.reminders)
+        Object.assign(config, { enabled: previewBool(raw.enabled), maxActive: previewNumber(raw.maxActive, 1, 1000), minIntervalSeconds: previewNumber(raw.minIntervalSeconds, 60, 2592000), maxIntervalSeconds: previewNumber(raw.maxIntervalSeconds, 60, 2592000), tickMs: previewNumber(raw.tickMs, 1000, 3600000) })
+        configAvailable = isPlainObject(draft?.cognition?.reminders)
+      } else if (key === 'sample.preview') {
+        configAvailable = editor?.id === item.id && typeof editor.values?.message === 'string'
+        config.message = configAvailable ? previewText(editor.values.message, 200) : ''
+      }
+      return Object.freeze({
+        module: Object.freeze({ id: previewText(item.id, 64), name: previewText(item.name, 128), status: ['disabled', 'loading', 'loaded', 'blocked', 'error'].includes(item.status) ? item.status : 'error', enabled: item.enabled === true }),
+        config: Object.freeze(config),
+        summary: Object.freeze({ readOnly: true, configAvailable, text: '当前配置草稿预览（只读）' }),
+      })
+    }
+
+    function validSandboxUiEntry(entry) {
+      return typeof entry === 'string' && entry.length <= 256 && entry.startsWith('webui/') && entry.endsWith('.html') && entry.split('/').length <= 9 && entry.split('/').every((part) => /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/.test(part))
+    }
+
+    // Opaque frames have origin "null"; source + fresh nonce identify this load.
+    function attachSandboxBridge(frame, metadata, callbacks, host = window) {
+      const source = frame.contentWindow
+      const random = new Uint8Array(16)
+      host.crypto.getRandomValues(random)
+      const nonce = Array.from(random, (byte) => byte.toString(16).padStart(2, '0')).join('')
+      let active = true, ready = false, notifications = 0
+      const stop = () => { active = false; host.removeEventListener('message', receive); host.clearTimeout(timer) }
+      const receive = (event) => {
+        if (!active || !callbacks.current() || frame.contentWindow !== source || event.source !== source || event.origin !== 'null') return
+        const data = event.data
+        if (!isPlainObject(data) || data.version !== 1 || data.nonce !== nonce || !['ready', 'resize', 'notify'].includes(data.type)) return
+        const allowed = ['version', 'nonce', 'type', ...(data.type === 'resize' ? ['height'] : data.type === 'notify' ? ['text'] : [])]
+        if (Object.keys(data).some((key) => !allowed.includes(key))) return
+        if (data.type === 'ready') { ready = true; host.clearTimeout(timer); return }
+        if (!ready) return
+        if (data.type === 'resize' && Number.isInteger(data.height) && data.height >= 120 && data.height <= 1000) callbacks.resize(data.height)
+        if (data.type === 'notify' && typeof data.text === 'string' && data.text.length > 0 && data.text.length <= 200 && !/[\u0000-\u0008\u000b-\u001f\u007f]/.test(data.text) && notifications < 20) {
+          notifications++
+          callbacks.notify(data.text)
+        }
+      }
+      const timer = host.setTimeout(stop, 10000)
+      host.addEventListener('message', receive)
+      // '*' is required for an opaque target. This contains no secrets or capabilities.
+      try {
+        source.postMessage({ version: 1, type: 'init', nonce, module: { id: String(metadata.id).slice(0, 64), generation: String(metadata.generation).slice(0, 64), uiRevision: String(metadata.uiRevision).slice(0, 64) } }, '*')
+      } catch (error) { stop(); throw error }
+      return stop
+    }
+
+    function SandboxModuleFrame({ item, entry, toast }) {
+      const frame = useRef(null), cleanup = useRef(null), mounted = useRef(true)
+      const [height, setHeight] = useState(320)
+      useEffect(() => { mounted.current = true; return () => { mounted.current = false; cleanup.current?.(); cleanup.current = null } }, [])
+      return h('iframe', {
+        ref: frame, title: '隔离 WebUI · ' + String(item.id),
+        src: '/onebot-qq/module-ui/' + encodeURIComponent(item.id) + '/' + encodeURIComponent(item.generation) + '/' + entry.slice('webui/'.length),
+        sandbox: 'allow-scripts', referrerPolicy: 'no-referrer',
+        style: { width: '100%', height: height + 'px', border: 0 },
+        onLoad: () => {
+          cleanup.current?.()
+          if (!mounted.current || !frame.current) return
+          try {
+            const current = frame.current
+            cleanup.current = attachSandboxBridge(current, item, { current: () => mounted.current && frame.current === current, resize: setHeight, notify: (text) => toast?.(text, 'info') })
+          } catch { cleanup.current = null }
+        },
+      })
+    }
+
     function ModulesPage(props) {
       const [items, setItems] = useState([])
       const [loading, setLoading] = useState(true)
@@ -7349,6 +7481,51 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [busy, setBusy] = useState('')
       const [editor, setEditor] = useState(null)
       const [configError, setConfigError] = useState('')
+      const [uiCatalog, setUiCatalog] = useState(null)
+      const [uiError, setUiError] = useState('')
+      const [detailId, setDetailId] = useState('')
+
+      const uiFor = (item) => {
+        const ui = safeArray(uiCatalog?.items).find((row) => row?.moduleId === item.id)
+        if (uiCatalog?.version !== 1 || !ui || ui.uiWarning || typeof item.uiRevision !== 'string' || typeof item.generation !== 'string' || ui.generation !== item.generation || ui.uiRevision !== item.uiRevision || ui.status !== item.status) return null
+        if (Object.keys(ui).some((key) => !['moduleId', 'source', 'trust', 'generation', 'uiRevision', 'status', 'config', 'surfaces', 'requestedCapabilities', 'grantedCapabilities', 'uiWarning', 'sandbox'].includes(key))) return null
+        const source = item.builtin ? 'builtin' : 'external'
+        if (item.source !== source || ui.trust !== source || ui.source !== source || !Array.isArray(ui.surfaces) || ui.surfaces.length > 5) return null
+        const config = ui.config
+        if (!isPlainObject(config) || Object.keys(config).some((key) => !['binding', 'schemaVersion', 'available'].includes(key))) return null
+        if (!['none', 'legacy-core', 'module-file'].includes(config.binding) || typeof config.available !== 'boolean') return null
+        if (config.schemaVersion !== null && (!Number.isSafeInteger(config.schemaVersion) || config.schemaVersion < 1)) return null
+        if (config.binding === 'none' && (config.available || config.schemaVersion !== null)) return null
+        if (config.binding === 'legacy-core' && source !== 'builtin') return null
+        if (source === 'external' && config.available && (!item.hasConfig || config.binding !== 'module-file' || config.schemaVersion !== 1)) return null
+        if (![ui.requestedCapabilities, ui.grantedCapabilities].every((caps) => Array.isArray(caps) && caps.length <= 1 && caps.every((cap) => cap === 'ui.sandbox'))) return null
+        if (ui.sandbox !== undefined) {
+          if (source !== 'external' || !isPlainObject(ui.sandbox) || Object.keys(ui.sandbox).some((key) => !['entry', 'available', 'reason'].includes(key)) || !validSandboxUiEntry(ui.sandbox.entry) || typeof ui.sandbox.available !== 'boolean' || typeof ui.sandbox.reason !== 'string' || ui.sandbox.reason.length > 200 || !ui.requestedCapabilities.includes('ui.sandbox')) return null
+        } else if (ui.requestedCapabilities.length || ui.grantedCapabilities.length) return null
+        if (ui.grantedCapabilities.length && (!ui.sandbox?.available || !safeArray(item.permissions).includes('ui:sandbox'))) return null
+        const hooks = new Set(), ids = new Set()
+        let sandboxCount = 0
+        for (const surface of ui.surfaces) {
+          if (!surface || typeof surface.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(surface.id) || ids.has(surface.id) || hooks.has(surface.hook)) return null
+          if (Object.keys(surface).some((key) => !['id', 'hook', 'renderer', 'order', 'componentKey'].includes(key))) return null
+          if (!['module.card', 'module.detail', 'module.config', 'module.actions', 'module.panel'].includes(surface.hook) || !['status', 'schema', 'builtin-react', 'sandbox'].includes(surface.renderer)) return null
+          if (source === 'external' && surface.hook === 'module.config' && surface.renderer === 'schema' && !item.hasConfig) return null
+          if (surface.renderer === 'sandbox' && (source !== 'external' || !ui.sandbox || !['module.detail', 'module.panel'].includes(surface.hook) || ++sandboxCount > 1)) return null
+          if (surface.renderer === 'builtin-react') {
+            if (source !== 'builtin' || typeof surface.componentKey !== 'string' || surface.componentKey.length > 64 || !/^[a-z][a-z0-9-]{0,31}\.[a-z][a-z0-9-]{0,31}$/.test(surface.componentKey)) return null
+          } else if (Object.prototype.hasOwnProperty.call(surface, 'componentKey')) return null
+          if (!Number.isInteger(surface.order) || surface.order < -100 || surface.order > 100) return null
+          ids.add(surface.id); hooks.add(surface.hook)
+        }
+        if (ui.sandbox && sandboxCount !== 1) return null
+        return ui
+      }
+
+      const hasConfigUi = (item, ui) => item.hasConfig && ui?.config.available === true && ui.config.binding === 'module-file' && ui.surfaces.some((surface) => surface.hook === 'module.config' && surface.renderer === 'schema')
+      const configReadOnly = (item) => !item.enabled || item.status !== 'loaded'
+      const legacyFields = buildFieldSpecs(props.configInfo?.groups).flatMap((group) => group.fields)
+      const hasLegacyConfigUi = (item, ui) => item.builtin && item.source === 'builtin' && ui?.config.binding === 'legacy-core' && ui.config.available === true && ui.surfaces.some((surface) => surface.hook === 'module.config' && surface.renderer === 'schema')
+      const legacyReadOnly = (item) => Boolean(busy) || configReadOnly(item) || !props.draft || typeof props.saveUiPatch !== 'function'
 
       const readModuleConfig = async (id) => {
         const result = safeObject(await get('/modules/config?id=' + encodeURIComponent(id)))
@@ -7357,6 +7534,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const openConfig = async (item) => {
+        if (busy || !hasConfigUi(item, uiFor(item))) return
         setBusy(item.id + ':config')
         setEditor({ id: item.id, schema: null, values: {}, revision: 0 })
         setConfigError('')
@@ -7365,7 +7543,17 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         finally { setBusy('') }
       }
 
+      const openDetail = async (item) => {
+        if (busy) return
+        setDetailId(item.id)
+        setEditor(null)
+        setConfigError('')
+        if (hasConfigUi(item, uiFor(item))) await openConfig(item)
+      }
+
       const saveModuleConfig = async () => {
+        const item = items.find((item) => item.id === detailId)
+        if (busy || !editor?.schema || editor.id !== detailId || !item || configReadOnly(item) || !hasConfigUi(item, uiFor(item))) return
         setBusy(editor.id + ':save')
         setConfigError('')
         try {
@@ -7386,10 +7574,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const refresh = useCallback(async () => {
         setLoading(true)
         setError('')
+        setUiCatalog(null)
+        setUiError('')
         try {
-          const result = safeObject(await get('/modules'))
+          const [modulesResult, uiResult] = await Promise.allSettled([get('/modules'), get('/modules/ui')])
+          if (modulesResult.status === 'rejected') throw modulesResult.reason
+          const result = safeObject(modulesResult.value)
           if (result.ok === false) setError(String(result.message || '模块列表加载失败'))
           else setItems(safeArray(result.items))
+          if (uiResult.status === 'fulfilled' && uiResult.value?.ok === true && uiResult.value?.version === 1 && Array.isArray(uiResult.value.items)) setUiCatalog(uiResult.value)
+          else setUiError('UI 目录暂不可用，模块操作仍可使用。')
         } catch (error) { setError(String(error.message || '模块列表加载失败')) }
         finally { setLoading(false) }
       }, [])
@@ -7418,7 +7612,107 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         } finally { setBusy('') }
       }
 
+      const badges = (item) => h('div', { className: 'ob-row' },
+        h(Badge, { tone: item.builtin ? 'brand' : 'muted' }, item.builtin ? '内置受信任' : uiFor(item)?.sandbox ? '外部隔离 WebUI' : '外部声明式（无执行权限）'),
+        h(Badge, { tone: item.status === 'loaded' ? 'ok' : ['error', 'blocked'].includes(item.status) ? 'err' : 'muted' }, String(item.status || 'unknown')),
+        h(Badge, { tone: item.enabled ? 'brand' : 'muted' }, item.enabled ? '已启用' : '已停用'),
+      )
+      const moduleActions = (item) => h('div', { className: 'ob-row' },
+        item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
+        h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+      )
+      const statusSummary = (item, surface) => h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
+        h('p', { className: 'ob-small' }, String(item.description || item.name || item.id)),
+        h('p', { className: 'ob-muted ob-small' }, '状态：' + String(item.status || 'unknown')),
+      )
+      const configSurface = (item, surface) => h('section', { key: surface.id, className: 'ob-stack', 'aria-label': '模块配置' },
+        h('h3', null, '模块配置'),
+        configReadOnly(item) ? h('p', { className: 'ob-muted ob-small' }, '模块未运行，配置只读；启用并加载成功后可编辑。') : null,
+        editor?.id === item.id ? h('div', { className: 'ob-stack' },
+          h('p', { className: 'ob-muted ob-small' }, '模块配置 · revision ' + editor.revision),
+          configError ? h(Banner, { tone: 'err', message: configError }) : null,
+          safeArray(editor.schema?.fields).map((spec) => h(FieldRow, {
+            key: item.id + ':' + spec.path, spec, value: editor.values[spec.path], disabled: Boolean(busy) || configReadOnly(item),
+            onChange: (value) => { if (!busy && !configReadOnly(item)) setEditor((current) => ({ ...current, values: { ...current.values, [spec.path]: value } })) },
+          })),
+          h('div', { className: 'ob-row' },
+            h(Btn, { small: true, busy: busy === item.id + ':save', disabled: Boolean(busy) || !editor.schema || configReadOnly(item), onClick: saveModuleConfig }, '保存配置'),
+            h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '重新加载配置'),
+            h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => { setEditor(null); setConfigError('') } }, '取消'),
+          ),
+        ) : h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '加载配置'),
+      )
+      const legacyConfigSurface = (item, surface) => h('section', { key: surface.id, className: 'ob-stack', 'aria-label': '模块配置' },
+        h('h3', null, '模块设置'),
+        h('p', { className: 'ob-muted ob-small' }, '这些设置属于本模块；存储键保持不变，沿用现有全局配置保存。'),
+        configReadOnly(item) ? h('p', { className: 'ob-muted ob-small' }, '模块未运行，配置只读；启用并加载成功后可编辑。') : null,
+        legacyFields.filter((spec) => spec.module === item.id).map((spec) => h(FieldRow, {
+          key: spec.path, spec, value: getByPath(props.draft || {}, spec.path), disabled: legacyReadOnly(item),
+          onChange: (value) => { if (!legacyReadOnly(item)) props.saveUiPatch({ [spec.path]: value }) },
+        })),
+        props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
+      )
+      const grantSandbox = async (item, enabled) => {
+        if (busy || !window.confirm(enabled ? '启用隔离 WebUI？将运行此外部模块的 HTML/脚本。它不能读取宿主 DOM、Cookie、配置或 API；请先审核公开 UI 文件。' : '撤销隔离 WebUI 授权？界面将移除，模块配置保留。')) return
+        setBusy(item.id + ':grant')
+        try {
+          const result = await post('/modules/ui/grant', { id: item.id, enabled })
+          if (result?.ok !== true) throw new Error(String(result?.message || '隔离 UI 授权失败'))
+          // Unmount immediately, even if refreshing the directory fails.
+          setUiCatalog(null)
+          await refresh()
+        } catch (error) { props.toast?.(String(error.message || '隔离 UI 授权失败'), 'err') }
+        finally { setBusy('') }
+      }
+      const renderSurface = (item, ui, surface) => {
+        if (surface.renderer === 'sandbox') {
+          const permitted = item.source === 'external' && !item.builtin && safeArray(item.permissions).includes('ui:sandbox')
+          const granted = permitted && ui.grantedCapabilities.includes('ui.sandbox')
+          const executable = granted && ui.sandbox.available && item.enabled === true && item.status === 'loaded'
+          return h('section', { key: surface.id, className: 'ob-stack', 'aria-label': '隔离 WebUI' },
+            h('h3', null, '隔离 WebUI'),
+            h('p', { className: 'ob-muted ob-small' }, '外部 HTML/脚本在不透明源 iframe 内运行；无宿主 DOM、Cookie、配置或 API 访问。'),
+            executable ? h(SandboxModuleFrame, { key: item.id + ':' + item.generation + ':' + item.uiRevision, item: { id: item.id, generation: item.generation, uiRevision: item.uiRevision }, entry: ui.sandbox.entry, toast: props.toast })
+              : h('p', { className: 'ob-muted ob-small' }, !permitted ? '缺少 ui:sandbox 权限' : ui.sandbox.reason || (!granted ? '未授权或授权已失效，请确认后启用隔离 WebUI' : '模块未启用或未加载，隔离 WebUI 已禁用')),
+            h(Btn, { small: true, kind: granted ? 'danger' : 'secondary', disabled: Boolean(busy) || !permitted || (!granted && !ui.sandbox.available), onClick: () => grantSandbox(item, !granted) }, granted ? '撤销' : '启用隔离 WebUI'),
+          )
+        }
+        if (surface.hook === 'module.detail' && surface.renderer === 'builtin-react') {
+          const Component = Object.prototype.hasOwnProperty.call(BUILTIN_MODULE_UI, surface.componentKey) ? BUILTIN_MODULE_UI[surface.componentKey] : null
+          return h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
+            Component ? h(Component, builtinPreviewProps(item, surface.componentKey, props.draft, editor))
+              : h('p', { className: 'ob-muted ob-small' }, '内置预览组件不可用，显示核心模块信息。'),
+          )
+        }
+        if (['module.card', 'module.detail'].includes(surface.hook) && surface.renderer === 'status') return statusSummary(item, surface)
+        if (surface.hook === 'module.config' && surface.renderer === 'schema' && hasLegacyConfigUi(item, ui)) return legacyConfigSurface(item, surface)
+        if (surface.hook === 'module.config' && hasConfigUi(item, ui)) return configSurface(item, surface)
+        return h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
+          h('p', { className: 'ob-muted ob-small' }, surface.hook + ' · 暂不可用'),
+          h(Btn, { small: true, kind: 'secondary', disabled: true }, '暂不可用'),
+        )
+      }
+
       if (loading && !items.length) return h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 }))
+      if (detailId) {
+        const item = items.find((item) => item.id === detailId)
+        const ui = item ? uiFor(item) : null
+        return h('section', { className: 'ob-stack', 'aria-label': '模块详情' },
+          h('div', { className: 'ob-row' },
+            h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { setDetailId(''); setEditor(null); setConfigError('') } }, '返回模块列表'),
+            h(Btn, { kind: 'secondary', disabled: Boolean(busy) || loading, onClick: refresh }, '刷新详情'),
+          ),
+          error ? h(Banner, { tone: 'err', message: error }) : null,
+          uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
+          item ? h(Panel, { title: String(item.name || item.id), description: String(item.description || item.id), actions: moduleActions(item) },
+            badges(item),
+            item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
+            item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
+            !ui || !ui.surfaces.length ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
+              : ui.surfaces.map((surface) => renderSurface(item, ui, surface)),
+          ) : h(Banner, { tone: 'muted', message: '模块已不在目录中，请返回列表。' }),
+        )
+      }
       return h(
         'div',
         { className: 'ob-stack' },
@@ -7426,16 +7720,21 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h('div', { className: 'ob-row' }, h(Badge, { tone: 'muted' }, '内置 ' + items.filter((item) => item.builtin).length), h(Badge, { tone: 'muted' }, '外部 ' + items.filter((item) => !item.builtin).length)),
         ),
         error ? h(Banner, { tone: 'err', message: error, actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: refresh }, '重试')] }) : null,
+        uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
         items.length
           ? h('div', { className: 'ob-grid two' }, items.map((item) => {
               const permissions = safeArray(item.permissions)
               const tone = item.status === 'loaded' ? 'ok' : (item.status === 'error' || item.status === 'blocked') ? 'err' : 'muted'
-              return h(Panel, {
-                key: item.id,
+              const ui = uiFor(item)
+              return h('article', {
+                key: item.id, 'aria-label': '模块卡片 · ' + String(item.name || item.id),
+                onClick: (event) => { if (!event.target.closest('button, a, input, select, textarea')) openDetail(item) },
+              }, h(Panel, {
                 title: String(item.name || item.id),
                 description: String(item.description || item.id),
                 actions: h('div', { className: 'ob-row' },
-                  item.builtin && item.source === 'builtin' && item.hasConfig ? h(Btn, { small: true, kind: 'secondary', busy: busy === item.id + ':config', disabled: Boolean(busy), onClick: () => openConfig(item) }, '配置') : null,
+                  h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '详情'),
+                  hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui) ? h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '配置') : null,
                   item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
                   h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
                 ),
@@ -7451,20 +7750,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 !item.canToggle && !item.builtin ? h('p', { className: 'ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
                 item.error ? h('p', { className: 'ob-field-error', style: { marginTop: '12px' } }, String(item.error)) : null,
                 item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
-                item.builtin && item.source === 'builtin' && item.hasConfig && editor?.id === item.id ? h('section', { className: 'ob-stack', 'aria-label': '模块配置', style: { marginTop: '16px' } },
-                  h('p', { className: 'ob-muted ob-small' }, '模块配置 · revision ' + editor.revision),
-                  configError ? h(Banner, { tone: 'err', message: configError }) : null,
-                  safeArray(editor.schema?.fields).map((spec) => h(FieldRow, {
-                    key: item.id + ':' + spec.path, spec, value: editor.values[spec.path], disabled: Boolean(busy),
-                    onChange: (value) => setEditor((current) => ({ ...current, values: { ...current.values, [spec.path]: value } })),
-                  })),
-                  h('div', { className: 'ob-row' },
-                    h(Btn, { small: true, busy: busy === item.id + ':save', disabled: Boolean(busy) || !editor.schema, onClick: saveModuleConfig }, '保存配置'),
-                    h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '重新加载配置'),
-                    h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => { setEditor(null); setConfigError('') } }, '取消'),
-                  ),
-                ) : null,
-              )
+                ui?.surfaces.filter((surface) => surface.hook === 'module.card').map((surface) => renderSurface(item, ui, surface)),
+              ))
             }))
           : h(Panel, null, h(EmptyState, {
               icon: 'layout',
@@ -7601,6 +7888,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [issues, setIssues] = useState([])
       const [busyCount, setBusyCount] = useState(0)
       const [prefStatus, setPrefStatus] = useState({ saving: false, error: '', savedAt: 0 })
+      const [configTarget, setConfigTarget] = useState('')
 
       const draftRef = useRef(null)
       const configInfoRef = useRef(null)
@@ -7922,7 +8210,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         [applyGateway, refreshStatus, toast, runWithProgress],
       )
 
-      const go = useCallback((id) => setTab(id), [])
+      const go = useCallback((id, group = '') => { setConfigTarget(group); setTab(id) }, [])
 
       const gateway = safeObject(status && status.gateway)
       const state = stateLabel(gateway.state)
@@ -7931,6 +8219,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const headerInfo = pageHeaderFor(tab, status)
 
       const tabProps = {
+        configTarget,
         status,
         configInfo,
         draft,
@@ -8102,6 +8391,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.MediaPage = MediaPage
     exports.ContentPage = ContentPage
     exports.ModulesPage = ModulesPage
+    exports.SandboxModuleFrame = SandboxModuleFrame
+    exports.attachSandboxBridge = attachSandboxBridge
     exports.BackupPage = BackupPage
     exports.SecurityPage = SecurityPage
     // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
@@ -8145,6 +8436,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.nextPresence = nextPresence
     exports.pageTransitionClass = pageTransitionClass
     exports.contentTransitionFor = contentTransitionFor
+    exports.BUILTIN_MODULE_UI = BUILTIN_MODULE_UI
     exports.applyConfigPatch = applyConfigPatch
     exports.settingsSections = settingsSections
     exports.accentValues = accentValues

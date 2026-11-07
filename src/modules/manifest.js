@@ -1,6 +1,6 @@
 // 两种来源共享清单；来源与操作能力只能由加载器赋值。
 export const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
-const PERMISSIONS = new Set(['events', 'commands', 'commands:override', 'send:text', 'cognition:read', 'knowledge', 'capabilities', 'storage', 'delivery:plan', 'turn:lifecycle', 'status:write', 'scheduler', 'persona:store', 'providers:register', 'reminders:service', 'config:read', 'access:check', 'delivery:send'])
+const PERMISSIONS = new Set(['events', 'commands', 'commands:override', 'send:text', 'cognition:read', 'knowledge', 'capabilities', 'storage', 'delivery:plan', 'turn:lifecycle', 'status:write', 'scheduler', 'persona:store', 'providers:register', 'reminders:service', 'config:read', 'access:check', 'delivery:send', 'ui:sandbox'])
 
 export function validateManifest(manifest, { builtin = false, directoryName } = {}) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('module.json 必须是对象')
@@ -18,6 +18,7 @@ export function validateManifest(manifest, { builtin = false, directoryName } = 
   for (const permission of ['reminders:service', 'config:read', 'access:check', 'delivery:send']) {
     if (!builtin && permissions.includes(permission)) throw new Error(`${permission} 仅允许内置模块声明`)
   }
+  if (builtin && permissions.includes('ui:sandbox')) throw new Error('ui:sandbox 仅允许外部模块声明')
   const requires = manifest.requires === undefined ? [] : manifest.requires
   if (!Array.isArray(requires) || requires.length > 16 || requires.some((item) => typeof item !== 'string' || !ID_RE.test(item))) throw new Error('manifest.requires 必须是有效模块 id 数组，最多 16 项')
   if (new Set(requires).size !== requires.length) throw new Error('manifest.requires 不能重复')

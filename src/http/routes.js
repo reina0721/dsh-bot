@@ -1,6 +1,7 @@
 // 宿主半边 REST 接口：/onebot-qq/api/*，面板只通过这些接口读写状态与配置。
 // 路由全部注册在 apply 内，随插件卸载一起清理（ctx.effect）。
 
+import { createModuleUiHandler, MODULE_UI_PREFIX } from '../modules/sandbox.js'
 import { redact } from '../core/redact.js'
 import { publicConfig, defaultConfig, CONFIG_GROUPS } from '../core/config.js'
 import { readFile } from 'node:fs/promises'
@@ -41,6 +42,16 @@ async function readBody(req, maxBytes = MAX_BODY_BYTES) {
   } catch (error) {
     throw new Error('请求体不是合法 JSON')
   }
+}
+
+// Opaque UI frames must never use the host REST API, including after self-navigation.
+function rejectSandboxApi(req, res) {
+  const origin = req.headers?.origin
+  const destination = req.headers?.['sec-fetch-dest']
+  const coreImage = destination === 'image' && req.headers?.['sec-fetch-site'] === 'same-origin'
+  if (origin !== 'null' && (!destination || ['empty', 'document'].includes(destination) || coreImage)) return false
+  send(res, 403, { ok: false, message: '不允许隔离页面访问宿主 API' })
+  return true
 }
 
 function queryOf(req) {
@@ -95,6 +106,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       kind: 'exact',
       path: API_PREFIX + path,
       handler: (req, res) => {
+        if (rejectSandboxApi(req, res)) return
         if (method && String(req.method || '').toUpperCase() !== method) {
           send(res, 405, { ok: false, message: `只支持 ${method}` })
           return
@@ -114,6 +126,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     const register = () => ctx.webServer.register({
       kind: 'exact', path: API_PREFIX + path,
       handler: (req, res) => {
+        if (rejectSandboxApi(req, res)) return
         if (method && String(req.method || '').toUpperCase() !== method) return send(res, 405, { ok: false, message: `只支持 ${method}` })
         answer(res, () => handler(req, res), { allowRaw: true })
       },
@@ -202,6 +215,17 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
         return modules.setModuleConfig(body?.id, body?.values, body?.revision)
       })
       send(res, 405, { ok: false, code: 'MODULE_CONFIG_INVALID', message: '只支持 GET 或 POST' })
+    })
+    const registerUiAssets = () => ctx.webServer.register({ kind: 'prefix', path: MODULE_UI_PREFIX, handler: createModuleUiHandler(modules) })
+    registered.push(ctx.effect(registerUiAssets, 'onebot-qq: 隔离模块 UI 资源'))
+    route('GET', '/modules/ui', async () => ({ ok: true, ...await modules.refreshUiCatalog() }))
+    route('POST', '/modules/ui/grant', async (req) => {
+      try {
+        const body = await readBody(req, 1024)
+        return { ok: true, item: await modules.setUiGrant(body?.id, body?.enabled) }
+      } catch (error) {
+        return { ok: false, code: error.code === 'MODULE_UI_WRITE_FAILED' ? error.code : 'MODULE_UI_UNAVAILABLE', message: error.code === 'MODULE_UI_WRITE_FAILED' ? '隔离 UI 授权保存失败' : '隔离 UI 授权不可用，请检查外部模块声明与资源' }
+      }
     })
     route('GET', '/modules', async () => {
       const items = modules.list()

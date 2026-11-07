@@ -3,13 +3,15 @@
 
 import { constants } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { ID_RE, validateManifest } from './manifest.js'
 import { analyzeDependencies, dependentClosure } from './dependencies.js'
 import { builtinRegistry } from './registry.js'
+import { buildModuleUiCatalog, loadWebuiDescriptor, sandboxEligible } from './webui.js'
+import { readUiArtifact } from './sandbox.js'
 import { createModulePersonaStore } from './persona-store.js'
 import { createReminderRepository } from './reminder-repository.js'
 import { createLegacyConfig } from './legacy-config.js'
@@ -60,13 +62,15 @@ function publicRecord(record) {
     requires: [...record.requires],
     canReload: !record.builtin,
     canToggle: record.builtin || (record.valid && record.manifestEnabled),
-    hasConfig: Boolean(record.builtin && record.configSchema),
+    hasConfig: Boolean(record.configSchema),
     configWarning: record.configWarning || '',
     permissions: [...record.permissions],
     enabled: Boolean(record.enabled),
     status: record.status,
     error: record.error,
     loadedAt: record.loadedAt,
+    generation: record.generation,
+    uiRevision: record.uiRevision || 'none',
   }
 }
 
@@ -82,6 +86,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   const records = new Map()
   let disabled = new Set()
   let enabledIds = new Set()
+  let uiGrants = new Map()
   let importGeneration = 0
   let started = false
   let disposed = false
@@ -114,6 +119,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     const ids = (value) => new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string' && ID_RE.test(id)) : [])
     disabled = ids(state?.disabled)
     enabledIds = ids(state?.enabled)
+    const savedGrants = state?.uiGrants && typeof state.uiGrants === 'object' && !Array.isArray(state.uiGrants) ? state.uiGrants : {}
+    uiGrants = new Map(Object.entries(savedGrants)
+      .filter(([id, grant]) => ID_RE.test(id) && grant?.id === id && /^[a-f0-9]{64}$/.test(grant.uiRevision) && /^[a-f0-9]{64}$/.test(grant.artifactHash) && typeof grant.entry === 'string')
+      .map(([id, grant]) => [id, { id, uiRevision: grant.uiRevision, entry: grant.entry, artifactHash: grant.artifactHash }]))
   }
 
   function effectiveEnabled(record) {
@@ -136,11 +145,16 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     await access(entryPath, constants.R_OK)
     const realEntry = await realpath(entryPath)
     if (!inside(realModuleDir, realEntry)) throw new Error('manifest.entry 不能通过符号链接离开模块目录')
-    return { ...manifest, source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry }
+    const configSchema = raw.config === undefined ? null : validateConfigSchema(raw.config)
+    const record = { ...manifest, configSchema, ...loadWebuiDescriptor(raw.webui, { source: 'external', configSchema }), source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry, uiArtifactHash: null }
+    if (sandboxEligible(record)) {
+      try { record.uiArtifactHash = (await readUiArtifact(root, record)).hash } catch {}
+    }
+    return record
   }
 
   function makeRecord(manifest) {
-    return { ...manifest, enabled: effectiveEnabled(manifest), status: 'disabled', error: '', loadedAt: null, runtime: null, storage: null }
+    return { ...manifest, generation: randomUUID(), enabled: effectiveEnabled(manifest), status: 'disabled', error: '', loadedAt: null, runtime: null, storage: null }
   }
 
   function errorRecord(id, error, previous = null) {
@@ -149,6 +163,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       permissions: previous?.permissions || [], requires: [], apiVersion: previous?.apiVersion || 1,
       source: 'external', builtin: false, valid: false, manifestEnabled: false,
       enabled: false, status: 'error', error: safeMessage(error), loadedAt: null, runtime: null,
+      generation: randomUUID(), ui: null, uiRevision: 'none', uiWarning: '',
     }
   }
 
@@ -156,7 +171,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return Object.assign(new Error(message), { code })
   }
 
-  // 写目录和 data.json 都需要 realpath containment；包内源码路径从不作为写入目标。
+  // 写目录与文件都需要 realpath containment；包内源码路径从不作为写入目标。
   async function storagePath(record, filename = 'data.json') {
     const realRoot = await realpath(root)
     if (record.builtin) {
@@ -169,8 +184,13 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     }
     const dir = await realpath(record.moduleDir)
     if (!inside(realRoot, dir)) throw new Error('模块存储目录符号链接逃逸')
+    if (filename === 'config.json' && !record.builtin) {
+      const installedDir = join(root, record.id)
+      if ((await lstat(installedDir)).isSymbolicLink() || dir !== record.moduleDir || (await realpath(installedDir)) !== dir) throw new Error('模块配置目录不能是符号链接或被替换')
+    }
     const file = join(dir, filename)
     try {
+      if (filename === 'config.json' && !record.builtin && (await lstat(file)).isSymbolicLink()) throw new Error('模块配置文件不能是符号链接')
       if (!inside(dir, await realpath(file))) throw new Error('模块存储文件符号链接逃逸')
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     return file
@@ -462,7 +482,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         },
       })
     }
-    if (record.builtin && record.configSchema) {
+    if (record.configSchema) {
       api.config = Object.freeze({
         get: () => clone(record.configValues),
         onChange(handler) {
@@ -503,7 +523,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   async function loadRecord(record) {
-    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
+    record.generation = randomUUID()
+    const runtime = { generation: record.generation, active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
     record.runtime = runtime
     record.status = 'loading'
     try {
@@ -571,6 +592,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (records.has(manifest.id)) throw new Error('内置注册表 id 重复')
       if (typeof descriptor.load !== 'function') throw new Error('内置注册表缺少 lazy loader')
       const record = makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
+        ...loadWebuiDescriptor(descriptor.ui, { source: 'builtin' }),
         configSchema: descriptor.config === undefined ? null : validateConfigSchema(descriptor.config),
         defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) })
       await loadModuleConfig(record)
@@ -581,7 +603,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (entry.name === '.builtin' || (!entry.isDirectory() && !entry.isSymbolicLink())) continue
       // 保留命名空间的外部目录不可能覆盖真正的内置记录。
       if (records.has(entry.name)) { log.warn?.(`忽略保留的内置模块目录：${entry.name}`); continue }
-      try { records.set(entry.name, makeRecord(await manifestFor(join(root, entry.name), entry.name))) }
+      try {
+        const record = makeRecord(await manifestFor(join(root, entry.name), entry.name))
+        await loadModuleConfig(record)
+        records.set(entry.name, record)
+      }
       catch (error) { records.set(entry.name, errorRecord(entry.name, error)) }
     }
     await reconcile()
@@ -599,6 +625,62 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
 
   function list() {
     return [...records.values()].map(publicRecord).sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  function uiCatalog() {
+    return buildModuleUiCatalog(records.values(), hasUiGrant)
+  }
+
+  function hasUiGrant(record) {
+    const grant = uiGrants.get(record.id)
+    return Boolean(sandboxEligible(record) && record.uiArtifactHash && grant?.id === record.id && grant.uiRevision === record.uiRevision && grant.entry === record.ui.sandbox.entry && grant.artifactHash === record.uiArtifactHash)
+  }
+
+  async function checkedArtifact(record) {
+    if (!record?.uiArtifactHash || !sandboxEligible(record)) return null
+    try {
+      const artifact = await readUiArtifact(root, record)
+      if (artifact.hash === record.uiArtifactHash) return artifact
+    } catch {}
+    // Latch closed until reload: restoring bytes must not silently restore access.
+    record.uiArtifactHash = null
+    return null
+  }
+
+  function refreshUiCatalog() {
+    return serialize(async () => {
+      for (const record of records.values()) if (sandboxEligible(record)) await checkedArtifact(record)
+      return uiCatalog()
+    })
+  }
+
+  function stateSnapshot(nextDisabled = disabled, nextEnabled = enabledIds, nextGrants = uiGrants) {
+    return { disabled: [...nextDisabled].sort(), enabled: [...nextEnabled].sort(), uiGrants: Object.fromEntries(nextGrants) }
+  }
+
+  function setUiGrant(id, enabled) {
+    return serialize(async () => {
+      const record = records.get(checkAction(id))
+      if (typeof id !== 'string' || typeof enabled !== 'boolean' || !record || !sandboxEligible(record)) throw actionError('仅允许声明隔离 UI 和 ui:sandbox 权限的外部模块授权', 'MODULE_UI_UNAVAILABLE')
+      if (enabled && !await checkedArtifact(record)) throw actionError('隔离 UI 资源不可用，请重载后重新授权', 'MODULE_UI_UNAVAILABLE')
+      const next = new Map(uiGrants)
+      if (enabled) next.set(id, { id, uiRevision: record.uiRevision, entry: record.ui.sandbox.entry, artifactHash: record.uiArtifactHash })
+      else next.delete(id)
+      try { await writeJsonAtomic(stateFile, stateSnapshot(disabled, enabledIds, next)) }
+      catch { throw actionError('隔离 UI 授权保存失败', 'MODULE_UI_WRITE_FAILED') }
+      uiGrants = next
+      record.generation = randomUUID()
+      return uiCatalog().items.find((item) => item.moduleId === id)
+    })
+  }
+
+  function readSandboxAsset(id, generation, path) {
+    return serialize(async () => {
+      const record = records.get(id)
+      if (disposed || !record || !record.enabled || record.status !== 'loaded' || record.generation !== generation || !hasUiGrant(record)) return null
+      const artifact = await checkedArtifact(record)
+      return artifact && hasUiGrant(record) ? artifact.files.get(path) || null : null
+    })
   }
 
   function checkAction(id) {
@@ -625,7 +707,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         await reconcile()
         throw error
       }
-      try { records.set(normalized, makeRecord(await manifestFor(join(root, normalized), normalized))) }
+      try {
+        const record = makeRecord(await manifestFor(join(root, normalized), normalized))
+        await loadModuleConfig(record)
+        records.set(normalized, record)
+      }
       catch (error) { records.set(normalized, errorRecord(normalized, error, previous)) }
       await reconcile()
       return publicRecord(records.get(normalized))
@@ -642,7 +728,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       const nextDisabled = new Set(disabled), nextEnabled = new Set(enabledIds)
       if (enabled) { nextDisabled.delete(normalized); nextEnabled.add(normalized) }
       else { nextDisabled.add(normalized); nextEnabled.delete(normalized) }
-      try { await writeJsonAtomic(stateFile, { disabled: [...nextDisabled].sort(), enabled: [...nextEnabled].sort() }) }
+      try { await writeJsonAtomic(stateFile, stateSnapshot(nextDisabled, nextEnabled)) }
       catch { throw actionError('模块状态保存失败，运行状态未改变', 'MODULE_STATE_WRITE_FAILED') }
       disabled = nextDisabled; enabledIds = nextEnabled
       const affected = dependentClosure(records, [normalized])
@@ -659,12 +745,12 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   function configRecord(id) {
     if (disposed) throw actionError('模块内核已释放', 'MODULE_CONFIG_UNAVAILABLE')
     const record = typeof id === 'string' ? records.get(id) : null
-    if (!record?.builtin || !record.configSchema) throw actionError('模块不存在或不支持内置配置', 'MODULE_CONFIG_UNAVAILABLE')
+    if (!record?.configSchema) throw actionError('模块不存在或不支持模块配置', 'MODULE_CONFIG_UNAVAILABLE')
     return record
   }
 
   function configSnapshot(record) {
-    return { id: record.id, source: 'builtin', schema: clone(record.configSchema), values: clone(record.configValues), revision: record.configRevision }
+    return { id: record.id, source: record.source, schema: clone(record.configSchema), values: clone(record.configValues), revision: record.configRevision }
   }
 
   function getModuleConfig(id) {
@@ -732,6 +818,6 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
-  return { start, list, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
+  return { start, list, uiCatalog, refreshUiCatalog, setUiGrant, readSandboxAsset, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
 }
 

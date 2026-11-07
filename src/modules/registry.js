@@ -1,4 +1,15 @@
 // 静态、受信任的包内目录；禁止文件系统发现。关闭时不调用 load。
+function builtinUi(componentKey, binding) {
+  return Object.freeze({
+    version: 1,
+    config: Object.freeze({ binding, schemaVersion: 1, available: true }),
+    surfaces: Object.freeze([
+      Object.freeze({ id: 'detail', hook: 'module.detail', renderer: 'builtin-react', componentKey, order: 0 }),
+      Object.freeze({ id: 'config', hook: 'module.config', renderer: 'schema', order: 10 }),
+    ]),
+    requestedCapabilities: Object.freeze([]),
+  })
+}
 export const builtinRegistry = Object.freeze([
   Object.freeze({
     manifest: Object.freeze({
@@ -9,6 +20,7 @@ export const builtinRegistry = Object.freeze([
       requires: Object.freeze([]),
     }),
     provides: Object.freeze(['reminders']),
+    ui: builtinUi('reminders.preview', 'legacy-core'),
     defaultEnabled: true,
     load: () => import('./builtin/reminders.js'),
   }),
@@ -21,6 +33,7 @@ export const builtinRegistry = Object.freeze([
     }),
     defaultEnabled: true,
     load: () => import('./builtin/typing.js'),
+    ui: builtinUi('typing.preview', 'legacy-core'),
   }),
   Object.freeze({
     manifest: Object.freeze({
@@ -31,6 +44,7 @@ export const builtinRegistry = Object.freeze([
     }),
     defaultEnabled: true,
     load: () => import('./builtin/reply-delivery.js'),
+    ui: builtinUi('reply-delivery.preview', 'legacy-core'),
   }),
   Object.freeze({
     manifest: Object.freeze({
@@ -39,6 +53,7 @@ export const builtinRegistry = Object.freeze([
       permissions: Object.freeze(['commands', 'storage']), requires: Object.freeze([]),
     }),
     defaultEnabled: false,
+    ui: builtinUi('sample.preview', 'module-file'),
     config: Object.freeze({
       version: 1,
       fields: Object.freeze([

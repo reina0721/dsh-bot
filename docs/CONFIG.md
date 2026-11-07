@@ -4,6 +4,8 @@
 保存/热应用规则和环境变量。配置项来源是 `src/core/config.js` 的 `DEFAULTS`（默认值）与
 `CONFIG_GROUPS`（面板字段表）；面板表单完全按 `CONFIG_GROUPS` 数据驱动渲染。
 
+模块 WebUI Phase 1 只增加配置归属元数据（[ADR-014](architecture/ADR-014-module-webui.md)），不新增配置值或迁移编辑器。reply-delivery、typing、reminders 的 UI binding 为 `legacy-core`、available:false，继续使用原 cognition.reply/typing/reminders 存储 key 与配置页；sample 为 `module-file`、available:true，仍用原模块行内编辑与独立配置文件。UI schemaVersion:1 是描述契约元数据，不改变全局配置版本或配置值 revision。`GET /onebot-qq/api/modules/ui` 不读取或返回配置值、字段表、默认值或路径；外部声明无法开启配置编辑。未来配置 UI 归属模块页时仍须保留现有存储 key。
+
 > 结论先行：**没有任何写死的算法参数**。重连退避、超时、重试、核验缓冲、事件过滤、缓冲容量、
 > 日志级别、面板刷新间隔……都可以在 `config.json` 或面板「配置」页修改；保存即热应用。
 
