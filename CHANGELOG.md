@@ -1,6 +1,6 @@
 # 变更记录
 
-## 未发布（Unreleased）
+## 0.11.11（2026-11-07，模块 WebUI v1）
 
 - 模块 WebUI Phase 5：外部仅可通过 ui:sandbox 权限、sandbox 描述和显式绑定授权运行不透明源 iframe；state.json 追加 uiGrants，绑定 id/UI revision/entry/公开资源 SHA-256，停用保留授权、撤销保留配置。独立 generation 资源路由实施公开路径/扩展名/MIME/realpath/符号链接/大小检查与强制 CSP、no-store/nosniff，变更或无授权关闭。详情增加确认授权/撤销与禁用说明，iframe 固定 allow-scripts/no-referrer；v1 nonce 桥仅 ready/有界 resize/纯文本 notify，验证 source/生命周期/字段并清理。宿主 API 拒绝 opaque origin 与 frame/子资源请求。补充安全测试、作者示例与威胁模型；真实浏览器 sandbox/CSP 未验证，不支持外部同源 React/宿主配置或 API/DSH slots。无依赖、版本、推送、部署、tag 或发布。
 

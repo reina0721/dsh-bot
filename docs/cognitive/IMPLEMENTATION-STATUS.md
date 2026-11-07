@@ -1,4 +1,4 @@
-# 实现状态（v0.11.10 发布后，M7-v 工作区）
+# 实现状态（v0.11.11 发布后，M7-v 工作区）
 
 模块架构 Phase 14（未发布，I/T）：在 Phase 13 基线上只补边界测试、最终文档与包验收；四个生产内置为 reply delivery、typing、reminders、sample，前三个默认启用，sample 默认关闭。外部稳定 API 的 11 项内置特权与 source/builtin 伪造逐项拒绝；provider 仅 builtin-reminders，宿主排空旧所有者再交接/失败回退核心；提醒仓库固定当前人格，capture 固定在途原人格，只读配置只含全局五字段，无路径/秘密泄漏。媒体传输/存储/provider/HTTP/文件约束保留核心，不提取 builtin-media 服务，无数据迁移。没有生产行为、配置/UI/依赖/版本变化；仅离线验证，无 live/浏览器，本阶段无推送/部署/发布。证据与限制见[最终验收](../architecture/MODULE-ACCEPTANCE.md)和[ADR-013](../architecture/ADR-013-media-boundary.md)。
 
