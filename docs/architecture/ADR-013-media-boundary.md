@@ -4,6 +4,8 @@
 - 日期：2026-11-07
 - 前置：[ADR-004](ADR-004-unified-egress.md)、[ADR-010](ADR-010-provider-composition.md)、[ADR-012](ADR-012-builtin-reminders.md)
 
+后续：[ADR-015](ADR-015-builtin-media-features.md) 已实现宿主持有的窄端口和功能策略/命令提取；下文为 Phase 14 历史决定。传输、存储、凭据和文件边界继续留核心。
+
 ## 决定与原因
 
 媒体服务继续作为核心基础设施，由 host 构造和持有。媒体传输、下载与上传、文件及表情包存储、媒体 provider 调用与凭据解析、HTTP 路由、文件路径及 realpath/符号链接约束全部留在核心。本架构程序不提取 `builtin-media` 服务，不新增媒体模块或 provider 槽位，不迁移数据。

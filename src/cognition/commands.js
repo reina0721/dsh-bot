@@ -90,16 +90,17 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, delivery = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, identities = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, delivery = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, identities = null, media = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
-  function registerCommand(name, handler, { ownerOnly = true, allowProtected = false } = {}) {
+  function registerCommand(name, handler, { ownerOnly = true, allowProtected = false, audience } = {}) {
     const normalized = String(name || '').toLowerCase()
     if (!EXTERNAL_COMMAND_RE.test(normalized)) throw new Error('命令名必须匹配 ^[a-z][a-z0-9_-]{0,31}$')
     if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
     if ((COMMANDS.includes(normalized) && allowProtected !== true) || externalCommands.has(normalized)) throw new Error(`命令 /${normalized} 已注册`)
-    const registration = { handler, ownerOnly: ownerOnly !== false }
+    if (audience !== undefined && !['owner', 'owner-or-operator'].includes(audience)) throw new Error('命令 audience 不合法')
+    const registration = { handler, ownerOnly: ownerOnly !== false, audience }
     externalCommands.set(normalized, registration)
     return () => {
       if (externalCommands.get(normalized) === registration) externalCommands.delete(normalized)
@@ -331,7 +332,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     const owner = ownerCheck(turn)
     const operator = !owner && isOperator(currentConfig(), turn.senderId)
     const operatorSafe = operator && OPERATOR_COMMANDS.includes(parsed.name) && (parsed.name !== 'model' || !parsed.args)
-    if (!owner && (external ? external.ownerOnly : !operatorSafe)) {
+    if (!owner && (external ? (external.audience === 'owner-or-operator' ? !operator : external.audience === 'owner' || external.ownerOnly) : !operatorSafe)) {
       log.debug?.('无命令权限，已忽略：', `${turn.chatType}:${turn.chatId}/${turn.senderId}`)
       return { handled: true, reply: '' }
     }
@@ -357,6 +358,9 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         return send(turn, `命令 /${parsed.name} 执行失败。`)
       }
     }
+
+    // Extracted commands have no core feature fallback.
+    if (['bili', 'sticker'].includes(parsed.name)) return { handled: true, reply: '' }
 
     const approvalParts = parsed.args.split(/\s+/)
     if (parsed.name === 'approvals' || (['approve', 'reject'].includes(parsed.name) && /^apr_[a-f0-9]{32}$/.test(approvalParts[0]))) {
@@ -457,35 +461,6 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       } catch { return send(turn, '插话失败：请检查当前会话与 agent 状态。') }
     }
 
-    if (parsed.name === 'bili') {
-      if (currentConfig().content?.bilibili?.enabled !== true) return send(turn, 'B站内容未启用')
-      if (!bilibili) return send(turn, 'B站内容服务不可用')
-      try {
-        const subcommand = /^(comments|share)(?:\s+(.*))?$/i.exec(parsed.args)
-        if (subcommand) {
-          const kind = subcommand[1].toLowerCase()
-          const bvid = (subcommand[2] || '').trim()
-          if (!bvid) return send(turn, `用法：/bili ${kind} BV号`)
-          if (kind === 'share') return send(turn, (await bilibili.share(bvid)).url)
-          const result = await bilibili.comments(bvid)
-          const items = Array.isArray(result?.items) ? result.items : []
-          if (!items.length) return send(turn, '没有可显示的 B站公开评论。')
-          return send(turn, items.map((item, index) => `${index + 1}. ${oneLine(item.author, 40)} · 赞 ${Number(item.like) || 0}\n${oneLine(item.content, 500)}`).join('\n'))
-        }
-        let result
-        if (parsed.args.toLowerCase() === 'hot') result = await bilibili.hot()
-        else if (/^BV[0-9A-Za-z]{3,}$/i.test(parsed.args)) result = await bilibili.video(parsed.args)
-        else if (parsed.args) result = await bilibili.search(parsed.args)
-        else return send(turn, '用法：/bili hot | /bili 关键词 | /bili BV号 | /bili comments BV号 | /bili share BV号')
-        const items = Array.isArray(result?.items) ? result.items : []
-        if (!items.length) return send(turn, '没有找到 B站视频。')
-        const lines = items.map((item, index) => `${index + 1}. ${oneLine(item.title, 100)}\n${oneLine(item.author, 40)} · 播放 ${Number(item.play) || 0} · ${item.duration || '00:00'}\n${item.url}`)
-        return send(turn, lines.join('\n'))
-      } catch (error) {
-        return send(turn, `B站请求失败：${oneLine(error?.message || error, 100)}`)
-      }
-    }
-
     if (parsed.name === 'say') {
       if (!parsed.args) return send(turn, '用法：/say 要发送的文本')
       if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
@@ -536,21 +511,6 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'record', filePath })
         return { handled: true, reply: '' }
       } catch (error) { return send(turn, `TTS 失败：${oneLine(error?.message || error, 100)}`) }
-    }
-
-    if (parsed.name === 'sticker') {
-      const mediaConfig = currentConfig().media || {}
-      if (!mediaConfig.enabled || !mediaConfig.stickers?.enabled || !mediaConfig.images?.enabled) return send(turn, '表情包功能未启用。')
-      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
-      if (!stickers?.pick || !stickers?.fileFor || !media?.sendMedia) return send(turn, '表情包服务不可用。')
-      try {
-        const item = await stickers.pick({ tag: parsed.args })
-        if (!item) return send(turn, '还没有表情包，先在媒体面板上传')
-        const file = await stickers.fileFor(item.id)
-        if (!file) return send(turn, '表情包文件不存在。')
-        await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'image', filePath: file.path, name: item.name })
-        return { handled: true, reply: '' }
-      } catch (error) { return send(turn, `表情包发送失败：${oneLine(error?.message || error, 100)}`) }
     }
 
     if (parsed.name === 'quiet' || parsed.name === 'active') {

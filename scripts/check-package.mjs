@@ -17,7 +17,7 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
-    for(const file of ['src/modules/webui.js','docs/architecture/ADR-014-module-webui.md']) readFileSync(join(base,file));
+    for(const file of ['src/modules/webui.js','docs/architecture/ADR-014-module-webui.md','docs/architecture/ADR-015-builtin-media-features.md','src/modules/media-features-port.js','src/modules/builtin/media-features/index.js','src/modules/builtin/media-features/bilibili.js','src/modules/builtin/media-features/commands.js']) readFileSync(join(base,file));
     for(const file of ['docs/ARCHITECTURE.md','docs/MODULES.md','docs/cognitive/IMPLEMENTATION-STATUS.md','docs/architecture/ADR-013-media-boundary.md','docs/architecture/MODULE-ACCEPTANCE.md']) readFileSync(join(base,file));
     for(const file of ['src/host.js','src/cognition/turn-hooks.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/reminders.js','src/reminders/service.js','src/reminders/commands.js','src/modules/builtin/typing.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
@@ -51,6 +51,7 @@ try {
       let calls = 0;
       const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, providerRegistry, deliveryRegistry, turnHooks, gateway, commands: {
         registerCommand(name, handler, options) {
+          if (['bili', 'sticker'].includes(name)) { assert.equal(options.allowProtected, true); assert.equal(options.audience, name === 'bili' ? 'owner-or-operator' : 'owner'); return () => {}; }
           if (['remind', 'reminders', 'forgetreminder'].includes(name)) { assert.equal(options.allowProtected, true); assert.equal(options.ownerOnly, true); return () => {}; }
           assert.equal(name, 'module-sample'); assert.equal(options.ownerOnly, true);
           assert.equal(handler(), '内置示例模块已启用。'); calls++; return () => {};
@@ -58,18 +59,21 @@ try {
       } });
       try {
         const items = await kernel.start();
-        assert.deepEqual(items.map(item => item.id), ['builtin-reminders', 'builtin-reply-delivery', 'builtin-sample', 'builtin-typing']);
-        assert.equal(items.length, 4); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
+        assert.deepEqual(items.map(item => item.id), ['builtin-media-features', 'builtin-reminders', 'builtin-reply-delivery', 'builtin-sample', 'builtin-typing']);
+        assert.equal(items.length, 5); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
         const ui = kernel.uiCatalog();
-        assert.equal(ui.version, 1); assert.equal(ui.items.length, 4);
+        assert.equal(ui.version, 1); assert.equal(ui.items.length, 5);
         for (const item of ui.items) {
-          assert.equal(item.trust, 'builtin'); assert.equal(item.surfaces.length, 2);
+          assert.equal(item.trust, 'builtin'); assert.equal(item.surfaces.length, item.moduleId === 'builtin-media-features' ? 3 : 2);
           assert.equal(item.uiWarning, ''); assert.deepEqual(item.grantedCapabilities, []);
           assert.equal(item.generation, items.find(row => row.id === item.moduleId).generation);
           assert.equal(item.config.binding, item.moduleId === 'builtin-sample' ? 'module-file' : 'legacy-core');
         }
         assert.ok(!JSON.stringify(ui).includes(root));
         assert.deepEqual(kernel.uiCatalog(), ui);
+        const media = items.find(item => item.id === 'builtin-media-features');
+        assert.equal(media.status, 'loaded'); assert.ok(providerRegistry.get('mediaFeatures'));
+        await kernel.setEnabled(media.id, false); assert.equal(providerRegistry.get('mediaFeatures'), null);
         const reminders = items.find(item => item.id === 'builtin-reminders');
         assert.equal(reminders.status, 'loaded'); assert.equal(reminders.enabled, true); assert.equal(reminders.hasConfig, false);
         assert.ok(providerRegistry.get('reminders'));

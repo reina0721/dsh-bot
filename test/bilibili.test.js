@@ -1,10 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { createBilibiliService } from '../src/content/bilibili.js'
+import { createBilibiliService as createService } from '../src/modules/builtin/media-features/bilibili.js'
+import { createBilibiliTransport } from '../src/modules/media-features-port.js'
+const createBilibiliService = ({ getConfig, fetchImpl }) => createService({ getConfig, transport: createBilibiliTransport({ getConfig, fetchImpl }) })
 
 function response(data, { ok = true, status = 200 } = {}) {
-  return { ok, status, async json() { return data } }
+  return new Response(JSON.stringify(data), { status: ok ? 200 : status })
 }
 
 function service(payloads, config = { enabled: true, timeoutMs: 15000, maxResults: 2 }) {
@@ -13,7 +15,7 @@ function service(payloads, config = { enabled: true, timeoutMs: 15000, maxResult
     calls.push({ url: String(url), options })
     const next = payloads.shift()
     if (next instanceof Error) throw next
-    return next
+    return next instanceof Response ? next.clone() : next
   }
   return { calls, api: createBilibiliService({ getConfig: () => ({ content: { bilibili: config } }), fetchImpl }) }
 }
@@ -149,8 +151,8 @@ test('bilibili：详情和评论端点的非零 code、HTTP、网络及正文超
     [new Error('socket secret'), /^Error: B站请求失败$/],
     [new DOMException('timeout', 'TimeoutError'), /请求超时/],
     [new DOMException('abort', 'AbortError'), /请求超时/],
-    [{ ok: true, json: async () => { throw new SyntaxError('body secret') } }, /返回无效数据/],
-    [{ ok: true, json: async () => { throw new DOMException('body timeout', 'TimeoutError') } }, /请求超时/],
+    [new Response('not json'), /返回无效数据/],
+    [new Response(new ReadableStream({ start(controller) { controller.error(new DOMException('body timeout', 'TimeoutError')) } })), /请求超时/],
   ]
   for (const [failure, pattern] of cases) {
     for (const stage of ['view', 'reply']) {

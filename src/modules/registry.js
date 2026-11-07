@@ -1,16 +1,30 @@
 // 静态、受信任的包内目录；禁止文件系统发现。关闭时不调用 load。
-function builtinUi(componentKey, binding) {
+function builtinUi(componentKey, binding, panel = null) {
   return Object.freeze({
     version: 1,
     config: Object.freeze({ binding, schemaVersion: 1, available: true }),
     surfaces: Object.freeze([
       Object.freeze({ id: 'detail', hook: 'module.detail', renderer: 'builtin-react', componentKey, order: 0 }),
       Object.freeze({ id: 'config', hook: 'module.config', renderer: 'schema', order: 10 }),
+      ...(panel ? [Object.freeze({ id: 'panel', hook: 'module.panel', renderer: 'builtin-react', componentKey: panel, order: 20 })] : []),
     ]),
     requestedCapabilities: Object.freeze([]),
   })
 }
 export const builtinRegistry = Object.freeze([
+  Object.freeze({
+    manifest: Object.freeze({
+      id: 'builtin-media-features', name: '媒体功能', version: '1.0.0',
+      description: 'B站公共内容与表情包策略、命令；存储和媒体传输由核心管理',
+      entry: 'builtin/media-features/index.js', apiVersion: 1,
+      permissions: Object.freeze(['providers:register', 'media:features', 'commands', 'commands:override']),
+      requires: Object.freeze([]),
+    }),
+    provides: Object.freeze(['mediaFeatures']),
+    ui: builtinUi('media-features.preview', 'legacy-core', 'media-features.panel'),
+    defaultEnabled: true,
+    load: () => import('./builtin/media-features/index.js'),
+  }),
   Object.freeze({
     manifest: Object.freeze({
       id: 'builtin-reminders', name: '本地提醒', version: '1.0.0',

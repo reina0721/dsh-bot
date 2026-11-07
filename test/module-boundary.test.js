@@ -56,6 +56,7 @@ const privileged = [
   ['scheduler', 'api.scheduler.setTimeout(() => {}, 0)', /setTimeout/, false],
   ['persona:store', "api.personaStore.put('key', {})", /persona:store.*仅允许内置/, true],
   ['reminders:service', 'api.reminderRepository.list()', /reminders:service.*仅允许内置/, true],
+  ['media:features', 'api.mediaFeatures.status()', /media:features.*仅允许内置/, true],
   ['config:read', "api.legacyConfig.section('cognition.reminders')", /config:read.*仅允许内置/, true],
   ['commands:override', "api.registerCommand('remind', () => '', { overrideBuiltin: true })", /受保护命令.*内置/, false],
   ['delivery:send', "api.delivery.send({ chatType: 'private', chatId: '123', text: 'denied' })", /delivery:send.*仅允许内置/, true],
@@ -148,10 +149,11 @@ test('final module boundary: provider registration needs both loader-owned sourc
     { moduleId: 'external-test', source: 'external' }), /仅允许内置/)
 })
 
-test('final module boundary: production catalog has four builtins and only builtin-reminders owns a provider', async t => {
+test('final module boundary: production catalog has five builtins with isolated reminder and media providers', async t => {
   const h = await harness(t, builtinRegistry)
   const records = await h.kernel.start()
   assert.deepEqual(records.map(({ id, source, status }) => ({ id, source, status })), [
+    { id: 'builtin-media-features', source: 'builtin', status: 'loaded' },
     { id: 'builtin-reminders', source: 'builtin', status: 'loaded' },
     { id: 'builtin-reply-delivery', source: 'builtin', status: 'loaded' },
     { id: 'builtin-sample', source: 'builtin', status: 'disabled' },
@@ -159,8 +161,8 @@ test('final module boundary: production catalog has four builtins and only built
   ])
   assert.deepEqual(builtinRegistry.filter(item => item.provides?.length).map(item =>
     ({ id: item.manifest.id, provides: [...item.provides] })),
-  [{ id: 'builtin-reminders', provides: ['reminders'] }])
-  assert.deepEqual(h.providers.list(), [{ name: 'reminders', moduleId: 'builtin-reminders', source: 'builtin' }])
+  [{ id: 'builtin-media-features', provides: ['mediaFeatures'] }, { id: 'builtin-reminders', provides: ['reminders'] }])
+  assert.deepEqual(h.providers.list(), [{ name: 'mediaFeatures', moduleId: 'builtin-media-features', source: 'builtin' }, { name: 'reminders', moduleId: 'builtin-reminders', source: 'builtin' }])
   assert.equal(h.providers.get('media'), null)
   assert.equal(h.planners.resolve().id, 'builtin-reply-delivery')
   assert.equal(h.hooks.list()[0].id, 'builtin-typing')

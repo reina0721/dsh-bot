@@ -1,9 +1,3 @@
-const API = 'https://api.bilibili.com'
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; dsh-bot/1.0; +https://github.com/reina0721/dsh-bot)',
-  Referer: 'https://www.bilibili.com/',
-}
-
 function stripTitle(value) {
   return String(value ?? '').replace(/<em\b[^>]*>/gi, '').replace(/<\/em>/gi, '').replace(/<[^>]+>/g, '').trim()
 }
@@ -90,13 +84,12 @@ function normalizeVideo(raw = {}) {
   }
 }
 
-export function createBilibiliService({ getConfig, logger = null, fetchImpl = globalThis.fetch } = {}) {
+export function createBilibiliService({ getConfig, transport } = {}) {
   const cfg = () => {
     try { return getConfig?.()?.content?.bilibili || {} } catch (error) { return {} }
   }
   const settings = () => ({
     enabled: cfg().enabled === true,
-    timeoutMs: Math.max(1000, Math.min(60000, Math.floor(Number(cfg().timeoutMs)) || 15000)),
     maxResults: Math.max(1, Math.min(20, Number(cfg().maxResults) || 5)),
   })
 
@@ -106,23 +99,7 @@ export function createBilibiliService({ getConfig, logger = null, fetchImpl = gl
 
   async function request(path, params = {}) {
     requireEnabled()
-    const options = settings()
-    if (typeof fetchImpl !== 'function') throw new Error('B站请求服务不可用')
-    const url = new URL(path, API)
-    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, String(value)))
-    let response
-    try {
-      response = await fetchImpl(url, { headers: HEADERS, signal: AbortSignal.timeout(options.timeoutMs) })
-    } catch (error) {
-      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') throw new Error('B站请求超时')
-      throw new Error('B站请求失败')
-    }
-    if (!response?.ok) throw new Error(`B站接口 HTTP ${Number(response?.status) || '错误'}`)
-    let payload
-    try { payload = await response.json() } catch (error) {
-      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') throw new Error('B站请求超时')
-      throw new Error('B站接口返回无效数据')
-    }
+    const payload = await transport[path](params)
     if (Number(payload?.code) !== 0) {
       const message = String(payload?.message || payload?.msg || '').trim()
       if ([-101, -352, -412].includes(Number(payload?.code))) throw new Error('B站公开接口要求登录或当前访问被限制；本服务不使用 Cookie/WBI')
@@ -135,14 +112,14 @@ export function createBilibiliService({ getConfig, logger = null, fetchImpl = gl
     const value = String(keyword || '').trim()
     if (!value) throw new Error('请输入搜索关键词')
     const options = settings()
-    const data = await request('/x/web-interface/search/type', { search_type: 'video', keyword: value, page: 1, page_size: options.maxResults })
+    const data = await request('search', { keyword: value, page_size: options.maxResults })
     const rows = Array.isArray(data?.result) ? data.result : []
     return { ok: true, items: rows.filter((row) => validBvid(String(row?.bvid || ''))).slice(0, options.maxResults).map(normalizeVideo) }
   }
 
   async function hot() {
     const options = settings()
-    const data = await request('/x/web-interface/popular', { pn: 1, ps: options.maxResults })
+    const data = await request('popular', { ps: options.maxResults })
     const rows = Array.isArray(data?.list) ? data.list : []
     return { ok: true, items: rows.filter((row) => validBvid(String(row?.bvid || ''))).slice(0, options.maxResults).map(normalizeVideo) }
   }
@@ -150,7 +127,7 @@ export function createBilibiliService({ getConfig, logger = null, fetchImpl = gl
   async function video(bvid) {
     requireEnabled()
     const value = parseBvid(bvid)
-    const data = await request('/x/web-interface/view', { bvid: value })
+    const data = await request('view', { bvid: value })
     if (data?.bvid !== value) throw new Error('B站接口返回无效视频数据')
     return { ok: true, items: [normalizeVideo(data)] }
   }
@@ -161,7 +138,7 @@ export function createBilibiliService({ getConfig, logger = null, fetchImpl = gl
     const count = commentLimit(limit)
     const detail = (await video(value)).items[0]
     if (!detail.aid) throw new Error('B站视频缺少有效 aid，无法读取公开评论')
-    const data = await request('/x/v2/reply', { type: 1, oid: detail.aid, sort: 2, ps: count, pn: 1 })
+    const data = await request('replies', { oid: detail.aid, ps: count })
     if (!data || typeof data !== 'object') throw new Error('B站接口返回无效评论数据')
     const top = Array.isArray(data.top_replies) ? data.top_replies : []
     const rows = Array.isArray(data.replies) ? data.replies : []

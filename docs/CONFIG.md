@@ -13,6 +13,8 @@
 
 此功能默认空，不增加 `DEFAULTS`、`CONFIG_GROUPS` 或环境变量字段。仅主人通过 `/identity` 命令手动维护，受既有访问控制和 `cognition.permissions.deniedCommands` 约束。记录独立保存在 `cognition/cognition.sqlite` 的全局 `manual_identity` kind（存储 fallback 时为对应 JSON），不随人格切换/复制/删除，也不进入既有人物 identity 迁移/查询。没有新增 HTTP/API 或面板；不创建、修改或合并人物、不自动验证/关联或路由消息，无 Telegram/Discord adapter。用法与校验规则见[用户手册](USER-MANUAL.md#手动跨平台身份登记m7-v)。
 
+媒体功能现归默认启用的 `builtin-media-features`；六个原键 `content.bilibili.enabled/timeoutMs/maxResults`、`media.stickers.enabled/maxCount/maxBytes` 在「模块 → 媒体功能」详情编辑，元数据 `module:'builtin-media-features'`，仍使用原全局 config.json 和默认值，无迁移。模块停用则 `/bili`、`/sticker` 与相关 HTTP 操作关闭，无 core 回退；`/media/status` 继续报告可用性。媒体/图片父开关留核心，只以布尔状态投影给模块；贴纸还需两个父开关开启。Bilibili 操作 UI 位于模块详情，贴纸管理保留媒体页并按 provider 授权。详见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。
+
 ## 1. 配置文件位置
 
 | 用途 | 路径 |
@@ -236,7 +238,7 @@ B站公共内容默认关闭，因此默认配置不会发起网络请求。支�
 
 | 路径 | 默认值 | 取值 / 范围 | 作用 |
 |---|---|---|---|
-| `content.bilibili.enabled` | `false` | `true`/`false` | 启用 `/bili`、内容页和 B站 REST 查询 |
+| `content.bilibili.enabled` | `false` | `true`/`false` | 启用 `/bili`、模块详情 B站面板和 B站 REST 查询（还需模块启用） |
 | `content.bilibili.timeoutMs` | `15000` | 1000–60000 ms | 单次公开接口超时 |
 | `content.bilibili.maxResults` | `5` | 1–20 | 搜索/热门最多返回条数 |
 

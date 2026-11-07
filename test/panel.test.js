@@ -1572,7 +1572,7 @@ test('MediaPage files: size/extension checks before reading, read/upload/list er
 
 test('ContentPage：评论与分享本地查询、禁用/防重、纯文本渲染和输入切换清空', async () => {
   const originalFetch = globalThis.fetch, calls = [], toasts = []
-  const render = mountNode({ type: panel.ContentPage, props: { toast: (...args) => toasts.push(args) } })
+  const render = mountNode({ type: panel.MediaFeaturesPanel, props: { toast: (...args) => toasts.push(args) } })
   let release
   globalThis.fetch = (path) => {
     calls.push(path)
@@ -1613,7 +1613,7 @@ test('ContentPage：评论与分享本地查询、禁用/防重、纯文本渲�
 
 test('ContentPage：空评论、服务关闭/风控与网络失败明确展示，失败后可重试', async () => {
   const originalFetch = globalThis.fetch
-  const render = mountNode({ type: panel.ContentPage, props: { toast() {} } })
+  const render = mountNode({ type: panel.MediaFeaturesPanel, props: { toast() {} } })
   let payload = { ok: true, items: [] }, failure = false
   globalThis.fetch = async () => {
     if (failure) throw new Error('本地请求失败')
@@ -2132,7 +2132,7 @@ test('ModulesPage legacy config: all owned fields, draft values, global patch sa
   const original = globalThis.fetch, calls = [], patches = []
   globalThis.fetch = async (path) => { calls.push(path); throw Error('legacy detail must not fetch module-file config') }
   try {
-    for (const id of ['builtin-reply-delivery', 'builtin-typing', 'builtin-reminders']) {
+    for (const id of ['builtin-reply-delivery', 'builtin-typing', 'builtin-reminders', 'builtin-media-features']) {
       const owned = CONFIG_GROUPS.flatMap((group) => group.fields).filter((spec) => spec.module === id)
       assert.ok(owned.length)
       const item = { id, builtin: true, source: 'builtin', status: 'loaded', enabled: true, generation: id, uiRevision: 'ui' }
@@ -2246,7 +2246,7 @@ test('ModulesPage config: successful save keeps new revision when reread fails',
 test('ModulesPage Phase 3B: four trusted previews render bounded read-only drafts without requests', () => {
   assert.ok(Object.isFrozen(panel.BUILTIN_MODULE_UI))
   assert.deepEqual(Object.keys(panel.BUILTIN_MODULE_UI), BUILTIN_COMPONENT_KEYS)
-  const draft = { secret: 'global-secret-marker', cognition: {
+  const draft = { secret: 'global-secret-marker', content: { bilibili: { enabled: false } }, media: { enabled: true, images: { enabled: true }, stickers: { enabled: true } }, cognition: {
     reply: { split: true, maxChars: 480, maxParts: 4, quote: true, atSender: false, delayMs: 800, secret: 'reply-secret-marker' },
     typing: { enabled: true },
     reminders: { enabled: true, maxActive: 25, minIntervalSeconds: 120, maxIntervalSeconds: 3600, tickMs: 5000 },
@@ -2259,6 +2259,7 @@ test('ModulesPage Phase 3B: four trusted previews render bounded read-only draft
       ['typing', ['模块启用：开启', '输入状态开关：开启', '输入状态有效状态：开启（仅私聊，依赖网关支持）']],
       ['reminders', ['模块启用：开启', '主人提醒开关：开启', '每人格活跃提醒上限：25', '最短重复间隔：120 s', '最长重复间隔：3600 s', '到期检查间隔：5000 ms']],
       ['sample', ['示例回复：<img src=x onerror=evil()> 只读样例']],
+      ['media-features', ['模块启用：开启', 'B站公共内容：关闭', '表情包开关：开启', '表情包有效状态：开启']],
     ]
     for (const [name, expected] of cases) {
       const item = { id: 'builtin-' + name, name: 'n'.repeat(200), builtin: true, source: 'builtin', enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
@@ -2455,4 +2456,21 @@ test('sandbox iframe: repeated loads rotate bridge and unmount removes listener/
     reactShim.useEffect = effect
     window.crypto = host.crypto; window.addEventListener = host.add; window.removeEventListener = host.remove; window.setTimeout = host.timeout; window.clearTimeout = host.clear
   }
+})
+
+test('media module panel mounts only in loaded builtin detail; content tab only points to modules', () => {
+  const item = { id: 'builtin-media-features', builtin: true, source: 'builtin', enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
+  const ui = moduleUi(item, { surfaces: [{ id: 'panel', hook: 'module.panel', renderer: 'builtin-react', componentKey: 'media-features.panel', order: 0 }] })
+  const render = (patch = {}) => {
+    const current = { ...item, ...patch }
+    stateOverrides = [[current], false, '', '', null, '', moduleCatalog({ ...ui, status: current.status }), '', item.id]
+    try { return panel.ModulesPage({ toast() {} }) } finally { stateOverrides = null }
+  }
+  assert.ok(treeNodes(render()).some(node => node.type === panel.MediaFeaturesPanel))
+  assert.equal(treeNodes(render({ enabled: false, status: 'disabled' })).some(node => node.type === panel.MediaFeaturesPanel), false)
+  const navigation = []
+  const tree = panel.ContentPage({ go: value => navigation.push(value) })
+  control(tree, '打开模块').props.onClick()
+  assert.deepEqual(navigation, ['modules'])
+  assert.equal(treeNodes(tree).some(node => node.type === panel.MediaFeaturesPanel || node.type === 'input'), false)
 })

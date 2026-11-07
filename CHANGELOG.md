@@ -1,5 +1,11 @@
 # 变更记录
 
+## 未发布（one-shot 模块 1，2026-11-07）
+
+- 默认启用 builtin-media-features，独占 Bilibili 解释/命令和贴纸策略/命令；新增固定 mediaFeatures 槽位和内置专用 media:features 窄端口，提醒订阅隔离。删除核心 Bilibili 服务与两个功能命令实现，模块停用后命令静默、相关 HTTP fail closed，无核心回退。
+- 核心固定 Bilibili 四操作的 origin/端点/headers/超时/2 MiB 流式响应上限并拒绝重定向；贴纸用一次性、绑定授权聊天和生命周期的 commandToken，核心解析/校验文件并经 delivery/outbound 发送一次，不暴露路径、字节或凭据。媒体 transport/provider/存储继续留核心。
+- 六个原配置字段移入模块详情，沿用键/默认值/保存；新增纯预览及 Bilibili 操作 panel，原内容页保留入口指引。贴纸控件留核心媒体页并通过 provider 授权，status 在禁用后仍可读。补充行为对等、受众/访问、令牌/生命周期、路由关闭、UI/包验证及 ADR-015。无数据迁移、版本/依赖变化、新 DSH slot、推送、部署、标签或发布；未做真实 provider/QQ/浏览器验收。
+
 ## 0.11.11（2026-11-07，模块 WebUI v1）
 
 - 模块 WebUI Phase 5：外部仅可通过 ui:sandbox 权限、sandbox 描述和显式绑定授权运行不透明源 iframe；state.json 追加 uiGrants，绑定 id/UI revision/entry/公开资源 SHA-256，停用保留授权、撤销保留配置。独立 generation 资源路由实施公开路径/扩展名/MIME/realpath/符号链接/大小检查与强制 CSP、no-store/nosniff，变更或无授权关闭。详情增加确认授权/撤销与禁用说明，iframe 固定 allow-scripts/no-referrer；v1 nonce 桥仅 ready/有界 resize/纯文本 notify，验证 source/生命周期/字段并清理。宿主 API 拒绝 opaque origin 与 frame/子资源请求。补充安全测试、作者示例与威胁模型；真实浏览器 sandbox/CSP 未验证，不支持外部同源 React/宿主配置或 API/DSH slots。无依赖、版本、推送、部署、tag 或发布。

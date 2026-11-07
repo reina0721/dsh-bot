@@ -11,11 +11,19 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
+## 内置媒体功能（one-shot 模块 1）
+
+当前目录共五个内置模块：media-features、reminders、reply-delivery、typing 默认启用，sample 默认关闭。`builtin-media-features` 是 Bilibili 功能服务、`/bili`、表情包策略和 `/sticker` 的唯一所有者；停用不恢复核心实现。其 `mediaFeatures` 槽位仅允许此模块注册，模块 setup 自行 start，start/stop 幂等；宿主提醒订阅只处理 `reminders`，媒体启停不改变提醒所有权。
+
+`media:features` 仅内置声明，端口仅向该模块 ID 暴露。`api.mediaFeatures` 提供固定 Bilibili search/popular/view/replies transport、贴纸 pick/send、固定配置投影和媒体/图片/贴纸开关布尔状态。无 URL/headers/Cookie、路径、字节、凭据或任意 HTTP/路由权限。`/sticker` 的 commandToken 由核心在主人/denied/access 检查后签发，固定聊天、单次使用且 handler 结束或 runtime 停止后失效；文件解析、校验和 delivery/outbound 发送留核心。`audience` 仅内置命令可声明，`/bili` 为 owner-or-operator，`/sticker` 为 owner。
+
+详情包含纯 `media-features.preview`、legacy-core 配置和 `media-features.panel` 的 Bilibili 操作界面。`content.bilibili.enabled/timeoutMs/maxResults`、`media.stickers.enabled/maxCount/maxBytes` 六字段归属此模块，键/默认值/全局保存不变；父媒体/图片开关仍在核心设置。原「内容」页指引进入模块，表情包管理暂留媒体页且每个 HTTP 操作都必须获当前 provider 授权。停用后两个命令静默、Bilibili 和贴纸 API 关闭，`/media/status` 仍报告可用性与原数据计数。无迁移、新 DSH slot 或核心功能回退。完整边界和限制见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。
+
 ## WebUI Phase 5 当前状态
 
 现有「模块」页提供核心拥有的列表 → 详情 → 返回列表导航；点击卡片背景、「详情」或可用的「配置」入口进入详情。详情显示名称、来源/信任、启用状态、运行状态与错误，完整契约见 [ADR-014](architecture/ADR-014-module-webui.md)。内置 registry 的 `ui` 与外部 manifest 显式 opt-in 的 `webui: {version:1,...}` 只声明元数据；允许 module.card/detail/config/actions/panel 五个内部 hook，每 hook 一个贡献、最多五个 surfaces、order 为 -100～100 的整数，外部允许 status/schema 与显式授权的 sandbox renderer，内置额外允许 builtin-react。拒绝未知字段/能力、重复 ID/hook、非法 componentKey、越权 sandbox、可执行值与超过 64 KiB 的描述。UI 请求不 import、不重扫模块目录、不读配置值；隔离 UI 读取会校验公开资源；无效 UI 只有固定 uiWarning 和空 surfaces，有效后端仍可运行。
 
-核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。module.panel/detail 的 sandbox 经授权后仅在详情 iframe 中执行；actions、未支持的 hook/renderer 组合与不可用配置保留禁用占位；builtin-react 仅在 module.detail 查找编译期组件。
+核心将 `module.card` / `module.detail` 的 status surface 渲染为模块说明与状态纯文本，不解析 HTML。`module.config` 的 schema surface 在 `config.available:true` 时按绑定分流：内置及声明有效 config schema 的外部 `module-file` 使用通用编辑器，受信内置 `legacy-core` 使用现有全局字段表与保存链路。列表没有行内编辑器。module.panel/detail 的 sandbox 经授权后仅在详情 iframe 中执行；actions、未支持的 hook/renderer 组合与不可用配置保留禁用占位；builtin-react 在 module.detail 查找编译期预览组件，媒体功能另有固定 module.panel。
 
 reply-delivery、typing、reminders 使用 `legacy-core`（available:true），sample 使用 `module-file`（available:true）；均为 schemaVersion:1 并包含 module.config/schema surface。前三者从现有 `configInfo.groups` 按字段 `module` 归属读取表单，值来自全局 draft，以 `saveUiPatch({[path]:value})` 即时保存并显示既有保存状态，不访问 `/modules/config`。归属元数据只允许最多 64 字符的模块 ID 字符串，不包含配置值或新存储位置。
 
@@ -30,7 +38,7 @@ Phase 3A 精确归属：
 系统设置不再呈现这些字段；cog-reply 保留 notices/requests/notice，cog-turn 保留其余字段，空的 cog-reminders 分组移除。详情说明设置属于当前模块且存储键保持不变；默认值、规范化、运行行为与数据位置不变，无数据迁移。停用或未 loaded 时字段只读，启用且 loaded 后才可编辑。sample 继续独立 revision、保存重读和取消流程。UI 目录缺失/无效/跨 generation 或 revision 时仅显示核心状态详情，不打开配置；`/modules/ui` 仍只有元数据，无新增后端配置端点。只有核心客户端注册原有 sidebar.panellist/main 两个 DSH slot；Phase 4 已开放外部声明式配置；Phase 5 实现显式授权的 iframe 与最小消息桥，外部同源 React 继续禁止。
 
 
-Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 module.config/schema，无重复 hook。服务端冻结 `BUILTIN_COMPONENT_KEYS` 与客户端冻结 `BUILTIN_MODULE_UI` 编译期注册表一致：
+历史 Phase 3B 将四个内置 module.detail/status 替换为 builtin-react，保留 module.config/schema，无重复 hook。服务端冻结 `BUILTIN_COMPONENT_KEYS` 与客户端冻结 `BUILTIN_MODULE_UI` 编译期注册表一致：
 
 | componentKey | 只读预览 |
 |---|---|
@@ -101,9 +109,9 @@ iframe 固定 `sandbox="allow-scripts" referrerpolicy="no-referrer"`，无 allow
 
 **威胁模型与限制**：假设外部 HTML/脚本不可信，依靠浏览器 sandbox/CSP 和窄消息桥隔离宿主 DOM、Cookie、配置与 API；不允许外部同源 React，不新增 DSH 注册。后端仍是操作员安装的同进程 Node.js，不能防御恶意后端、管理员修改状态文件、并发恶意文件系统替换、浏览器漏洞或 iframe CPU/内存耗尽。公开目录只放适合展示的非秘密资源，不提供网络、持久化存储、worker、表单或下载能力。自身 frame 导航不是完整的网络隔离；不把这些约束描述成操作系统或网络沙箱。严格 CSP 下的 opaque-origin 外链脚本/ES module、字体等可能被浏览器阻止，建议内联经典脚本或自包含 bundle，不为兼容而放宽 connect-src 或 sandbox。Node 单测覆盖服务端头与客户端契约，**真实浏览器 sandbox/CSP/资源加载尚未验证**；本阶段无浏览器自动化、推送、部署、版本、tag 或发布。
 
-## 最终边界（Phase 14）
+## 历史边界（Phase 14，媒体功能后续见 ADR-015）
 
-架构程序以四个现有内置模块收束：reply delivery、typing、reminders 默认启用，sample 默认关闭。外部模块不能获得 provider/服务所有权、交付规划、turn 生命周期、输入状态写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖或内部 delivery/access 端口；来源由加载器赋值，清单 source/builtin 无法授权。部分权限声明在导入前拒绝，其余在注册/调用时拒绝或不暴露属性；单独声明不会赋予能力，普通外部 API 保持。11 项权限的双组拒绝矩阵、提醒人格隔离/安全错误和单所有者交接证据见 [最终验收](architecture/MODULE-ACCEPTANCE.md)。
+Phase 14 架构程序以四个既有内置模块收束：reply delivery、typing、reminders 默认启用，sample 默认关闭。外部模块不能获得 provider/服务所有权、交付规划、turn 生命周期、输入状态写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖或内部 delivery/access 端口；来源由加载器赋值，清单 source/builtin 无法授权。部分权限声明在导入前拒绝，其余在注册/调用时拒绝或不暴露属性；单独声明不会赋予能力，普通外部 API 保持。11 项权限的双组拒绝矩阵、提醒人格隔离/安全错误和单所有者交接证据见 [最终验收](architecture/MODULE-ACCEPTANCE.md)。
 
 媒体传输、存储、provider/HTTP 与文件约束明确保留核心，本程序不提取 builtin-media 服务，无数据迁移。未来可选 builtin-media 仅限功能策略/命令，并须先建立宿主持有的窄 media port；外部模块不获得媒体资源、原始服务或路由注册入口，详见 [ADR-013](architecture/ADR-013-media-boundary.md)。本阶段只做离线测试/文档/包检查，无生产行为、配置/UI/依赖或版本变化，无 live/浏览器验收；推送、部署和发布另行授权。
 
@@ -142,7 +150,7 @@ iframe 固定 `sandbox="allow-scripts" referrerpolicy="no-referrer"`，无 allow
 
 另外随包提供默认启用的 `builtin-reply-delivery`（回复交付，1.0.0），仅申请 `delivery:plan`，没有模块配置 schema、`api.config` 或面板「配置」按钮。它通过核心传入的 `replyCfg` 读取现有 `cognition.reply.*`，保留分条、首条引用、群聊 @、条间等待与末条合并余文。
 
-默认启用的 `builtin-typing`（私聊输入状态，1.0.0）仅申请 `turn:lifecycle`、`status:write`，没有模块配置 schema、`api.config` 或面板「配置」按钮。行为仍由默认关闭的 `cognition.typing.enabled` 控制，沿用原全局设置 UI/路径/规范化。新安装 `/modules` 有四个内置模块：提醒、私聊输入状态和回复交付 loaded，示例 disabled；模块启用不等于 typing 开启。
+默认启用的 `builtin-typing`（私聊输入状态，1.0.0）仅申请 `turn:lifecycle`、`status:write`，没有模块配置 schema、`api.config` 或面板「配置」按钮。行为仍由默认关闭的 `cognition.typing.enabled` 控制，沿用原全局设置 UI/路径/规范化。Phase 13 时 `/modules` 有四个内置模块：提醒、私聊输入状态和回复交付 loaded，示例 disabled；模块启用不等于 typing 开启。
 
 `<数据目录>/modules/state.json` 的原子持久化格式：
 

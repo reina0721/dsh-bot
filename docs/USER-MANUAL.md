@@ -395,7 +395,7 @@ API 时间轴请求示例：
 
 ### 3.8 B站公共内容与 QQ空间边界（M5-b / M7-m）
 
-在「配置 → 内容」打开 `content.bilibili.enabled` 后，主人与只读操作员可以使用 `/bili hot`、`/bili 关键词`、`/bili BV号`、`/bili comments BV号`、`/bili share BV号`。顶层「内容」页提供搜索/热门，以及 BV 输入框、公开评论查询与分享链接显示。BV 号须为 BV 加 10 位字母或数字，不接受整条 URL。
+在「模块 → 媒体功能」详情启用模块并打开 `content.bilibili.enabled` 后，主人与只读操作员可以使用 `/bili hot`、`/bili 关键词`、`/bili BV号`、`/bili comments BV号`、`/bili share BV号`。模块详情的操作面板提供搜索/热门，原「内容」页保留入口指引。详情还提供 BV 输入框、公开评论查询与分享链接显示。BV 号须为 BV 加 10 位字母或数字，不接受整条 URL。
 
 REST 路由统一以 `/onebot-qq/api` 为前缀：`GET /content/bilibili?q=`、`GET /content/bilibili/hot`、`GET /content/bilibili/comments?bvid=&limit=`、`GET /content/bilibili/share?bvid=`。评论 limit 默认 10，取整后限制为 1–20；置顶在前、按 rpid 去重、保留 API 顺序，正文去标签/控制字符、最多 500 Unicode 字符。只读取第一页和接口自带的一层楼中楼样本，无缓存或翻页。
 
@@ -451,14 +451,14 @@ QQ空间明确未实现：它需要 QQ 登录授权，并涉及平台授权与�
 - TTS 测试：只在本机生成 MP3 并显示路径，不发送到 QQ；
 - 生图/改图：提示词、五档尺寸、可选源相对路径，返回生成路径或错误；只落盘，不发送到 QQ；
 - 文件：上传、列表与刷新，显示相对路径/大小/修改时间；M7-u（未发布）新增「下载」和需确认的「删除」，操作期间禁用文件按钮/上传/刷新，失败显示错误 toast，删除后更新列表与总大小。下载保存到浏览器，删除只移除服务端 files 中选中的普通文件；使用主人 `/file 相对路径` 发送，无发送按钮；
-- 表情包库：上传 PNG/JPG/JPEG/GIF/WebP，预览、编辑标签、删除；相同内容 SHA-256 去重；
+- 表情包库：上传 PNG/JPG/JPEG/GIF/WebP，预览、编辑标签、删除；相同内容 SHA-256 去重。需媒体功能模块和 media.enabled/media.images.enabled/media.stickers.enabled 开启；模块停用后相关操作关闭，状态与数据保留。贴纸设置位于模块详情；
 - 媒体与 provider 默认关闭；配置在「配置 → 媒体」，API Key 只填环境变量名。
 
 文件上传/列表/下载/删除均需 `media.enabled=true` 和 `media.files.enabled=true`。下载以 base64 JSON 转 Blob，沿用大小和扩展名限制；删除可移除超出当前大小限制的普通文件。操作仅按列表 path 中 `files/` 后的存储 basename（最多 120 字符）定位，不接受任意本地路径，拒绝目录及符号链接；文件已移除时提示「文件不存在」。新上传长名称会保留扩展名、缩短存储名，既有超过 120 字符的存储名不能通过新按钮操作，不自动改名。发送仍由主人 `/file` 完成，真实 QQ 文件兼容性未验证；#45 仍 partial，矩阵 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
 
 ### 内容
 
-- B站关键词搜索与热门按钮；结果卡显示标题、作者、播放量、时长和外链；BV 查询公开评论的作者/点赞/正文，或离线生成分享链接；
+- B站功能位于「模块 → 媒体功能」详情，包含关键词搜索与热门按钮；结果卡显示标题、作者、播放量、时长和外链；BV 查询公开评论的作者/点赞/正文，或离线生成分享链接；
 - 明确提示仅使用公开接口与离线分享，不使用 Cookie/WBI/登录态，不含字幕或发布评论；配置默认关闭；
 - 页面明确标注 QQ空间因需要 QQ 授权且涉及服务条款而未实现。
 

@@ -36,7 +36,7 @@ test('host default install starts core reminders exactly once after module setup
   assert.deepEqual(host.providerRegistry.list(), [])
   await host.ready
   assert.equal(coreStart.mock.callCount(), 1)
-  assert.equal(host.modules.list().filter(record => record.builtin).length, 4)
+  assert.equal(host.modules.list().filter(record => record.builtin).length, 5)
   host.cognition.startReminders()
   await host.ready
   await host.modules.start()
@@ -146,7 +146,7 @@ test('host production builtin owns reminders; toggles restore core commands and 
   const { host, coreStart } = await boot(t, { builtin: true })
   await host.ready
   assert.equal(coreStart.mock.callCount(), 0)
-  assert.equal(host.providerRegistry.list()[0].moduleId, 'builtin-reminders')
+  assert.equal(host.providerRegistry.list().find(row => row.name === 'reminders').moduleId, 'builtin-reminders')
   assert.equal(host.modules.list().find(row => row.id === 'builtin-reminders').status, 'loaded')
   host.setConfig({ ...host.getConfig(), access: { ownerQQ: '10001' },
     cognition: { ...host.getConfig().cognition, dryRun: true, reminders: { enabled: true } } })
@@ -276,4 +276,19 @@ test('host treats re-registration of the same provider object as a fresh ownersh
   await host.syncReminderOwnership()
   assert.equal(starts, 2)
   assert.equal(stops, 1)
+})
+
+
+test('host media provider toggles never restart reminder ownership', async t => {
+  const { host, coreStart } = await boot(t, { builtin: true })
+  await host.ready
+  const reminder = host.providerRegistry.get('reminders')
+  const coreStop = t.mock.method(host.cognition, 'stopReminders')
+  for (const enabled of [false, true, false, true]) {
+    await host.modules.setEnabled('builtin-media-features', enabled)
+    await new Promise(setImmediate)
+    assert.equal(host.providerRegistry.get('reminders'), reminder)
+  }
+  assert.equal(coreStart.mock.callCount(), 0)
+  assert.equal(coreStop.mock.callCount(), 0)
 })

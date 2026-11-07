@@ -57,8 +57,6 @@ export function createCognition({
   access = null,
   setConfig = null,
   media = null,
-  stickers = null,
-  bilibili = null,
   deliveryRegistry = null,
   turnHooks = null,
 } = {}) {
@@ -177,8 +175,6 @@ export function createCognition({
         purpose: state.services.purpose,
         identities: state.services.identities,
         media,
-        stickers,
-        bilibili,
         logger: log,
       })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })

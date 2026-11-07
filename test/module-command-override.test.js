@@ -267,3 +267,16 @@ test('command override: ordinary external commands retain ownerOnly, public disp
   await h.kernel.setEnabled('echo', false)
   assert.match((await h.commands.handle(h.turn('/echo'))).reply, /未知命令/)
 })
+
+test('command audience is builtin-only and rejects invalid values', async t => {
+  const h = await harness(t, [builtin('builtin-invalid-audience', api => {
+    api.registerCommand('status', () => '', { overrideBuiltin: true, audience: 'everyone' })
+  })])
+  await external(h.root, 'external-audience', { permissions: ['commands'] }, `export function setup(api) {
+    api.registerCommand('public-test', () => 'bad', { ownerOnly: false, audience: 'owner-or-operator' })
+  }`)
+  await h.kernel.start()
+  const rows = Object.fromEntries(h.kernel.list().map(row => [row.id, row]))
+  assert.match(rows['builtin-invalid-audience'].error, /audience 不合法/)
+  assert.match(rows['external-audience'].error, /audience 仅允许内置/)
+})
