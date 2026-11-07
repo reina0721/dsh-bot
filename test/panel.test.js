@@ -1795,12 +1795,28 @@ test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上
   } finally { globalThis.fetch = original }
 })
 
-test('ModulesPage WebUI: disabled module detail is core-owned, bounded placeholders and trust', async () => {
+function moduleUi(item, patch = {}) {
+  return {
+    moduleId: item.id, source: item.source, trust: item.source, generation: item.generation, uiRevision: item.uiRevision, status: item.status,
+    config: { binding: item.hasConfig ? 'module-file' : 'none', schemaVersion: item.hasConfig ? 1 : null, available: item.hasConfig === true },
+    surfaces: [
+      { id: 'detail', hook: 'module.detail', renderer: 'status', order: 0 },
+      ...(item.hasConfig ? [{ id: 'config', hook: 'module.config', renderer: 'schema', order: 1 }] : []),
+    ],
+    requestedCapabilities: [], grantedCapabilities: [], uiWarning: '', ...patch,
+  }
+}
+const moduleCatalog = (...items) => ({ ok: true, version: 1, items })
+const moduleControl = (tree, text) => control([tree, ...treeNodes(tree).map((node) => node.props?.actions)], text)
+
+test('ModulesPage WebUI: list → disabled detail → back, status text and unavailable future hooks', async () => {
   const item = { id: 'disabled', name: '声明式模块', source: 'external', builtin: false, status: 'disabled', generation: 'current', uiRevision: 'revision', enabled: false, canToggle: true }
-  const ui = { moduleId: item.id, source: 'external', trust: 'external', generation: item.generation, uiRevision: item.uiRevision, status: item.status, surfaces: [
+  const ui = moduleUi(item, { surfaces: [
     { id: 'detail', hook: 'module.detail', renderer: 'status', order: 0 },
     { id: 'config', hook: 'module.config', renderer: 'schema', order: 1 },
-  ], uiWarning: '' }
+    { id: 'actions', hook: 'module.actions', renderer: 'status', order: 2 },
+    { id: 'panel', hook: 'module.panel', renderer: 'schema', order: 3 },
+  ] })
   const session = { values: [[item], false, '', ''], index: 0 }, calls = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
   const actions = (title) => treeNodes(render()).find((node) => node.props?.title === title).props.actions
@@ -1816,26 +1832,36 @@ test('ModulesPage WebUI: disabled module detail is core-owned, bounded placehold
     assert.ok(detail)
     assert.match(JSON.stringify(detail), /声明式模块|disabled/)
     assert.match(JSON.stringify(detail), /外部声明式（无执行权限）/)
-    assert.match(JSON.stringify(detail), /module.detail · status · detail（占位）/)
-    assert.match(JSON.stringify(detail), /module.config · schema · config（占位）/)
-    assert.match(JSON.stringify(detail), /配置编辑尚未迁入详情/)
+    assert.match(JSON.stringify(detail), /状态：disabled/)
+    for (const hook of ['module.config', 'module.actions', 'module.panel']) {
+      const surface = treeNodes(detail).find((node) => node.props?.['aria-label'] === hook)
+      assert.ok(surface)
+      assert.equal(treeNodes(surface).find((node) => node.children?.includes('暂不可用') && node.type?.name === 'Btn').props.disabled, true)
+    }
+    assert.ok(!treeNodes(tree).some((node) => node.props?.title === '模块目录'))
     assert.equal(treeNodes(detail).some((node) => ['iframe', 'script', 'input'].includes(node.type) || node.type?.name === 'FieldRow'), false)
     assert.deepEqual(calls, [[panel.API_PREFIX + '/modules', 'GET'], [panel.API_PREFIX + '/modules/ui', 'GET']])
-    control(actions(item.name), '收起详情').props.onClick()
+    control(render(), '返回模块列表').props.onClick()
     assert.ok(!treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块详情'))
+    assert.ok(treeNodes(render()).some((node) => node.props?.title === '模块目录'))
   } finally { globalThis.fetch = original }
 })
 
 test('ModulesPage WebUI: unknown/invalid/stale/absent UI falls back without hiding module', async () => {
-  const item = { id: 'builtin-test', name: '受信模块', source: 'builtin', builtin: true, status: 'disabled', generation: 'new', uiRevision: 'new', enabled: false, canToggle: true }
-  const base = { moduleId: item.id, source: 'builtin', trust: 'builtin', status: item.status, generation: 'new', uiRevision: 'new', surfaces: [{ id: 'detail', hook: 'module.detail', renderer: 'status', order: 0 }] }
+  const item = { id: 'builtin-test', name: '受信模块', source: 'builtin', builtin: true, hasConfig: true, status: 'disabled', generation: 'new', uiRevision: 'new', enabled: false, canToggle: true }
+  const base = moduleUi(item)
   const cases = [
     { ok: true, version: 2, items: [base] }, { ok: true, version: 1, items: [] },
     ...[
       { generation: 'old' }, { uiRevision: 'old' }, { status: 'loaded' }, { trust: 'external' },
+      { config: null }, { config: { binding: 'unknown', schemaVersion: 1, available: true } },
+      { config: { binding: 'legacy-core', schemaVersion: 1, available: true } },
+      { requestedCapabilities: ['execute'] }, { grantedCapabilities: ['execute'] }, { componentKey: 'malicious' }, { sandbox: {} },
+      { surfaces: [null] }, { surfaces: ['invalid'] },
       { surfaces: [{ ...base.surfaces[0], renderer: 'builtin-react' }] },
       { surfaces: [{ ...base.surfaces[0], hook: 'sidebar.panellist' }] },
       { surfaces: [{ ...base.surfaces[0], componentKey: 'malicious' }] },
+      { surfaces: [{ ...base.surfaces[0], sandbox: { url: 'javascript:evil()' } }] },
       { surfaces: [{ ...base.surfaces[0], order: 101 }] },
       { surfaces: Array(6).fill(base.surfaces[0]) },
       { surfaces: [base.surfaces[0], { ...base.surfaces[0], id: 'duplicate-hook' }] },
@@ -1854,7 +1880,8 @@ test('ModulesPage WebUI: unknown/invalid/stale/absent UI falls back without hidi
       const detail = treeNodes(render()).find((node) => node.props?.['aria-label'] === '模块详情')
       assert.match(JSON.stringify(detail), /内置受信任/)
       assert.match(JSON.stringify(detail), /UI 描述不可用或未声明/)
-      assert.equal(treeNodes(detail).filter((node) => node.type === 'li').length, 0)
+      assert.equal(treeNodes(detail).filter((node) => node.type === 'li' || node.type?.name === 'FieldRow' || node.props?.['aria-label'] === '模块配置').length, 0)
+      assert.ok(!treeNodes(detail).some((node) => node.type === 'iframe' || node.type === 'script'))
       assert.ok(control(actions(item.name), '启用'))
     }
   } finally { globalThis.fetch = original }
@@ -1916,8 +1943,8 @@ test('ModulesPage: 启停 payload、状态 toast、失败后清除 busy，空/�
   try { assert.doesNotMatch(JSON.stringify(panel.ModulesPage({})), /还没有模块/) } finally { stateOverrides = null }
 })
 
-test('ModulesPage config: 内置配置按钮、通用 FieldRow/FieldControl、保存 revision、重读与取消', async () => {
-  const item = { id: 'builtin-generic', name: '通用内置', builtin: true, source: 'builtin', hasConfig: true, status: 'disabled', enabled: false, canToggle: true }
+test('ModulesPage config: sample detail only, generic FieldRow/FieldControl, save revision, reread and cancel', async () => {
+  const item = { id: 'builtin-sample', name: '内置示例', builtin: true, source: 'builtin', hasConfig: true, status: 'loaded', enabled: true, canToggle: true, generation: 'sample', uiRevision: 'sample-ui' }
   const external = { ...item, id: 'external', name: '外部', builtin: false, source: 'external' }
   const absent = { ...item, id: 'builtin-plain', name: '无配置', hasConfig: false }
   const fields = [
@@ -1928,7 +1955,8 @@ test('ModulesPage config: 内置配置按钮、通用 FieldRow/FieldControl、�
     { path: 'names', label: '名称', type: 'string-list' }, { path: 'numbers', label: '数字', type: 'number-list' },
   ]
   let payload = { ok: true, id: item.id, schema: { version: 1, fields }, values: { message: '原文', on: true, details: '', count: 1, mode: 'a', names: ['name'], numbers: [1] }, revision: 7 }
-  const session = { values: [[item, external, absent], false, '', ''], index: 0 }, calls = [], toasts = []
+  const catalog = moduleCatalog(moduleUi(item), moduleUi(external, { config: { binding: 'module-file', schemaVersion: 1, available: false } }), moduleUi(absent))
+  const session = { values: [[item, external, absent], false, '', '', null, '', catalog], index: 0 }, calls = [], toasts = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
   const card = (tree, title) => treeNodes(tree).find((node) => node.props?.title === title)
   const original = globalThis.fetch
@@ -1936,17 +1964,19 @@ test('ModulesPage config: 内置配置按钮、通用 FieldRow/FieldControl、�
     const body = options.body ? JSON.parse(options.body) : undefined
     calls.push({ path, method: options.method, body })
     if (options.method === 'POST') payload = { ...payload, values: body.values, revision: payload.revision + 1 }
-    return { ok: true, json: async () => path.endsWith('/modules') ? { ok: true, items: [item, external, absent] } : payload }
+    return { ok: true, json: async () => path.endsWith('/modules/ui') ? catalog : path.endsWith('/modules') ? { ok: true, items: [item, external, absent] } : payload }
   }
   try {
     const initial = render()
     assert.ok(control(card(initial, item.name).props.actions, '配置'))
     for (const title of [external.name, absent.name]) assert.ok(!treeNodes(card(initial, title).props.actions).some((node) => node.children?.includes('配置')))
-    assert.ok(!treeNodes(initial).some((node) => node.type === 'section'))
+    assert.ok(!treeNodes(initial).some((node) => node.props?.['aria-label'] === '模块配置' || node.type?.name === 'FieldRow'))
     await control(card(initial, item.name).props.actions, '配置').props.onClick()
     assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/modules/config?id=' + item.id, method: 'GET', body: undefined })
     let tree = render()
     assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块配置').length, 1)
+    assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块详情').length, 1)
+    assert.ok(!treeNodes(tree).some((node) => node.props?.title === '模块目录' || node.props?.title === external.name))
     const rows = treeNodes(tree).filter((node) => node.type?.name === 'FieldRow')
     assert.deepEqual(rows.map((node) => node.props.spec.type), fields.map((field) => field.type))
     for (const row of rows) {
@@ -1965,13 +1995,16 @@ test('ModulesPage config: 内置配置按钮、通用 FieldRow/FieldControl、�
     assert.equal(session.values[4].values.message, '新文')
     assert.deepEqual(toasts.at(-1), ['模块配置已保存', 'ok'])
     await control(render(), '取消').props.onClick()
-    assert.ok(!treeNodes(render()).some((node) => node.type === 'section'))
+    assert.ok(!treeNodes(render()).some((node) => node.type?.name === 'FieldRow'))
+    assert.ok(control(render(), '加载配置'))
+    control(render(), '返回模块列表').props.onClick()
+    assert.ok(!treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块配置' || node.type?.name === 'FieldRow'))
   } finally { globalThis.fetch = original }
 })
 
 test('ModulesPage config: busy 禁用、冲突/保存错误保留草稿、重新加载与加载失败', async () => {
-  const item = { id: 'builtin-test', source: 'builtin', builtin: true, hasConfig: true, canToggle: true }
-  const session = { values: [[item], false, '', ''], index: 0 }, toasts = []
+  const item = { id: 'builtin-test', source: 'builtin', builtin: true, hasConfig: true, canToggle: true, enabled: true, status: 'loaded', generation: 'current', uiRevision: 'current' }
+  const session = { values: [[item], false, '', '', null, '', moduleCatalog(moduleUi(item))], index: 0 }, toasts = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
   const payload = { ok: true, id: item.id, schema: { version: 1, fields: [{ path: 'message', label: '回复', type: 'text' }] }, values: { message: 'original' }, revision: 1 }
   const original = globalThis.fetch
@@ -1989,7 +2022,9 @@ test('ModulesPage config: busy 禁用、冲突/保存错误保留草稿、重新
     await control(treeNodes(render()).find((node) => node.props?.title === item.id).props.actions, '配置').props.onClick()
     treeNodes(render()).find((node) => node.type?.name === 'FieldRow').props.onChange('draft')
     for (const [result, expected] of [
-      [postResult, /配置冲突/], [{ ok: false, code: 'MODULE_CONFIG_INVALID', message: 'invalid value' }, /invalid value/], [Error('offline'), /offline/],
+      [postResult, /配置冲突/], [{ ok: false, code: 'MODULE_CONFIG_INVALID', message: 'invalid value' }, /invalid value/],
+      [{ ok: false, code: 'MODULE_CONFIG_WRITE_FAILED', message: 'write failed' }, /write failed/],
+      [{ ok: false, code: 'MODULE_CONFIG_UNAVAILABLE', message: 'unavailable' }, /unavailable/], [Error('offline'), /offline/],
     ]) {
       postResult = result
       const saving = control(render(), '保存配置').props.onClick()
@@ -2012,5 +2047,121 @@ test('ModulesPage config: busy 禁用、冲突/保存错误保留草稿、重新
     assert.match(JSON.stringify(render()), /load failed/)
     assert.equal(control(render(), '保存配置').props.disabled, true)
     assert.equal(control(render(), '取消').props.disabled, false)
+  } finally { globalThis.fetch = original }
+})
+
+
+test('ModulesPage WebUI: card background and detail button navigate; card/detail summaries are text', async () => {
+  const text = '<img src=x onerror=evil()> <script>evil()</script>'
+  const item = { id: 'text-only', name: '安全文本', description: text, error: text, builtin: false, source: 'external', enabled: true, status: 'error', generation: 'current', uiRevision: 'ui' }
+  const ui = moduleUi(item, { surfaces: [
+    { id: 'card', hook: 'module.card', renderer: 'status', order: 0 },
+    { id: 'detail', hook: 'module.detail', renderer: 'status', order: 1 },
+  ] })
+  const session = { values: [[item], false, '', '', null, '', moduleCatalog(ui)], index: 0 }
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
+  const card = treeNodes(render()).find((node) => node.type === 'article')
+  const summary = treeNodes(card).find((node) => node.props?.['aria-label'] === 'module.card')
+  assert.ok(treeNodes(summary).some((node) => node.type === 'p' && node.children.includes(text)))
+  await card.props.onClick({ target: { closest: () => ({ tagName: 'BUTTON' }) } })
+  assert.ok(!treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块详情'))
+  await card.props.onClick({ target: { closest: () => null } })
+  const detail = render()
+  for (const hook of ['module.card', 'module.detail']) assert.ok(treeNodes(detail).some((node) => node.props?.['aria-label'] === hook))
+  assert.match(JSON.stringify(detail), /外部声明式（无执行权限）|已启用|error/)
+  assert.ok(treeNodes(detail).some((node) => node.type === 'p' && node.children.includes(text)))
+  assert.ok(!treeNodes(detail).some((node) => ['img', 'script', 'iframe'].includes(node.type) || node.props?.dangerouslySetInnerHTML))
+  control(detail, '返回模块列表').props.onClick()
+  await moduleControl(render(), '详情').props.onClick()
+  assert.ok(treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块详情'))
+})
+
+test('ModulesPage config: disabled sample loads read-only; toggle enables editing and disabling blocks writes', async () => {
+  let item = { id: 'builtin-sample', builtin: true, source: 'builtin', hasConfig: true, enabled: false, status: 'disabled', generation: 'sample', uiRevision: 'ui', canToggle: true }
+  const session = { values: [[item], false, '', '', null, '', moduleCatalog(moduleUi(item))], index: 0 }, calls = []
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
+  const payload = { ok: true, schema: { version: 1, fields: [{ path: 'message', type: 'text', label: '示例回复' }] }, values: { message: 'original' }, revision: 3 }
+  const original = globalThis.fetch
+  globalThis.fetch = async (path, options) => {
+    calls.push([path, options.method])
+    if (path.endsWith('/modules/toggle')) {
+      const enabled = JSON.parse(options.body).enabled
+      item = { ...item, enabled, status: enabled ? 'loaded' : 'disabled' }
+      return { ok: true, json: async () => ({ ok: true, item }) }
+    }
+    return { ok: true, json: async () => path.endsWith('/modules/ui') ? moduleCatalog(moduleUi(item)) : path.endsWith('/modules') ? { ok: true, items: [item] } : payload }
+  }
+  try {
+    await moduleControl(render(), '详情').props.onClick()
+    assert.match(JSON.stringify(render()), /配置只读/)
+    let row = treeNodes(render()).find((node) => node.type?.name === 'FieldRow')
+    assert.equal(row.props.disabled, true)
+    row.props.onChange('forbidden')
+    assert.equal(session.values[4].values.message, 'original')
+    assert.equal(control(render(), '保存配置').props.disabled, true)
+    await control(render(), '保存配置').props.onClick()
+    assert.equal(calls.filter(([, method]) => method === 'POST').length, 0)
+    await moduleControl(render(), '启用').props.onClick()
+    row = treeNodes(render()).find((node) => node.type?.name === 'FieldRow')
+    assert.equal(row.props.disabled, false)
+    row.props.onChange('draft')
+    assert.equal(session.values[4].values.message, 'draft')
+    await moduleControl(render(), '停用').props.onClick()
+    assert.equal(control(render(), '保存配置').props.disabled, true)
+    await control(render(), '保存配置').props.onClick()
+    assert.equal(calls.some(([path, method]) => path.endsWith('/modules/config') && method === 'POST'), false)
+    assert.ok(!treeNodes(render()).some((node) => ['iframe', 'script'].includes(node.type)))
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage legacy config: read-only note links all three modules to existing cognition groups', async () => {
+  const original = globalThis.fetch, calls = []
+  globalThis.fetch = async (path) => { calls.push(path); throw Error('legacy detail must not read config') }
+  try {
+    for (const [id, group] of [['builtin-reply-delivery', 'cog-reply'], ['builtin-typing', 'cog-turn'], ['builtin-reminders', 'cog-reminders']]) {
+      const item = { id, builtin: true, source: 'builtin', status: 'loaded', enabled: true, generation: id, uiRevision: 'ui' }
+      const catalog = moduleCatalog(moduleUi(item, {
+        config: { binding: 'legacy-core', schemaVersion: 1, available: false },
+        surfaces: [{ id: 'config', hook: 'module.config', renderer: 'schema', order: 1 }],
+      }))
+      const session = { values: [[item], false, '', '', null, '', catalog], index: 0 }, navigation = []
+      const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ go: (...args) => navigation.push(args) }) } finally { hookSession = null } }
+      await moduleControl(render(), '详情').props.onClick()
+      assert.match(JSON.stringify(render()), /配置仍在系统设置，Phase 3 迁移/)
+      assert.ok(!treeNodes(render()).some((node) => node.type?.name === 'FieldRow' || node.props?.['aria-label'] === '模块配置'))
+      control(render(), '前往现有配置').props.onClick()
+      assert.deepEqual(navigation, [['cognition', group]])
+      const props = { configTarget: group, configInfo: { groups: [{ id: 'cog-core', title: '核心', fields: [] }, { id: group, title: '目标设置', fields: [] }] } }
+      const cognition = panel.CognitionTab(props)
+      const settings = treeNodes(cognition).find((node) => node.type === panel.CogSettings)
+      assert.ok(settings, 'navigation opens existing cognition settings')
+      const settingsTree = settings.type(settings.props)
+      assert.equal(settingsTree.props.active, group)
+      assert.ok(treeNodes(settingsTree).some((node) => node.props?.title === '目标设置'))
+      session.values[6] = null
+      assert.match(JSON.stringify(render()), /配置仍在系统设置，Phase 3 迁移/)
+    }
+    assert.deepEqual(calls, [])
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage config: successful save keeps new revision when reread fails', async () => {
+  const item = { id: 'builtin-sample', builtin: true, source: 'builtin', hasConfig: true, enabled: true, status: 'loaded', generation: 'sample', uiRevision: 'ui' }
+  const session = { values: [[item], false, '', '', null, '', moduleCatalog(moduleUi(item))], index: 0 }
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
+  const payload = { ok: true, schema: { version: 1, fields: [{ path: 'message', type: 'text' }] }, values: { message: 'saved' }, revision: 5 }
+  let saved = false
+  const original = globalThis.fetch
+  globalThis.fetch = async (_path, options) => {
+    if (options.method === 'POST') { saved = true; return { ok: true, json: async () => ({ ...payload, revision: 6 }) } }
+    if (saved) throw Error('reread failed')
+    return { ok: true, json: async () => payload }
+  }
+  try {
+    await moduleControl(render(), '详情').props.onClick()
+    await control(render(), '保存配置').props.onClick()
+    assert.equal(session.values[4].revision, 6)
+    assert.equal(session.values[4].values.message, 'saved')
+    assert.match(JSON.stringify(render()), /reread failed/)
   } finally { globalThis.fetch = original }
 })

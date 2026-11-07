@@ -2,9 +2,9 @@
 
 > 本文件描述当前模块边界与接口契约。接口变更需同步更新本文、测试及用户文档。
 
-WebUI Phase 1 已实现 [ADR-014](architecture/ADR-014-module-webui.md)：`src/modules/webui.js` 校验内置 ui / 外部 manifest webui.version:1，内核只读 UI 目录暴露 generation、uiRevision 与元数据，`GET /onebot-qq/api/modules/ui` 不扫描目录、导入代码或读取配置值。信任分为核心、受信内置、外部声明式、未来外部沙箱；禁止外部同源 React。五个内部 module.* hook 每模块各一个、总数最多五个，order -100～100；仅 status/schema 占位，无 UI capability 授予。
+WebUI Phase 1–2 已实现 [ADR-014](architecture/ADR-014-module-webui.md)：`src/modules/webui.js` 校验内置 ui / 外部 manifest webui.version:1，内核只读 UI 目录暴露 generation、uiRevision 与元数据，`GET /onebot-qq/api/modules/ui` 不扫描目录、导入代码或读取配置值。信任分为核心、受信内置、外部声明式、未来外部沙箱；禁止外部同源 React。五个内部 module.* hook 每模块各一个、总数最多五个，order -100～100；仅接受 status/schema renderer，无 UI capability 授予。
 
-核心 ModulesPage 并行读取模块列表和 UI 目录，按 generation/revision/status 核对后显示标题/状态/信任与 surface 占位，未知/无效/过期条目安全回退，关闭模块可见。reply-delivery/typing/reminders 标记 legacy-core，sample 标记 module-file；配置入口和存储 key 保留，未来编辑归属模块页。现有 DSH sidebar.panellist/main 两个注册保持，无模块级 DSH 注册、配置迁移、组件执行、iframe、外部沙箱或新增依赖。
+核心 ModulesPage 并行读取模块列表和 UI 目录，按来源/信任/generation/uiRevision/status 与 config/surface 契约核对。卡片或详情按钮进入独立核心详情，返回恢复列表；标题、来源/信任、启用/运行状态与错误始终由核心显示。module.card/detail 的 status surface 仅渲染说明与状态纯文本；可用 module-file 的 module.config/schema surface 在详情复用通用配置编辑器（当前 sample），停用或未 loaded 时只读。actions/panel 与不可用组合为禁用占位，未知/无效/过期描述安全回退为核心状态信息。reply-delivery/typing/reminders 的 legacy-core 仅提示「配置仍在系统设置，Phase 3 迁移」并链接原认知配置分组，不复制字段。现有 DSH sidebar.panellist/main 两个注册保持，无模块级 DSH 注册、配置所有权迁移、内置自定义 React、componentKey/sandbox 执行、iframe、外部沙箱或新增依赖。
 
 ## 1. 目标
 
@@ -422,7 +422,7 @@ host 在 createCognition 前创建 registry，传入 cognition → pipeline，�
 - Phase 9：host 将 `cognition.services.personaStore`（既有 createPersonaScopedStore facade）作为 personaStore 选项注入 kernel；仅声明 `persona:store` 的内置模块得到冻结的 `api.personaStore`，外部声明权限在导入前拒绝。同步 get/put/remove/list/count，安全 key 为 `^[a-z0-9][a-z0-9_-]{0,63}$`；固定内部集合 module_store、记录 ID `module:<moduleId>:<key>`，由 facade 添加当前 `persona_<id>:` 前缀，模块间与核心 kind 均隔离。API 无 raw kind/SQL/原始 store/路径/人格 ID 或跨人格参数；每次调用使用当前人格。所有值进出 structuredClone，仅接受 JSON 值，JSON UTF-8 每值最多 64 KiB、每模块每人格最多 1000 条，put 事务检查额度、满额可覆盖；list 默认 100、上限 1000，仅返回 key/value。停止/失败/依赖清理/dispose 撤销旧 runtime 的全部仓库操作，已提交数据保留；dropPersonaData 额外清理此固定集合，不加入 UI 人格复制/统计组。完全复用 cognition store 的 SQLite/JSON fallback 与事务，没有独立持久层；不是通用 DB 或提醒功能，不迁移提醒/媒体，不新增生产模块/依赖/配置/UI/REST。详见 [模块契约](MODULES.md) 和 [ADR-008](architecture/ADR-008-module-persona-store.md)。
 - Phase 3：仅内置 registry 描述符可声明 `config:{version:1,fields}`；`config.js` 无依赖验证平面唯一键（最多 32）、label、默认值、switch/text/textarea/number/select/string-list/number-list 及边界，拒绝 secret 与未知 values 键，缺失字段填默认值。外部 manifest 和未声明的内置模块无配置 API/UI/runtime config。
 - 配置在发现阶段加载，先于 setup；`.builtin/<id>/config.json` 与 data.json 分离，最多 64 KiB、realpath containment、原子替换。缺失/损坏按默认值与 revision 0 安全警告，不阻止模块运行。`setModuleConfig` 与生命周期串行，revision 匹配后持久化递增（首次为 1），再更新内存/通知；过期为 MODULE_CONFIG_CONFLICT。`getModuleConfig` 深拷贝 schema/values/revision/source，不公开路径。
-- `api.config.get()` 返回已验证值的深拷贝，`onChange(handler)` 返回 disposer；通知独立复制值并隔离同步/异步异常，生命周期结束自动清理。异步 handler 不阻塞操作队列。GET/POST `/modules/config` 返回 `{ok:true,id,schema,values,revision}` 或安全 `{ok:false,code,message}`。ModulesPage 按 hasConfig/内置来源提供行内 FieldRow/FieldControl 草稿、保存重读、取消和冲突提示，不改全局配置页、入站或交付路径。
+- `api.config.get()` 返回已验证值的深拷贝，`onChange(handler)` 返回 disposer；通知独立复制值并隔离同步/异步异常，生命周期结束自动清理。异步 handler 不阻塞操作队列。GET/POST `/modules/config` 返回 `{ok:true,id,schema,values,revision}` 或安全 `{ok:false,code,message}`。ModulesPage 按有效 UI 描述、hasConfig/内置来源与 available/module-file 绑定，仅在核心详情中提供 FieldRow/FieldControl 草稿、保存重读、取消和冲突提示；停用/未 loaded 时禁用字段和保存。保存后重读失败保留新的 revision，MODULE_CONFIG_* 语义不变；列表无重复表单。不改全局配置所有权、存储、入站或交付路径。
 - host 显式传入生产 registry，保持 modulesReady/startup 顺序与规范化事件 dispatch。GET /modules 返回 items 和 summary；记录新增来源、API 版本、requires、操作能力及 blocked，不返回绝对路径。面板按能力提供启停/外部重载与刷新。
 - 模块仍与宿主同进程，permissions 不是沙箱；回复交付规划和私聊输入状态已迁入内置模块，无远程安装、上传、marketplace、依赖下载、自动更新、文件监视或移除接口。详见 [模块契约](MODULES.md)。
 

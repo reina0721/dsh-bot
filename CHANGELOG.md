@@ -2,6 +2,8 @@
 
 ## 未发布（Unreleased）
 
+- 模块 WebUI Phase 2：核心模块页提供卡片/详情 → 独立详情 → 返回列表，显示来源/信任、启用/运行状态与错误；status surfaces 仅显示安全文本，未来 hooks 为禁用占位。builtin-sample 的通用配置移入详情，移除列表行内表单，沿用 `/modules/config`、revision、保存重读、取消与 MODULE_CONFIG_* 错误语义；停用/未 loaded 模块配置只读。三个 legacy-core 模块仅显示 Phase 3 迁移说明并链接原认知设置分组；未知/无效/过期 UI 回退为核心状态信息。补充面板导航、只读、配置/错误、安全回退与两项 DSH 注册回归；更新 MODULES、架构及 ADR-014 状态。无后端配置/所有权迁移、内置自定义 React、外部执行/沙箱、新 DSH 入口、依赖或版本变化；仅本地验证与提交。
+
 - 模块 WebUI Phase 1：新增 ADR-014、严格 v1 UI 描述契约与只读 `/modules/ui` 目录（信任/生命周期 generation/UI revision/配置归属元数据），四内置声明 detail/config 占位；外部显式 opt-in 仅允许 status/schema，未知/超限描述固定告警且不阻止有效后端。现有模块页增加核心详情/信任/状态/surface 占位与安全回退，保留启停、重载和 sample 行内配置。补充契约、HTTP/E2E、面板回归；无配置迁移、外部 UI 执行、沙箱、新 DSH 入口、依赖或版本变化，仅本地验证与提交，无推送/部署/tag/release。
 
 ## 0.11.10（2026-11-07，Windows 原子替换测试修复）
