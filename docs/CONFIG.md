@@ -710,3 +710,28 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 无新增配置字段，沿用现有目的服务与认知 LLM 路由/预算；默认行为不变。主人显式 `/purpose plan ID` 才调用 `llm.completeJson`，要求活跃 goal 有标题和描述，生成并替换 1–8 条未完成步骤（每条最多 200 UTF-16 单元、去控制字符、非空且唯一）。无效结果/缺少服务/目标变化时不写入；命令经 owner、`deniedCommands` 与当前聊天访问闸门。`/purpose step ID N [done|undo]` 仅手动更新步骤标记，N 为 1–20；`/purpose steps ID` 查看进度。步骤更新沿用服务既有进度/完成规则，undo 不自动恢复已完成目标，恢复用 `/purpose resume ID`。用法见[用户手册](USER-MANUAL.md#36-目的与记忆整理)。
 
 仅当前聊天命令回复，无步骤执行、动作绑定、审批集成或后台 LLM/自主执行器；离线 fake LLM 测试，真实模型/QQ 未验证。GAP #38 仍 partial；矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。
+
+
+## Agent 执行 broker（C06）
+
+System → Security 的 `sandbox` 设置与离线 Chat sandbox 独立；默认关闭，不改 runtime/preset，也不注册 Agent 工具。完整安全边界、API、审计和恢复见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。
+
+| 配置路径 | 默认值 | 范围 / 含义 |
+| --- | --- | --- |
+| `sandbox.enabled` | false | 显式启用；disabled 拒绝所有作业 |
+| `sandbox.driver` | auto | auto / local-linux / unavailable；auto 仅在 Linux 选择 bwrap，其它平台 unavailable |
+| `sandbox.network` | false | 固定关闭，true 也规范化为 false |
+| `sandbox.limits.concurrency` | 2 | 1–4；含文件作业，单作用域另加 workspace lock |
+| `sandbox.limits.jobs` | 128 | 1–128；活动作业不可淘汰 |
+| `sandbox.limits.timeoutMs` | 10000 | 100–30000 ms；执行墙钟超时 |
+| `sandbox.limits.outputBytes` | 65536 | 1024–65536 bytes；合并 stdout/stderr 及 artifact 上限 |
+| `sandbox.limits.memoryMiB` | 128 | 32–256 MiB；cgroup v2，swap=0 |
+| `sandbox.limits.processes` | 32 | 4–64；包含 launcher/bwrap/init/shell 子进程 |
+| `sandbox.policy.ownerPrivate` | [workspace, execute] | 能力数组，只接受 workspace / execute |
+| `sandbox.policy.operatorPrivate` | [] | 操作员默认无工作区/执行能力 |
+| `sandbox.policy.otherPrivate` | [] | 其它 principal 默认无能力 |
+| `sandbox.policy.group` | [] | 所有群聊默认无能力 |
+
+workspace 硬上限 64 MiB / 1024 entries，路径由 persona/principal/chat/session 服务端摘要派生，不接受宿主目录配置。启用后先读 GET `/sandbox/status` 的 `policyGeneration`，再 POST `/sandbox/probe`；Linux 缺 bwrap 或可写且支持 memory/pids/cpu/kill 的 cgroup v2 委派时 unavailable，execute 拒绝。独立安全的 file 操作仍可用。
+
+POST `/sandbox/jobs/create` 示例：`{"kind":"file.write","requestId":"demo-1","policyGeneration":"<status 中的摘要>","path":"notes.txt","content":"hello"}`；执行 kind 为 execute 且仅增 `code`，read/delete 用 path，list 无附加字段。请求不能传身份、环境、挂载或路径根。job detail/artifact/cancel 只接受服务返回的不透明 ID；artifact 是有界 base64 JSON。策略变更后使用新代次，不能重放旧策略绕过授权。管理 HTTP 身份来自 DSH 管理认证边界；固定 management/private principal，当前人格分区。

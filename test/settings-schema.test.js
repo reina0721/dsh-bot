@@ -18,16 +18,16 @@ const fields = new Map(SETTINGS_FIELDS.map(field => [field.path, field]))
 const sorted = items => [...items].sort()
 const clientSource = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
 
-test('complete config.js inventory: 30 groups, 278 panel fields, all 297 config leaves', () => {
-  assert.equal(CONFIG_GROUPS.length, 30)
+test('complete config.js inventory: 31 groups, 291 panel fields, all 310 config leaves', () => {
+  assert.equal(CONFIG_GROUPS.length, 31)
   assert.equal(CONFIG_GROUPS.filter(group => group.id.startsWith('cog-')).length, 17)
   assert.deepEqual(sorted(Object.keys(LEGACY_CONFIG_GROUPS)), sorted(CONFIG_GROUPS.map(group => group.id)))
   const panelPaths = CONFIG_GROUPS.flatMap(group => group.fields.map(field => field.path))
-  assert.equal(panelPaths.length, 278)
+  assert.equal(panelPaths.length, 291)
   assert.equal(new Set(panelPaths).size, panelPaths.length)
   assert.deepEqual(sorted(SETTINGS_FIELDS.filter(field => field.exposure === 'panel').map(field => field.path)), sorted(panelPaths))
   assert.deepEqual(sorted(SETTINGS_FIELDS.filter(field => field.storage === 'config.json').map(field => field.path)), sorted(leaves(DEFAULTS)))
-  assert.equal(leaves(DEFAULTS).length, 297)
+  assert.equal(leaves(DEFAULTS).length, 310)
   for (const group of CONFIG_GROUPS) for (const spec of group.fields) {
     const field = fields.get(spec.path)
     assert.ok(field, spec.path)
@@ -51,7 +51,7 @@ test('every current module ID and module-file field has one owner', () => {
 
 test('canonical groups partition all fields without duplicate system/profile/module editing owners', () => {
   assert.deepEqual(OWNER_CLASSES, ['system', 'profile', 'module', 'operation'])
-  assert.equal(validateSettingsSchema().fields, 298)
+  assert.equal(validateSettingsSchema().fields, 311)
   const grouped = SETTINGS_GROUPS.flatMap(group => group.fields)
   assert.equal(new Set(grouped).size, grouped.length)
   assert.deepEqual(sorted(grouped), sorted(fields.keys()))

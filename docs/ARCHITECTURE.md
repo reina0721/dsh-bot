@@ -592,3 +592,6 @@ commands 注入 requests 服务，三个内置命令不能被模块覆盖；命�
 成功把一次提醒标 sent、重复提醒设 `nextAt=完成时刻+everySeconds`、计数加一并清空错误；错过的次数不回补。失败保持 active，仅允许固定公共错误码，其余归为 SEND_FAILED，`nextAt=now+max(60,minIntervalSeconds)`，避免紧循环。dryRun 视作成功。dispose 后不再写 store；await 前固定原人格 kind，完成时重读记录，已取消/删除不覆盖；切换人格后停止旧批次余项。不是分布式 exactly-once，网关超时或进程在发送/记账之间崩溃可能重复。
 
 主人 `/remind`、`/reminders`、`/forgetreminder` 先检查 owner/access/开关；服务对创建和取消再校验 owner 与 scope。命令与提醒都走 outbound。没有提醒 REST API/管理面板、新 Agent 工具、自动审批、DSH jobs/长任务/LLM 任务执行；仅 fake clock/scheduler/gateway 与本地持久化测试，真实 timer/QQ 未验证，#8/#40 为 partial。
+
+
+Agent 执行 broker（C06）的工作区、Linux bwrap/cgroup fail-closed 边界、管理 API、持久审计与验证限制见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。与离线 simulation/Chat 服务分离，默认关闭，未接 Agent 工具或 preset。

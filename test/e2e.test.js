@@ -1600,7 +1600,7 @@ test('e2e: C02 revisioned settings/profiles, staging gate, legacy ownership, sec
   const secret = 'C02_PRIVATE_GATEWAY_TOKEN'
   const { fake, handle } = await boot(t, { rowConfig: { onebot: { wsToken: secret } } })
   const schema = await getJson(fake, '/settings/schema')
-  assert.equal(schema.fields.length, 298)
+  assert.equal(schema.fields.length, 311)
   assert.equal(schema.editingAvailable, true)
   assert.equal(schema.runtimeMode, 'legacy')
   assert.equal(schema.profileEditsApply, 'staged')

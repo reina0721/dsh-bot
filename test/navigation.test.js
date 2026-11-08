@@ -39,11 +39,11 @@ test('all 15 cognition subsections resolve independently of colliding top-level 
   assert.deepEqual(go('cognition:settings'), target('profiles', 'settings'))
 })
 
-test('all 30 legacy groups resolve via config and all 17 cog groups via old go/goTo forms', () => {
+test('all 31 config groups resolve via config and all 17 cog groups via old go/goTo forms', () => {
   const expected = {
     'system/general': ['basic'], 'system/connection': ['endpoint', 'snowluma'],
     'system/timeouts': ['timeouts'], 'data/events': ['events'], 'data/logs': ['logging'],
-    'system/appearance': ['ui'], 'system/security': ['security'], 'system/access': ['access', 'cog-permissions', 'cog-admin'],
+    'system/appearance': ['ui'], 'system/security': ['security', 'sandbox'], 'system/access': ['access', 'cog-permissions', 'cog-admin'],
     'system/runtime': ['runtime'], 'system/media': ['media'], 'data/backup': ['ops'],
     'profiles/general': ['cog-core'], 'profiles/models': ['cog-llm'], 'profiles/turn': ['cog-turn'],
     'profiles/reply': ['cog-reply'], 'profiles/purpose': ['cog-purpose'], 'profiles/persona': ['cog-persona'],

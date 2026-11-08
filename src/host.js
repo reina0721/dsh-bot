@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { assembleServices } from './services/assembly.js'
+import { bootstrapSandbox } from './sandbox/bootstrap.js'
 import { createSimulationService } from './simulation/service.js'
 import { createLogger } from './core/logger.js'
 import { loadConfig, saveConfig, defaultConfig, refreshSecrets } from './core/config.js'
@@ -82,6 +83,7 @@ export function apply(ctx, rowConfig) {
     return []
   })
   const simulations = createSimulationService({ dataRoot: dataDir('simulations') })
+  const executionSandbox = bootstrapSandbox({ root: dataDir('sandbox'), getConfig })
 
   /** 把人格/规则注册成 DSH 提示词变量，供 preset 的 {{dshbot_*}} 使用。 */
   function registerPromptVariables() {
@@ -229,6 +231,7 @@ export function apply(ctx, rowConfig) {
   const routes = createRoutes({
     ingress,
     simulations,
+    executionSandbox,
     providerRegistry,
     ctx,
     getConfig,
@@ -396,6 +399,7 @@ export function apply(ctx, rowConfig) {
       routes.dispose()
     } catch (error) {}
     simulations.dispose().catch(() => {})
+    executionSandbox.dispose().catch(() => {})
     backup.dispose()
     upgrade.dispose()
     modules.dispose().catch(() => {})
@@ -442,6 +446,7 @@ export function apply(ctx, rowConfig) {
     providerRegistry,
     modulesReady,
     simulations,
+    executionSandbox,
     syncReminderOwnership,
     backup,
     upgrade,

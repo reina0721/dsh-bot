@@ -79,6 +79,7 @@ export const LEGACY_MODULE_IDS = freeze([
 // Legacy groups are landing aliases. Mixed groups do not grant a second editor:
 // individual field aliases below always point to their sole canonical owner.
 export const LEGACY_CONFIG_GROUPS = freeze({
+  sandbox: destination('system', 'security'),
   basic: destination('system', 'general'), endpoint: destination('system', 'connection'),
   snowluma: destination('system', 'connection'), timeouts: destination('system', 'timeouts'),
   events: destination('data', 'events'), logging: destination('data', 'logs'),
@@ -128,6 +129,11 @@ export const LEGACY_ALIASES = freeze({
 // New fields must be assigned here and pass the config.js cross-check in tests.
 // [ownerClass, scope, area, section, moduleId, legacyGroup, paths]
 const FIELD_SETS = [
+  ['system', 'system', 'system', 'security', null, 'sandbox',
+    ['sandbox.enabled', 'sandbox.driver', 'sandbox.network',
+      'sandbox.limits.concurrency', 'sandbox.limits.jobs', 'sandbox.limits.timeoutMs', 'sandbox.limits.outputBytes', 'sandbox.limits.memoryMiB', 'sandbox.limits.processes',
+      'sandbox.policy.ownerPrivate', 'sandbox.policy.operatorPrivate', 'sandbox.policy.otherPrivate', 'sandbox.policy.group']],
+
   ['system', 'system', 'system', 'runtime', null, null,
     [
       'version',

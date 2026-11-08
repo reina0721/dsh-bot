@@ -6,6 +6,7 @@ import { redact } from '../core/redact.js'
 import { publicConfig, defaultConfig, CONFIG_GROUPS } from '../core/config.js'
 import { SETTINGS_FIELDS } from '../core/settings-schema.js'
 import { readFile } from 'node:fs/promises'
+import { createSandboxApi, SANDBOX_BODY_BYTES } from '../sandbox/api.js'
 import { createSandboxChatApi, sandboxChatEnvelope, SANDBOX_CHAT_LIMITS } from './sandbox-chat.js'
 
 export const API_PREFIX = '/onebot-qq/api'
@@ -89,7 +90,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, simulations = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, simulations = null, executionSandbox = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -181,6 +182,28 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       modules: { summary: health.summary, total: health.items.length, limited: health.items.length > 200, items: health.items.slice(0, 200).map(row => ({ moduleId: row.moduleId, health: row.health, lifecycle: row.lifecycle, reasonCode: row.reasonCode, runtimeGeneration: row.runtimeGeneration })) },
       providers: (providerRegistry?.health?.().items || []).map(row => ({ name: row.name, owner: row.owner, state: row.state, ownerModuleId: row.ownerModuleId, ownerRuntimeGeneration: row.ownerRuntimeGeneration, reasonCode: row.reasonCode, fallback: row.fallback })) }
   }))
+
+  if (executionSandbox) {
+    const api = createSandboxApi({ service: executionSandbox, currentPersonaId: () => cognition?.activePersonaId?.() })
+    for (const [method, path, action] of [
+      ['GET', '/sandbox/status', 'status'], ['POST', '/sandbox/probe', 'probe'],
+      ['GET', '/sandbox/audit', 'audit'], ['GET', '/sandbox/jobs', 'jobs'], ['POST', '/sandbox/jobs/create', 'create'],
+      ['GET', '/sandbox/jobs/detail', 'detail'], ['POST', '/sandbox/jobs/cancel', 'cancel'],
+      ['GET', '/sandbox/artifact', 'artifact'],
+    ]) route(method, path, async (req, res) => {
+      let input
+      try {
+        const query = loopQueryOf(req)
+        if (method === 'GET') input = query
+        else {
+          if (Object.keys(query).length) throw Error()
+          input = await readBody(req, SANDBOX_BODY_BYTES)
+        }
+      } catch { return send(res, 400, { ok: false, code: 'INVALID_SANDBOX_INPUT' }) }
+      const result = await api.handle(action, input)
+      send(res, result.status, result.body)
+    })
+  }
 
   // ---- 状态与配置 ----
   // Dedicated offline paths replace the unscoped C04 /simulations endpoints.

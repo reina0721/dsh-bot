@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- C06：新增默认关闭的 Agent execution broker、服务端 scope/策略代次、接纳/并发/取消/幂等、64 MiB/1024 项工作区与只读快照、artifact、metadata-only 持久审计及八个管理 API。System/security 新增 sandbox 配置；网络固定关闭，主人私聊默认可用，群/操作员默认无执行能力。
+- Linux 驱动要求真实 bwrap + cgroup v2 委派，通过 namespace/最小 rootfs/env allowlist/进程树与资源限制探针后才 ready；缺失/不安全 fail closed，Windows/其它平台 unavailable。独立文件操作不依赖执行隔离。fake service 测试与真实 containment 测试分开，本环境 bwrap 缺失、cgroup 只读，真实隔离七项 skip，执行拒绝。
+- 安全边界与已知限制见 [ADR-022](docs/architecture/ADR-022-agent-execution-broker.md)。仅 C06；不接 Agent 工具/preset，不改 Chat sandbox；版本不变，仅本地验证、打包及提交。
+
 - C05：六区内新增离线 Chat/event Sandbox，支持私群文本/命令、通知请求、虚拟计时、reset/delete、transcript/捕获动作/receipt/loop/stages 与只读模拟人格/配置快照；明确 SIMULATION / zero real sends，无新 DSH slot。
 - 新增 `/sandbox/chat/create|event|advance|detail|reset|delete|list` 独立路径，替换 C04 未绑定 HTTP 入口；opaque UUID 绑定当前激活人格，未知/跨人格统一 not found，严格字段/身份拒绝、requestId、请求体/速率/排队/会话操作额度。fixture 模型、捕获 transport 和独立 store 沿用 C04，无 live gateway/store/loop 引用或真实模型/网络/媒体/执行沙箱。
 - 新增 sandbox API/UI 与 panel/nav/package 回归，live 共存测试通过新 HTTP 入口检测真实发送/网络为 0，env/fetch/live store/persona/bus 不变；Node shim 验证控件与异步状态，未使用真实浏览器。契约与限制见 [ADR-021](docs/architecture/ADR-021-simulation-service.md)。版本不变，仅本地验证和提交，无推送/部署/tag/release。

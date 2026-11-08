@@ -21,13 +21,13 @@ try {
     for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/modules/action-audit.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
     assert.equal(pkg.dsh.client.platform, 'web');
     for (const file of ['src/services/assembly.js', 'src/simulation/service.js', 'src/simulation/adapters.js', 'src/http/sandbox-chat.js', 'docs/architecture/ADR-021-simulation-service.md']) readFileSync(join(base, file));
-    for (const file of ['src/core/settings-schema.js', 'src/core/profile-settings.js', 'src/core/navigation.js', 'docs/architecture/ADR-020-settings-ownership-navigation.md']) readFileSync(join(base, file));
+    for (const file of ['src/core/settings-schema.js', 'src/core/profile-settings.js', 'src/core/navigation.js', 'docs/architecture/ADR-020-settings-ownership-navigation.md', 'docs/architecture/ADR-022-agent-execution-broker.md', 'src/sandbox/service.js', 'src/sandbox/policy.js', 'src/sandbox/workspace.js', 'src/sandbox/drivers/local-linux.js', 'src/sandbox/drivers/unavailable.js', 'src/sandbox/bootstrap.js', 'src/sandbox/file-worker.js', 'src/sandbox/driver-contract.js', 'src/sandbox/audit.js', 'src/sandbox/api.js']) readFileSync(join(base, file));
     const settings = await import(pathToFileURL(join(base, 'src/core/settings-schema.js')).href);
     const profiles = await import(pathToFileURL(join(base, 'src/core/profile-settings.js')).href);
     assert.equal(typeof profiles.createProfileSettings, 'function');
     assert.equal(profiles.PROFILE_RUNTIME_MODE, 'legacy');
     const navigation = await import(pathToFileURL(join(base, 'src/core/navigation.js')).href);
-    assert.equal(settings.validateSettingsSchema().fields, 298);
+    assert.equal(settings.validateSettingsSchema().fields, 311);
     assert.deepEqual(navigation.go('config'), { area: 'system', section: 'general' });
     assert.deepEqual(navigation.go('cognition'), { area: 'profiles', section: 'overview' });
     // Execute the shipped client entry with a Node shim; this is not a browser check.

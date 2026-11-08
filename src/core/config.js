@@ -7,6 +7,7 @@
 
 import { dataDir, readJson, writeJson, existsSync } from './store.js'
 import { registerSecret, clearSecrets, redact } from './redact.js'
+import { SANDBOX_DEFAULTS, normalizeSandbox } from '../sandbox/policy.js'
 import { normalizeAccess } from './access.js'
 
 export const CONFIG_VERSION = 2
@@ -151,6 +152,8 @@ export const DEFAULTS = {
     groups: [],
     auditSize: 100,
   },
+  // Agent 执行 broker（与离线 Chat 和 DSH runtime 分离）。
+  sandbox: structuredClone(SANDBOX_DEFAULTS),
   // DSH Session 运行时：oneshot = 现有一次性 LLM；agent = 每聊天 DSH Session（默认先不切换）。
   runtime: {
     engine: 'oneshot',
@@ -650,6 +653,16 @@ export const CONFIG_GROUPS = [
       { path: 'access.private', label: '私聊白名单', type: 'string-list', default: [], placeholder: '输入 QQ 号后回车' },
       { path: 'access.groups', label: '群白名单', type: 'string-list', default: [], placeholder: '输入群号后回车' },
       { path: 'access.auditSize', label: '审计条数', type: 'number', default: 100, min: 0, max: 1000, step: 1, help: '内存环形缓冲；只存会话/发送者/原因/时间，不存消息正文，重启清空。' },
+    ],
+  },
+  {
+    id: 'sandbox', title: 'Agent 执行沙盒', description: 'C06 broker；默认关闭，网络始终关闭；不接入 Agent 工具。',
+    fields: [
+      { path: 'sandbox.enabled', label: '启用 broker', type: 'switch', default: false },
+      { path: 'sandbox.driver', label: '隔离驱动', type: 'select', default: 'auto', options: ['auto', 'local-linux', 'unavailable'].map(value => ({ value, label: value })) },
+      { path: 'sandbox.network', label: '网络（固定关闭）', type: 'switch', default: false, help: 'C06 始终规范化为 false。' },
+      ...Object.entries(SANDBOX_DEFAULTS.limits).map(([key, value]) => ({ path: `sandbox.limits.${key}`, label: key, type: 'number', default: value })),
+      ...Object.entries(SANDBOX_DEFAULTS.policy).map(([key, value]) => ({ path: `sandbox.policy.${key}`, label: key, type: 'string-list', default: value, help: '允许 workspace / execute；operator/group 默认无能力。' })),
     ],
   },
   {
@@ -1243,6 +1256,7 @@ export function normalizeConfig(raw) {
       },
     },
     access: normalizeAccess(merged.access, issues),
+    sandbox: normalizeSandbox(merged.sandbox),
     runtime: {
       engine: pickEnum(merged.runtime?.engine, DEFAULTS.runtime.engine, ['oneshot', 'agent']),
       workspaceDir: pickString(merged.runtime?.workspaceDir, DEFAULTS.runtime.workspaceDir, { max: 1024 }),
