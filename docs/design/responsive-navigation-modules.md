@@ -28,7 +28,7 @@ UI rework phase A，基线 main `3d2eeb2`，版本保持 0.11.21。DSH 的全局
 ## 模块目录与详情
 
 - `.ob-module-list` 是 `inline-size` 容器，专用 `.ob-module-grid` 默认单列；仅在视口 >900px **且容器 ≥760px** 时两列。DSH 外层侧栏占用宽度后，按目录实际宽度回落；不支持容器查询时保留单列。
-- 卡片同行拉伸等高，Panel/body 使用 flex，footer 用自动上边距贴底。标题区只放标题/说明；详情、配置、重载、启停位于唯一 footer。≤900px 卡片动作全宽单列。卡片点击忽略按钮/链接/输入，保留按钮原有动作与禁用状态。
+- 卡片同行拉伸等高，Panel/body 使用 flex，footer 用自动上边距贴底。标题区放名称/两行简短说明/状态圆点；正文为状态/版本芯片、最多三项权限和 `+N`，完整依赖与权限移至详情。详情（primary）、配置（secondary）、启停位于唯一 footer，按钮等高、可换行；≤900px 卡片动作最多两列，重载保留在详情。配置不可用时禁用并关联说明。卡片点击忽略按钮/链接/输入，保留按钮原有动作与禁用状态。
 - 详情工具栏、摘要、健康、核心动作、功能链接、提醒和声明的 surfaces 为同级区块；保留 `ob-module-detail`、`ob-module-config`、`ob-module-panel`、`ob-module-reminders` 及 surface 锚点、React keys 和字段 ID。MediaFeaturesPanel 自带 Panel，不再包一层 Panel。
 - 元数据采用语义 dl/dt/dd，桌面标签/值两列，≤900px 单列；标题、描述、版本、权限、依赖、generation、错误及禁用原因允许长字符串换行，不裁掉数据。禁用原因位于按钮外，通过 `aria-describedby` 关联。
 - 预览为有间距的纵向段落，段落默认 margin 清零；模块 iframe 宽度 100%、最小宽度 0、最大宽度 100%，保留既有隔离与消息校验。数字输入和单位可换行，≤900px 纵向堆叠；保留 label/id、min/max/step、数值转换和空值语义。

@@ -1824,7 +1824,7 @@ test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上
   const session = { values: [items, false, '', ''], index: 0 }
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast() {} }) } finally { hookSession = null } }
   const tree = render(), text = JSON.stringify(tree)
-  assert.match(text, /内置 3/); assert.match(text, /外部 1/); assert.match(text, /blocked/); assert.match(text, /依赖：external/)
+  assert.match(text, /内置 3/); assert.match(text, /外部 1/); assert.match(text, /依赖受阻/); assert.match(text, /依赖未就绪/)
   assert.match(text, /permissions 不是沙箱/)
   const panels = treeNodes(tree).filter((node) => node.props?.title)
   const built = panels.find((node) => node.props.title === '内置示例')
@@ -1832,15 +1832,16 @@ test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上
   assert.equal(control(built.props.footer, '停用').props.disabled, false)
   const reply = panels.find((node) => node.props.title === '回复交付')
   assert.ok(reply)
-  assert.equal(treeNodes(reply.props.footer).some((node) => node.children?.includes('配置')), false)
+  assert.equal(control(reply.props.footer, '配置').props.disabled, true)
   assert.equal(control(reply.props.footer, '停用').props.disabled, false)
   const typing = panels.find((node) => node.props.title === '私聊输入状态')
   assert.ok(typing)
-  assert.equal(treeNodes(typing.props.footer).some((node) => ['配置', '重载'].some(label => node.children?.includes(label))), false)
+  assert.equal(control(typing.props.footer, '配置').props.disabled, true)
+  assert.equal(treeNodes(typing.props.footer).some(node => node.children?.includes('重载')), false)
   assert.equal(control(typing.props.footer, '停用').props.disabled, false)
   const external = panels.find((node) => node.props.title === '外部清单关闭')
   assert.equal(control(external.props.footer, '启用').props.disabled, true)
-  assert.equal(control(external.props.footer, '重载').props.disabled, false)
+  assert.equal(treeNodes(external.props.footer).some(node => node.children?.includes('重载')), false, 'reload remains in detail')
   const original = globalThis.fetch, calls = []
   globalThis.fetch = async (path, options) => { calls.push([path, options.method]); return { ok: true, json: async () => ({ ok: true, items }) } }
   try {
@@ -2046,7 +2047,7 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
   try {
     const initial = render()
     assert.ok(control(card(initial, item.name).props.footer, '配置'))
-    for (const title of [external.name, absent.name]) assert.ok(!treeNodes(card(initial, title).props.footer).some((node) => node.children?.includes('配置')))
+    for (const title of [external.name, absent.name]) assert.equal(control(card(initial, title).props.footer, '配置').props.disabled, true)
     assert.ok(!treeNodes(initial).some((node) => node.props?.['aria-label'] === '模块配置' || node.type?.name === 'FieldRow'))
     await control(card(initial, item.name).props.footer, '配置').props.onClick()
     assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/modules/config?id=' + item.id, method: 'GET', body: undefined })
@@ -3582,7 +3583,8 @@ test('UI phase 3 module cards: dedicated container/grid, title-only header, foot
   for (const card of cards) {
     assert.equal(card.props.className, 'ob-module-card')
     const component = card.children[0]
-    assert.equal(component.props.actions, undefined)
+    assert.equal(component.props.actions.props.role, 'img')
+    assert.equal(component.props.actions.props['aria-label'], '运行中')
     assert.equal(component.props.footer.props.className, 'ob-module-actions')
     const controls = savebarNodes(component).filter(node => node.type?.name === 'Btn')
     const labels = controls.map(node => node.children[0])
@@ -3593,12 +3595,12 @@ test('UI phase 3 module cards: dedicated container/grid, title-only header, foot
     assert.equal(header.props.className, 'ob-panel-head with-line')
     assert.equal(treeNodes(header).some(node => node.type?.name === 'Btn' || node.type === 'button'), false)
     assert.equal(footer.props.className, 'ob-panel-foot')
-    assert.deepEqual(treeNodes(footer).filter(node => node.type?.name === 'Btn').map(node => node.children[0]), card.props.key === item.id ? ['详情', '配置', '重载', '停用'] : ['详情', '重载', '停用'])
+    assert.deepEqual(treeNodes(footer).filter(node => node.type?.name === 'Btn').map(node => node.children[0]), ['详情', '配置', '停用'])
   }
   const panelNode = cards[0].children[0]
   assert.equal(panelNode.props.title, long)
   assert.equal(panelNode.props.description, item.description)
-  for (const value of [item.version, ...item.permissions, ...item.requires, item.error]) assert.ok(JSON.stringify(tree).includes(value), value)
+  for (const value of [item.version, ...item.permissions]) assert.ok(JSON.stringify(tree).includes(value), value)
   const toggle = treeNodes(panelNode.props.footer).find(node => node.children?.includes('停用'))
   const reason = nodes.find(node => node.props?.id === toggle.props['aria-describedby'])
   assert.ok(reason)
@@ -3739,8 +3741,8 @@ test('UI phase 3 CSS: container AND viewport thresholds, equal-height footer car
   assert.match(rule('.ob-number-control .ob-input'), /flex:1 1 8rem;min-width:0;width:auto/)
   assert.match(rule('.ob-number-control .ob-field-unit'), /white-space:normal;overflow-wrap:anywhere/)
   assert.match(css, /@media \(max-width:900px\)\{\s*\.ob-module-grid,\.ob-module-metadata\{grid-template-columns:minmax\(0,1fr\)\}/)
-  assert.match(rule('.ob-module-card .ob-module-actions', true), /display:grid;grid-template-columns:minmax\(0,1fr\);width:100%/)
-  assert.match(rule('.ob-module-card .ob-module-actions > .ob-btn'), /width:100%/)
+  assert.match(rule('.ob-module-card .ob-module-actions', true), /display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);width:100%/)
+  assert.match(rule('.ob-module-card .ob-module-actions > .ob-btn', true), /width:100%/)
   assert.match(rule('.ob-module-toolbar .ob-btn,.ob-module-actions .ob-btn'), /min-height:44px/)
   assert.match(rule('.ob-number-control'), /flex-wrap:wrap/)
   assert.match(rule('.ob-number-control', true), /flex-direction:column;align-items:stretch/)
@@ -3881,4 +3883,25 @@ test('command palette repeated opens keep unique IDs and six area controls, with
     assert.deepEqual(h.targets, [])
   } finally { h.restore() }
   assert.equal(h.listeners.size, 0)
+})
+
+
+test('UI phase B module cards cap permissions at three with +N and keep three equal footer actions', () => {
+  for (const count of [0, 1, 3, 4, 8]) {
+    const item = { id: 'external-permissions', name: '工具', description: '简短说明', source: 'external', builtin: false, status: 'disabled', enabled: false, canToggle: true, canReload: true, permissions: Array.from({ length: count }, (_, i) => 'permission-' + i), version: '1.2.3' }
+    stateOverrides = [[item], false, '', '', null, '', null]
+    let tree
+    try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+    const card = treeNodes(tree).find(node => node.type === 'article').children[0]
+    const badges = treeNodes(card).filter(node => node.type?.name === 'Badge').map(node => node.children[0])
+    for (let i = 0; i < count; i++) assert.equal(badges.includes(item.permissions[i]), i < 3)
+    assert.equal(badges.includes('+' + (count - 3)), count > 3)
+    const buttons = treeNodes(card.props.footer).filter(node => node.type?.name === 'Btn')
+    assert.deepEqual(buttons.map(node => node.children[0]), ['详情', '配置', '启用'])
+    assert.equal(buttons[0].props.kind, 'primary')
+    assert.equal(buttons[1].props.kind, 'secondary')
+    assert.equal(buttons[1].props.disabled, true)
+    assert.ok(treeNodes(card).some(node => node.props?.id === buttons[1].props['aria-describedby']))
+  }
+  assert.match(panel.PANEL_CSS, /\.ob-module-card \.ob-module-actions > \.ob-btn\{flex:1 1 5rem;min-height:44px/)
 })
