@@ -39,6 +39,13 @@
 
 - 成功 setup 的内置模块默认健康空闲；输入状态、回复、示例和调度引擎启动报告空闲，媒体操作记录成功/失败；外部未埋点模块仍为 unknown，停止仍为 stopped。新增真实七个内置模块激活与媒体遥测回归。
 
+## 0.11.17（2026-11-08，Windows 沙盒 CI 修复）
+
+- 修复 Windows 上 sandbox audit 目录 fsync 导致的 AUDIT_UNAVAILABLE。
+- P1 测试临时目录清理对 EBUSY 重试。
+- v0.11.16 因 Windows 验证失败未生成 Release；0.11.17 为发布修复。
+- 1218 项测试：1206 通过、12 跳过。
+
 ## 0.11.16（2026-11-08，AstrBot 对齐：沙盒与 IA）
 
 - 六区导航（Overview / Chat & Sandbox / Profiles / Extensions / Data & Logs / System），全部旧 tab/cognition/config/anchor 别名兼容；DSH 仍两个注册。
