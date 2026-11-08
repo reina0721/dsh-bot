@@ -14,7 +14,7 @@ PowerShell 下可用 `npm run verify -- -DshPath 'C:\path\to\dsh.cmd'` 对真实
 
 1. 确认远程仓库已改名为 reina0721/dsh-bot，启用 Actions。首次发布前 README 的 Release 链接不可用。
 2. 更新 package.json 版本与 CHANGELOG，完成检查与真实 DSH 验证。
-3. 提交后创建对应标签，例如 `git tag v0.11.21`，再推送提交与标签。
+3. 提交后创建对应标签，例如 `git tag v0.11.22`，再推送提交与标签。
 4. Actions 在 Windows、Linux 验证版本、测试、文档和安装包。任一失败均不发布；全部通过后，从 Linux 验证任务下载原产物创建 Release，不重新打包。
 5. 标签必须与 package.json 完全一致。带连字符的版本发布为 prerelease，稳定版可通过 latest/download 获取。
 6. 首次发布后在独立 profile 验证真实 GitHub tgz 直链、PowerShell 和 Shell 安装脚本、zip 本地安装，并检查校验文件与版本回退。
