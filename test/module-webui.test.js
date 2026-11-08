@@ -306,3 +306,27 @@ test('C07 WebUI metadata cannot supply core actions, health or navigation execut
   assert.equal(media.ui.surfaces.filter(row => row.componentKey === 'media-features.panel').length, 1)
   assert.equal(media.ui.surfaces.filter(row => row.hook === 'module.config').length, 1)
 })
+
+test('UI phase 3: long public module/config values survive list/detail metadata with unchanged surface ids and keys', async t => {
+  const h = await harness(t)
+  const long = 'LongModuleDescriptionWithoutSpaces'.repeat(100)
+  const dependency = 'dependency-' + 'x'.repeat(53)
+  const fields = [{ path: 'message', type: 'text', label: '说明', maxChars: 200, default: '' }]
+  const surfaces = [surface('module.card', { id: 'card' }), surface('module.detail', { id: 'detail', order: 1 }), surface('module.config', { id: 'config', renderer: 'schema', order: 2 })]
+  await h.external(dependency, descriptor())
+  await h.external('long-layout', descriptor({ surfaces, config: { binding: 'module-file', schemaVersion: 1, available: true } }), { name: long, description: long, version: 'v'.repeat(200), requires: [dependency], permissions: ['commands:override', 'turn:lifecycle', 'status:write'], config: { version: 1, fields } })
+  await h.kernel.start()
+  const item = h.kernel.list().find(row => row.id === 'long-layout')
+  assert.equal(item.name, long)
+  assert.equal(item.description, long)
+  assert.equal(item.version, 'v'.repeat(200))
+  assert.deepEqual(item.requires, [dependency])
+  assert.deepEqual(item.permissions, ['commands:override', 'turn:lifecycle', 'status:write'])
+  assert.deepEqual(h.item(item.id).surfaces, surfaces.map(row => ({ ...row, order: row.order ?? 0 })))
+  const value = 'LongPreviewWithoutSpaces'.repeat(8)
+  await h.kernel.setModuleConfig(item.id, { message: value }, 0)
+  assert.equal((await h.kernel.getModuleConfig(item.id)).values.message, value)
+  assert.doesNotMatch(JSON.stringify(h.kernel.uiCatalog()), /LongPreviewWithoutSpaces/)
+  const keys = builtinRegistry.flatMap(row => row.ui?.surfaces || []).flatMap(row => row.componentKey ? [row.componentKey] : [])
+  assert.deepEqual([...new Set(keys)].sort(), [...BUILTIN_COMPONENT_KEYS].sort())
+})

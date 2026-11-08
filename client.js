@@ -1746,6 +1746,46 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border:1px solid var(--ob-border);border-radius:5px;background:var(--ob-surface);font-size:var(--ob-text-micro);font-family:var(--ob-font-mono);color:var(--ob-ink-muted)}
 .ob-issue-list{margin:6px 0 0;padding-left:18px;font-size:var(--ob-text-small);line-height:1.6;color:var(--ob-warning)}
 
+/* ---------- 模块目录 / 详情（仅模块作用域） ---------- */
+.ob-module-list{container:ob-module-list / inline-size;min-inline-size:0;max-inline-size:100%}
+.ob-module-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--ob-control-gap);align-items:stretch;min-inline-size:0;max-inline-size:100%}
+@media (width > 900px){
+  @container ob-module-list (min-width:760px){
+    .ob-module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+}
+.ob-module-card{min-inline-size:0;max-inline-size:100%;display:flex;flex-direction:column}
+.ob-module-card > .ob-panel{flex:1;display:flex;flex-direction:column;min-inline-size:0;max-inline-size:100%}
+.ob-module-card > .ob-panel > .ob-panel-body{flex:1}
+.ob-module-card > .ob-panel > .ob-panel-foot{margin-block-start:auto}
+.ob-module-scope,.ob-module-scope *{min-inline-size:0;max-inline-size:100%}
+.ob-module-scope{overflow-wrap:anywhere}
+.ob-module-scope .ob-panel{overflow:visible}
+.ob-module-scope .ob-badge{height:auto;min-height:22px;white-space:normal;overflow-wrap:anywhere}
+.ob-module-scope .ob-btn{height:auto;min-height:44px;min-width:44px;white-space:normal;overflow-wrap:anywhere}
+.ob-module-toolbar,.ob-module-actions{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}
+.ob-module-card .ob-module-actions{flex:1;justify-content:flex-end}
+.ob-module-action{display:flex;flex:0 1 16rem;flex-direction:column;align-items:flex-start;gap:6px}
+.ob-module-action-reason{margin:0;overflow-wrap:anywhere}
+.ob-module-metadata{display:grid;grid-template-columns:minmax(0,12rem) minmax(0,1fr);gap:6px 16px;margin:0;min-inline-size:0;max-inline-size:100%}
+.ob-module-metadata dt,.ob-module-metadata dd{margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
+.ob-module-metadata dt{color:var(--ob-ink-muted)}
+.ob-module-preview{display:flex;flex-direction:column;gap:8px;margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
+.ob-module-preview p{margin:0}
+.ob-module-scope iframe{display:block;width:100%;min-width:0;max-width:100%}
+.ob-number-control{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;min-width:0;max-width:100%}
+.ob-number-control .ob-input{flex:1 1 8rem;min-width:0;width:auto}
+.ob-number-control .ob-field-unit{flex:0 1 auto;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+@media (max-width:900px){
+  .ob-module-grid,.ob-module-metadata{grid-template-columns:minmax(0,1fr)}
+  .ob-module-card .ob-module-actions{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+  .ob-module-card .ob-module-actions > .ob-btn{width:100%}
+  .ob-module-action{flex:1 1 100%;width:100%;align-items:stretch}
+  .ob-module-toolbar .ob-btn,.ob-module-actions .ob-btn{min-height:44px}
+  .ob-number-control{flex-direction:column;align-items:stretch}
+  .ob-number-control .ob-input{flex:1 1 auto;width:100%;min-height:44px}
+}
+
 /* ---------- 顶部进度条 ---------- */
 .ob-progress{position:relative;height:3px;border-radius:var(--ob-radius-pill);background:transparent;overflow:hidden;margin:0}
 .ob-progress-fill{position:absolute;inset-block:0;left:0;border-radius:var(--ob-radius-pill);background:var(--ob-brand);box-shadow:0 0 8px color-mix(in srgb,var(--ob-brand) 50%,transparent)}
@@ -2812,6 +2852,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           disabled,
           title: props.title,
           'aria-label': props['aria-label'],
+          'aria-describedby': props['aria-describedby'],
           'aria-busy': busy ? true : undefined,
           onClick: disabled ? undefined : props.onClick,
         },
@@ -3060,7 +3101,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (spec.type === 'number') {
         return h(
           'span',
-          { className: 'ob-row', style: { flexWrap: 'nowrap', width: '100%' } },
+          { className: 'ob-number-control' },
           h('input', {
             id,
             className: 'ob-input',
@@ -6094,12 +6135,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }, [props.navigation, prefix, ready])
     }
     function metadataRows(data, keys) {
-      return h('dl', { className: 'ob-small' }, keys.map(key => h(Fragment, { key }, h('dt', null, key), h('dd', null, observedValue(data?.[key])))))
+      return h('dl', { className: 'ob-module-metadata ob-small' }, keys.map(key => h(Fragment, { key }, h('dt', null, key), h('dd', null, observedValue(data?.[key])))))
     }
     function CoreModuleHealth(props) {
       const api = useCogApi(props, '/modules/health?id=' + encodeURIComponent(props.moduleId))
       const health = safeArray(api.data?.items).find(row => row.moduleId === props.moduleId)
-      return h(Panel, { title: '核心健康', description: '核心缓存快照；未观察的计数不等于零。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新健康') },
+      return h(Panel, { className: 'ob-module-scope', title: '核心健康', description: '核心缓存快照；未观察的计数不等于零。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新健康') },
         api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
         !health ? h('p', null, api.loading ? '加载健康…' : '健康不可用') : h(Fragment, null,
           metadataRows(health, ['lifecycle', 'phase', 'health', 'reasonCode', 'runtimeGeneration', 'telemetryGeneration', 'observedAt']),
@@ -6175,23 +6216,26 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         } catch (err) { if (guard.current.active) setError(String(err.message || '动作不可用')) }
         finally { guard.current.busy = false; if (guard.current.active) setBusy(false) }
       }
-      const content = h('div', { className: 'ob-stack' },
+      const content = h('div', { className: 'ob-stack ob-module-scope' },
         api.error || error ? h(Banner, { tone: 'err', message: error || api.error }) : null,
-        h('div', { className: 'ob-row' }, safeArray(api.data?.items).filter(row => Object.hasOwn(ACTION_LABELS, row.actionId) && (!props.actionIds || props.actionIds.includes(row.actionId))).map(row => h('span', { key: row.actionId },
-          h(Btn, { small: true, disabled: busy || Boolean(operation && !operationTerminal(operation)) || !row.available, onClick: () => run(row.actionId) }, ACTION_LABELS[row.actionId]),
-          !row.available ? h('span', { className: 'ob-small ob-muted' }, ' ' + observedValue(row.reasonCode)) : null,
-        )), h(Btn, { small: true, disabled: busy, onClick: api.reload }, '刷新动作')),
+        h('div', { className: 'ob-module-actions' }, safeArray(api.data?.items).filter(row => Object.hasOwn(ACTION_LABELS, row.actionId) && (!props.actionIds || props.actionIds.includes(row.actionId))).map(row => {
+          const reasonId = 'ob-module-action-' + props.moduleId + '-' + row.actionId + '-reason'
+          return h('div', { key: row.actionId, className: 'ob-module-action' },
+            h(Btn, { small: true, 'aria-describedby': !row.available ? reasonId : undefined, disabled: busy || Boolean(operation && !operationTerminal(operation)) || !row.available, onClick: () => run(row.actionId) }, ACTION_LABELS[row.actionId]),
+            !row.available ? h('p', { id: reasonId, className: 'ob-module-action-reason ob-small ob-muted' }, observedValue(row.reasonCode)) : null,
+          )
+        }), h(Btn, { small: true, disabled: busy, onClick: api.reload }, '刷新动作')),
         operation ? h('div', { role: 'status', 'aria-live': 'polite' },
           h('p', null, 'operation：' + operation.status + ' · ' + operation.phase + (operation.code ? ' · ' + operation.code : '')),
           operation.status === 'STOP_PENDING' ? h('p', null, 'STOP_PENDING：仍在排空，尚未完成；继续观察同一操作。') : null,
           !busy && !operationTerminal(operation) ? h(Btn, { small: true, onClick: () => run(null, true) }, '继续观察操作') : null,
         ) : null,
       )
-      return props.compact ? content : h(Panel, { title: '核心动作', description: '动作与可用性来自核心；接纳后轮询至终态，忙碌、跳过或失败不表示成功。' }, content)
+      return props.compact ? content : h(Panel, { className: 'ob-module-scope', title: '核心动作', description: '动作与可用性来自核心；接纳后轮询至终态，忙碌、跳过或失败不表示成功。' }, content)
     }
     function ModuleFeatureLinks(props) {
       if (!props.item.builtin || props.item.source !== 'builtin') return null
-      return h('section', { 'aria-label': '功能入口', className: 'ob-row' },
+      return h('section', { 'aria-label': '功能入口', className: 'ob-module-actions' },
         safeArray(MODULE_DESTINATIONS[props.item.id]).map(link => h(Fragment, { key: link.label }, destinationButton(props, link.label, link.target))),
         destinationButton(props, '配置', { tab: 'modules', moduleId: props.item.id, anchor: 'config' }),
         destinationButton(props, '闭环', { tab: 'cognition', section: 'loop' }),
@@ -8308,7 +8352,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     const previewNumber = (value, min, max) => Number.isInteger(value) && value >= min && value <= max ? value : null
     const previewSwitch = (value) => value === null ? '未加载' : value ? '开启' : '关闭'
     const previewValue = (value, unit = '') => value === null ? '未加载' : value + unit
-    const previewBody = (summary, lines) => h('div', { className: 'ob-stack', 'aria-label': '内置模块只读预览' },
+    const previewBody = (summary, lines) => h('div', { className: 'ob-module-preview', 'aria-label': '内置模块只读预览' },
       h('p', { className: 'ob-muted ob-small' }, summary.text),
       lines.map((line, index) => h('p', { key: index, className: 'ob-small' }, line)),
     )
@@ -8458,7 +8502,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ref: frame, title: '隔离 WebUI · ' + String(item.id),
         src: '/onebot-qq/module-ui/' + encodeURIComponent(item.id) + '/' + encodeURIComponent(item.generation) + '/' + entry.slice('webui/'.length),
         sandbox: 'allow-scripts', referrerPolicy: 'no-referrer',
-        style: { width: '100%', height: height + 'px', border: 0 },
+        style: { width: '100%', minWidth: 0, maxWidth: '100%', height: height + 'px', border: 0 },
         onLoad: () => {
           cleanup.current?.()
           if (!mounted.current || !frame.current) return
@@ -8659,9 +8703,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         h(Badge, { tone: item.status === 'loaded' ? 'ok' : ['error', 'blocked'].includes(item.status) ? 'err' : 'muted' }, String(item.status || 'unknown')),
         h(Badge, { tone: item.enabled ? 'brand' : 'muted' }, item.enabled ? '已启用' : '已停用'),
       )
-      const moduleActions = (item) => h('div', { className: 'ob-row' },
+      const moduleActions = (item) => h('div', { className: 'ob-module-actions' },
         item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
-        h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+        h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', 'aria-describedby': !item.canToggle && !item.builtin ? 'ob-module-toggle-' + item.id + '-reason' : undefined, busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
       )
       const statusSummary = (item, surface) => h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
         h('p', { className: 'ob-small' }, String(item.description || item.name || item.id)),
@@ -8740,34 +8784,42 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         )
       }
 
-      if (loading && !items.length) return h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 }))
+      if (loading && !items.length) return h('div', { className: 'ob-module-list ob-module-scope' }, h('div', { className: 'ob-module-grid' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 })))
       if (detailId) {
         const item = items.find((item) => item.id === detailId)
         const ui = item ? uiFor(item) : null
-        return h('section', { id: 'ob-module-detail', className: 'ob-stack', 'aria-label': '模块详情' },
-          h('div', { className: 'ob-row' },
+        return h('section', { id: 'ob-module-detail', className: 'ob-stack ob-module-scope', 'aria-label': '模块详情' },
+          h('div', { className: 'ob-module-toolbar', role: 'group', 'aria-label': '模块详情工具栏' },
             h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { if (props.ownerIntegration) props.goTo?.({ area: 'extensions', section: 'modules' }); else { setDetailId(''); setEditor(null); setConfigError('') } } }, '返回模块列表'),
             h(Btn, { kind: 'secondary', disabled: Boolean(busy) || loading, onClick: refresh }, '刷新详情'),
           ),
           error ? h(Banner, { tone: 'err', message: error }) : null,
           uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
           cardOperationStatus,
-          item ? h(Panel, { title: String(item.name || item.id), description: String(item.description || item.id), actions: item.builtin ? null : moduleActions(item) },
-            badges(item),
+          item ? h(Fragment, null,
+            h(Panel, { key: item.id + ':summary', className: 'ob-module-summary', title: String(item.name || item.id), description: String(item.description || item.id), footer: item.builtin ? null : moduleActions(item) },
+              badges(item),
+              metadataRows(item, ['id', 'version', 'generation', 'uiRevision', 'requires', 'permissions']),
+              !item.canToggle && !item.builtin ? h('p', { id: 'ob-module-toggle-' + item.id + '-reason', className: 'ob-module-action-reason ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
+              item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
+              item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
+            ),
             h(CoreModuleHealth, { ...props, key: item.id + ':' + item.generation + ':health:' + healthRevision, moduleId: item.id }),
             h(CoreModuleActions, { ...props, key: item.id + ':actions', moduleId: item.id, onSettled: refresh }),
             h(ModuleFeatureLinks, { ...props, item }),
             item.id === 'builtin-reminders' && item.builtin && item.source === 'builtin' ? h('section', { id: 'ob-module-reminders' }, h(ReminderData, props)) : null,
-            item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
-            item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
             !ui || !ui.surfaces.length ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
-              : ui.surfaces.map((surface) => h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : 'surface-' + surface.id) }, renderSurface(item, ui, surface))),
+              : ui.surfaces.map((surface) => {
+                  const content = renderSurface(item, ui, surface)
+                  const ownsPanel = content.type === MediaFeaturesPanel
+                  return h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : 'surface-' + surface.id) }, ownsPanel ? content : h(Panel, null, content))
+                }),
           ) : h(Banner, { tone: 'muted', message: '模块已不在目录中，请返回列表。' }),
         )
       }
       return h(
         'div',
-        { className: 'ob-stack' },
+        { className: 'ob-stack ob-module-scope' },
         h(Panel, { title: '模块目录', description: '内置模块随插件发布；外部模块是操作员安装的同进程代码。permissions 不是沙箱，请先审核外部代码。', actions: h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: loading, disabled: Boolean(busy) || loading, onClick: refresh }, '刷新') },
           h('div', { className: 'ob-row' }, h(Badge, { tone: 'muted' }, '内置 ' + items.filter((item) => item.builtin).length), h(Badge, { tone: 'muted' }, '外部 ' + items.filter((item) => !item.builtin).length)),
         ),
@@ -8775,21 +8827,21 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
         cardOperationStatus,
         items.length
-          ? h('div', { className: 'ob-grid two' }, items.map((item) => {
+          ? h('div', { className: 'ob-module-list' }, h('div', { className: 'ob-module-grid' }, items.map((item) => {
               const permissions = safeArray(item.permissions)
               const tone = item.status === 'loaded' ? 'ok' : (item.status === 'error' || item.status === 'blocked') ? 'err' : 'muted'
               const ui = uiFor(item)
               return h('article', {
-                key: item.id, 'aria-label': '模块卡片 · ' + String(item.name || item.id),
+                key: item.id, className: 'ob-module-card', 'aria-label': '模块卡片 · ' + String(item.name || item.id),
                 onClick: (event) => { if (!event.target.closest('button, a, input, select, textarea')) openDetail(item) },
               }, h(Panel, {
                 title: String(item.name || item.id),
                 description: String(item.description || item.id),
-                actions: h('div', { className: 'ob-row' },
+                footer: h('div', { className: 'ob-module-actions' },
                   h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '详情'),
                   hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui) ? h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '配置') : null,
                   item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
-                  h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+                  h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', 'aria-describedby': !item.canToggle && !item.builtin ? 'ob-module-toggle-' + item.id + '-reason' : undefined, busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
                 ),
               },
                 h('div', { className: 'ob-row' },
@@ -8800,12 +8852,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 ),
                 permissions.length ? h('div', { className: 'ob-row', style: { marginTop: '12px' } }, permissions.map((permission) => h(Badge, { key: permission, tone: 'muted' }, permission))) : h('p', { className: 'ob-muted ob-small', style: { marginTop: '12px' } }, '未申请权限'),
                 safeArray(item.requires).length ? h('p', { className: 'ob-muted ob-small' }, '依赖：' + item.requires.join('、')) : null,
-                !item.canToggle && !item.builtin ? h('p', { className: 'ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
+                !item.canToggle && !item.builtin ? h('p', { id: 'ob-module-toggle-' + item.id + '-reason', className: 'ob-module-action-reason ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
                 item.error ? h('p', { className: 'ob-field-error', style: { marginTop: '12px' } }, String(item.error)) : null,
                 item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
                 ui?.surfaces.filter((surface) => surface.hook === 'module.card').map((surface) => renderSurface(item, ui, surface)),
               ))
-            }))
+            })))
           : h(Panel, null, h(EmptyState, {
               icon: 'layout',
               title: '还没有模块',

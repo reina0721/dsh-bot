@@ -1828,19 +1828,19 @@ test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上
   assert.match(text, /permissions 不是沙箱/)
   const panels = treeNodes(tree).filter((node) => node.props?.title)
   const built = panels.find((node) => node.props.title === '内置示例')
-  assert.equal(treeNodes(built.props.actions).some((node) => node.children?.includes('重载')), false)
-  assert.equal(control(built.props.actions, '停用').props.disabled, false)
+  assert.equal(treeNodes(built.props.footer).some((node) => node.children?.includes('重载')), false)
+  assert.equal(control(built.props.footer, '停用').props.disabled, false)
   const reply = panels.find((node) => node.props.title === '回复交付')
   assert.ok(reply)
-  assert.equal(treeNodes(reply.props.actions).some((node) => node.children?.includes('配置')), false)
-  assert.equal(control(reply.props.actions, '停用').props.disabled, false)
+  assert.equal(treeNodes(reply.props.footer).some((node) => node.children?.includes('配置')), false)
+  assert.equal(control(reply.props.footer, '停用').props.disabled, false)
   const typing = panels.find((node) => node.props.title === '私聊输入状态')
   assert.ok(typing)
-  assert.equal(treeNodes(typing.props.actions).some((node) => ['配置', '重载'].some(label => node.children?.includes(label))), false)
-  assert.equal(control(typing.props.actions, '停用').props.disabled, false)
+  assert.equal(treeNodes(typing.props.footer).some((node) => ['配置', '重载'].some(label => node.children?.includes(label))), false)
+  assert.equal(control(typing.props.footer, '停用').props.disabled, false)
   const external = panels.find((node) => node.props.title === '外部清单关闭')
-  assert.equal(control(external.props.actions, '启用').props.disabled, true)
-  assert.equal(control(external.props.actions, '重载').props.disabled, false)
+  assert.equal(control(external.props.footer, '启用').props.disabled, true)
+  assert.equal(control(external.props.footer, '重载').props.disabled, false)
   const original = globalThis.fetch, calls = []
   globalThis.fetch = async (path, options) => { calls.push([path, options.method]); return { ok: true, json: async () => ({ ok: true, items }) } }
   try {
@@ -1862,7 +1862,7 @@ function moduleUi(item, patch = {}) {
   }
 }
 const moduleCatalog = (...items) => ({ ok: true, version: 1, items })
-const moduleControl = (tree, text) => control([tree, ...treeNodes(tree).map((node) => node.props?.actions)], text)
+const moduleControl = (tree, text) => control([tree, ...treeNodes(tree).flatMap((node) => [node.props?.actions, node.props?.footer])], text)
 
 test('ModulesPage WebUI: list → disabled detail → back, status text and unavailable future hooks', async () => {
   const item = { id: 'disabled', name: '声明式模块', source: 'external', builtin: false, status: 'disabled', generation: 'current', uiRevision: 'revision', enabled: false, canToggle: true }
@@ -1874,7 +1874,7 @@ test('ModulesPage WebUI: list → disabled detail → back, status text and unav
   ] })
   const session = { values: [[item], false, '', ''], index: 0 }, calls = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
-  const actions = (title) => treeNodes(render()).find((node) => node.props?.title === title).props.actions
+  const actions = (title) => { const node = treeNodes(render()).find((node) => node.props?.title === title); return title === '模块目录' ? node.props.actions : node.props.footer }
   const original = globalThis.fetch
   globalThis.fetch = async (path, options) => {
     calls.push([path, options.method])
@@ -1928,7 +1928,7 @@ test('ModulesPage WebUI: unknown/invalid/stale/absent UI falls back without hidi
     for (const response of cases) {
       const session = { values: [[item], false, '', ''], index: 0 }
       const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
-      const actions = (title) => treeNodes(render()).find((node) => node.props?.title === title).props.actions
+      const actions = (title) => { const node = treeNodes(render()).find((node) => node.props?.title === title); return title === '模块目录' ? node.props.actions : node.props.footer }
       globalThis.fetch = async (path) => ({ ok: true, json: async () => path.endsWith('/modules/ui') ? response : { ok: true, items: [item] } })
       await control(actions('模块目录'), '刷新').props.onClick()
       control(actions(item.name), '详情').props.onClick()
@@ -1946,7 +1946,7 @@ test('ModulesPage WebUI: UI request failure preserves list, toggles and safe det
   const item = { id: 'external', source: 'external', status: 'disabled', enabled: false, canToggle: true }
   const session = { values: [[item], false, '', ''], index: 0 }, calls = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({}) } finally { hookSession = null } }
-  const actions = (title) => treeNodes(render()).find((node) => node.props?.title === title).props.actions
+  const actions = (title) => { const node = treeNodes(render()).find((node) => node.props?.title === title); return title === '模块目录' ? node.props.actions : node.props.footer }
   const original = globalThis.fetch
   globalThis.fetch = async (path, options) => {
     calls.push(path)
@@ -1968,7 +1968,7 @@ test('ModulesPage external: compatible 启停 payload、状态 toast、失败后
   const item = { id: 'external-sample', builtin: false, status: 'disabled', enabled: false, canReload: false, canToggle: true }
   const session = { values: [[item], false, '', ''], index: 0 }, toasts = [], calls = []
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
-  const button = () => control(treeNodes(render()).find((node) => node.props?.title === item.id).props.actions, '启用')
+  const button = () => control(treeNodes(render()).find((node) => node.props?.title === item.id).props.footer, '启用')
   const original = globalThis.fetch
   let status = 'blocked', reject = false
   globalThis.fetch = async (path, options) => {
@@ -2023,10 +2023,10 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
   }
   try {
     const initial = render()
-    assert.ok(control(card(initial, item.name).props.actions, '配置'))
-    for (const title of [external.name, absent.name]) assert.ok(!treeNodes(card(initial, title).props.actions).some((node) => node.children?.includes('配置')))
+    assert.ok(control(card(initial, item.name).props.footer, '配置'))
+    for (const title of [external.name, absent.name]) assert.ok(!treeNodes(card(initial, title).props.footer).some((node) => node.children?.includes('配置')))
     assert.ok(!treeNodes(initial).some((node) => node.props?.['aria-label'] === '模块配置' || node.type?.name === 'FieldRow'))
-    await control(card(initial, item.name).props.actions, '配置').props.onClick()
+    await control(card(initial, item.name).props.footer, '配置').props.onClick()
     assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/modules/config?id=' + item.id, method: 'GET', body: undefined })
     let tree = render()
     assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块配置').length, 1)
@@ -2076,7 +2076,7 @@ test('ModulesPage config: busy 禁用、冲突/保存错误保留草稿、重新
     return { ok: true, json: async () => payload }
   }
   try {
-    await control(treeNodes(render()).find((node) => node.props?.title === item.id).props.actions, '配置').props.onClick()
+    await control(treeNodes(render()).find((node) => node.props?.title === item.id).props.footer, '配置').props.onClick()
     treeNodes(render()).find((node) => node.type?.name === 'FieldRow').props.onChange('draft')
     for (const [result, expected] of [
       [postResult, /配置冲突/], [{ ok: false, code: 'MODULE_CONFIG_INVALID', message: 'invalid value' }, /invalid value/],
@@ -2437,6 +2437,7 @@ test('ModulesPage sandbox: grant fallback/confirmation, external loaded gating a
     const iframe = component.type(component.props)
     assert.equal(iframe.type, 'iframe'); assert.equal(iframe.props.sandbox, 'allow-scripts'); assert.equal(iframe.props.referrerPolicy, 'no-referrer')
     assert.equal(iframe.props.src, '/onebot-qq/module-ui/sandbox-test/new-generation/index.html')
+    assert.equal(iframe.props.style.width, '100%'); assert.equal(iframe.props.style.minWidth, 0); assert.equal(iframe.props.style.maxWidth, '100%')
     assert.equal(iframe.props.srcDoc, undefined); assert.equal(iframe.props.allow, undefined)
     for (const patch of [{ enabled: false }, { status: 'disabled' }, { status: 'blocked' }, { permissions: [] }, { builtin: true, source: 'builtin' }]) {
       const changed = { ...item, ...patch }
@@ -3528,4 +3529,174 @@ test('C09 client legacy object forms exhaustively match the canonical navigation
       for (const anchor of [`${name}-${id}`, `ob-cog-${name}-${id}`]) check({ tab: 'cognition', section, anchor, [key]: id })
     }
   }
+})
+
+// UI phase 3: DOM structure and CSS contracts; these are not browser layout measurements.
+test('UI phase 3 module cards: dedicated container/grid, title-only header, footer controls and long text retained', () => {
+  const long = 'VeryLongModuleValue'.repeat(80)
+  const item = { id: 'external-long', name: long, description: long + '-description', version: long + '-version', builtin: false, source: 'external', status: 'loaded', enabled: true, hasConfig: true, canReload: true, canToggle: false, permissions: [long + '-permission'], requires: [long + '-dependency'], error: long + '-error', generation: 'g', uiRevision: 'r' }
+  stateOverrides = [[item, { ...item, id: 'short', name: '短标题', description: '短说明' }], false, '', '', null, '', moduleCatalog(moduleUi(item))]
+  let tree
+  try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+  const nodes = treeNodes(tree), list = nodes.find(node => node.props?.className === 'ob-module-list')
+  assert.equal(list.children[0].props.className, 'ob-module-grid')
+  assert.ok(!nodes.some(node => node.props?.className === 'ob-grid two'))
+  const cards = nodes.filter(node => node.type === 'article')
+  assert.equal(cards.length, 2)
+  for (const card of cards) {
+    assert.equal(card.props.className, 'ob-module-card')
+    const component = card.children[0]
+    assert.equal(component.props.actions, undefined)
+    assert.equal(component.props.footer.props.className, 'ob-module-actions')
+    const rendered = component.type({ ...component.props, children: component.children })
+    const header = rendered.children[0], footer = rendered.children[2]
+    assert.equal(header.props.className, 'ob-panel-head with-line')
+    assert.equal(treeNodes(header).some(node => node.type?.name === 'Btn' || node.type === 'button'), false)
+    assert.equal(footer.props.className, 'ob-panel-foot')
+    assert.deepEqual(treeNodes(footer).filter(node => node.type?.name === 'Btn').map(node => node.children[0]), card.props.key === item.id ? ['详情', '配置', '重载', '停用'] : ['详情', '重载', '停用'])
+  }
+  const panelNode = cards[0].children[0]
+  assert.equal(panelNode.props.title, long)
+  assert.equal(panelNode.props.description, item.description)
+  for (const value of [item.version, ...item.permissions, ...item.requires, item.error]) assert.ok(JSON.stringify(tree).includes(value), value)
+  const toggle = treeNodes(panelNode.props.footer).find(node => node.children?.includes('停用'))
+  const reason = nodes.find(node => node.props?.id === toggle.props['aria-describedby'])
+  assert.ok(reason)
+  assert.equal(reason.type, 'p')
+  assert.equal(toggle.props.disabled, true)
+  const nativeButton = toggle.type({ ...toggle.props, children: toggle.children })
+  assert.equal(nativeButton.props['aria-describedby'], reason.props.id)
+  stateOverrides = [[], true]
+  try {
+    const loading = panel.ModulesPage({})
+    assert.equal(loading.props.className, 'ob-module-list ob-module-scope')
+    assert.equal(loading.children[0].props.className, 'ob-module-grid')
+  } finally { stateOverrides = null }
+})
+
+test('UI phase 3 module detail: summary, health, actions, links, reminders and surfaces are siblings with stable anchors/keys', () => {
+  const transparentChildren = value => Array.isArray(value) ? value.flatMap(transparentChildren) : !value ? [] : value.type === reactShim.Fragment ? transparentChildren(value.children) : [value]
+  for (const id of ['builtin-reminders', 'builtin-media-features']) {
+    const item = { id, name: id, builtin: true, source: 'builtin', enabled: true, status: 'loaded', canToggle: true, generation: 'g', uiRevision: 'r' }
+    const surfaces = [
+      { id: 'preview', hook: 'module.detail', renderer: 'builtin-react', componentKey: id === 'builtin-reminders' ? 'reminders.preview' : 'media-features.preview', order: 0 },
+      { id: 'settings', hook: 'module.config', renderer: 'schema', order: 1 },
+      { id: 'panel', hook: 'module.panel', renderer: id === 'builtin-reminders' ? 'status' : 'builtin-react', ...(id === 'builtin-media-features' ? { componentKey: 'media-features.panel' } : {}), order: 2 },
+    ]
+    const ui = moduleUi(item, { config: { binding: 'legacy-core', available: true, schemaVersion: 1 }, surfaces })
+    stateOverrides = [[item], false, '', '', null, '', moduleCatalog(ui), '', item.id]
+    let tree
+    try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+    assert.equal(tree.props.id, 'ob-module-detail')
+    const siblings = transparentChildren(tree.children)
+    assert.equal(siblings[0].props.className, 'ob-module-toolbar')
+    const summary = siblings.find(node => node.props?.className === 'ob-module-summary')
+    assert.ok(summary)
+    assert.ok(!treeNodes(summary).some(node => [panel.CoreModuleHealth, panel.CoreModuleActions, panel.ModuleFeatureLinks].includes(node.type)))
+    const health = siblings.find(node => node.type === panel.CoreModuleHealth), actions = siblings.find(node => node.type === panel.CoreModuleActions)
+    assert.equal(health.props.key, id + ':g:health:0')
+    assert.equal(actions.props.key, id + ':actions')
+    assert.ok(siblings.some(node => node.type === panel.ModuleFeatureLinks))
+    if (id === 'builtin-reminders') assert.ok(siblings.some(node => node.props?.id === 'ob-module-reminders'))
+    for (const [anchor, key] of [['ob-module-config', 'settings'], ['ob-module-panel', 'panel'], ['ob-module-surface-preview', 'preview']]) {
+      const section = siblings.find(node => node.props?.id === anchor)
+      assert.ok(section, anchor)
+      assert.equal(section.props.key, key)
+      assert.equal(section.children[0].props?.key, anchor === 'ob-module-panel' && id === 'builtin-media-features' ? key : undefined)
+    }
+    const config = siblings.find(node => node.props?.id === 'ob-module-config')
+    assert.equal(config.children[0].type.name, 'Panel')
+    const media = siblings.find(node => node.props?.id === 'ob-module-panel')
+    if (id === 'builtin-media-features') assert.equal(media.children[0].type, panel.MediaFeaturesPanel, 'media owns its Panels, with no extra padded Panel')
+    const previewSection = siblings.find(node => node.props?.id === 'ob-module-surface-preview')
+    const preview = treeNodes(previewSection).find(node => node.type === panel.BUILTIN_MODULE_UI[surfaces[0].componentKey])
+    assert.ok(preview)
+    assert.equal(previewSection.children[0].children[0].props.key, 'preview')
+    assert.equal(preview.type(preview.props).props.className, 'ob-module-preview')
+  }
+})
+
+test('UI phase 3 metadata/actions: long health values and reasons wrap without text loss; reasons describe native buttons', () => {
+  const long = 'unbroken-runtime-generation-dependency-reason-error-'.repeat(40)
+  const health = { moduleId: 'module-long', runtimeGeneration: long + 'generation', reasonCode: long + 'reason', reasons: [long + 'reasons'], lastError: { reasonCode: long + 'error' }, providers: [{ name: long + 'provider', fallback: { reasonCode: long + 'fallback' } }], dependencies: [{ moduleId: long + 'dependency', available: false }] }
+  stateOverrides = [{ items: [health] }, '', false]
+  let tree
+  try { tree = panel.CoreModuleHealth({ moduleId: health.moduleId }) } finally { stateOverrides = null }
+  const metadata = treeNodes(tree).filter(node => node.type === 'dl')
+  assert.ok(metadata.length > 1)
+  assert.ok(metadata.every(node => node.props.className === 'ob-module-metadata ob-small'))
+  for (const suffix of ['generation', 'reason', 'reasons', 'error', 'provider', 'fallback', 'dependency']) assert.ok(JSON.stringify(tree).includes(long + suffix), suffix)
+  stateOverrides = [{ items: [{ actionId: 'module.reload', available: false, reasonCode: long }] }, '', false]
+  try { tree = panel.CoreModuleActions({ moduleId: health.moduleId }) } finally { stateOverrides = null }
+  const group = treeNodes(tree).find(node => node.props?.className === 'ob-module-actions')
+  const action = treeNodes(group).find(node => node.props?.className === 'ob-module-action')
+  const [button, reason] = action.children
+  assert.equal(reason.type, 'p')
+  assert.equal(reason.children[0], long)
+  assert.equal(button.props['aria-describedby'], reason.props.id)
+  assert.equal(button.type(button.props).props['aria-describedby'], reason.props.id)
+  assert.ok(!treeNodes(button).includes(reason))
+})
+
+test('UI phase 3 module config: number input/unit, field id/key and bounded long preview remain intact', () => {
+  const item = { id: 'builtin-sample', source: 'builtin', builtin: true, hasConfig: true, enabled: true, status: 'loaded', generation: 'g', uiRevision: 'r' }
+  const long = '长预览WithoutSpaces'.repeat(10)
+  const spec = { path: 'count', type: 'number', label: '数量', min: 0, max: 100, step: 2, unit: 'long-unit-without-breaks'.repeat(10) }
+  const editor = { id: item.id, schema: { fields: [spec] }, values: { count: 8, message: long }, revision: 1 }
+  const ui = moduleUi(item, { surfaces: [{ id: 'preview', hook: 'module.detail', renderer: 'builtin-react', componentKey: 'sample.preview', order: 0 }, { id: 'config', hook: 'module.config', renderer: 'schema', order: 1 }] })
+  stateOverrides = [[item], false, '', '', editor, '', moduleCatalog(ui), '', item.id]
+  let tree
+  try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+  const preview = treeNodes(tree).find(node => node.type === panel.BUILTIN_MODULE_UI['sample.preview'])
+  assert.ok(JSON.stringify(preview.type(preview.props)).includes(long))
+  const row = treeNodes(tree).find(node => node.type?.name === 'FieldRow')
+  assert.equal(row.props.key, item.id + ':' + spec.path)
+  const rowTree = row.type(row.props)
+  const fieldControl = treeNodes(rowTree).find(node => node.type?.name === 'FieldControl')
+  let changed
+  const number = fieldControl.type({ ...fieldControl.props, onChange: value => { changed = value } })
+  assert.equal(number.props.className, 'ob-number-control')
+  assert.equal(number.props.style, undefined, 'no inline nowrap')
+  const [input, unit] = number.children
+  assert.equal(input.props.id, 'ob-field-count')
+  assert.equal(treeNodes(rowTree).find(node => node.type === 'label').props.htmlFor, input.props.id)
+  assert.equal(input.props.type, 'number')
+  assert.deepEqual([input.props.min, input.props.max, input.props.step], [0, 100, 2])
+  assert.equal(unit.children[0], spec.unit)
+  input.props.onChange({ target: { value: '12' } })
+  assert.equal(changed, 12)
+  input.props.onChange({ target: { value: '' } })
+  assert.equal(changed, '')
+})
+
+test('UI phase 3 CSS: container AND viewport thresholds, equal-height footer cards, wrapping and mobile single columns', () => {
+  const css = panel.PANEL_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  const rule = (selector, last = false) => { const matches = rules.filter(row => row[1].trim() === selector); const found = last ? matches.at(-1) : matches[0]; assert.ok(found, selector); return found[2] }
+  assert.match(rule('.ob-module-list'), /container:ob-module-list \/ inline-size/)
+  assert.match(rule('.ob-module-grid'), /grid-template-columns:minmax\(0,1fr\)/)
+  assert.match(css, /@media \(width > 900px\)\{\s*@container ob-module-list \(min-width:760px\)\{\s*\.ob-module-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/)
+  assert.match(rule('.ob-module-card'), /min-inline-size:0;max-inline-size:100%;display:flex;flex-direction:column/)
+  assert.match(rule('.ob-module-card > .ob-panel'), /flex:1;display:flex;flex-direction:column/)
+  assert.match(rule('.ob-module-card > .ob-panel > .ob-panel-body'), /flex:1/)
+  assert.match(rule('.ob-module-card > .ob-panel > .ob-panel-foot'), /margin-block-start:auto/)
+  assert.match(rule('.ob-module-scope,.ob-module-scope *'), /min-inline-size:0;max-inline-size:100%/)
+  assert.match(rule('.ob-module-scope'), /overflow-wrap:anywhere/)
+  assert.match(rule('.ob-module-scope .ob-panel'), /overflow:visible/)
+  assert.match(rule('.ob-module-scope .ob-badge'), /height:auto;min-height:22px;white-space:normal;overflow-wrap:anywhere/)
+  assert.match(rule('.ob-module-toolbar,.ob-module-actions'), /display:flex;flex-wrap:wrap/)
+  assert.match(rule('.ob-module-metadata'), /display:grid;grid-template-columns:minmax\(0,12rem\) minmax\(0,1fr\)/)
+  assert.match(rule('.ob-module-metadata dt,.ob-module-metadata dd'), /margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere/)
+  assert.match(rule('.ob-module-preview'), /gap:8px;margin:0/)
+  assert.match(rule('.ob-module-preview p'), /margin:0/)
+  assert.match(rule('.ob-module-scope iframe'), /width:100%;min-width:0;max-width:100%/)
+  assert.match(rule('.ob-number-control .ob-input'), /flex:1 1 8rem;min-width:0;width:auto/)
+  assert.match(rule('.ob-number-control .ob-field-unit'), /white-space:normal;overflow-wrap:anywhere/)
+  assert.match(css, /@media \(max-width:900px\)\{\s*\.ob-module-grid,\.ob-module-metadata\{grid-template-columns:minmax\(0,1fr\)\}/)
+  assert.match(rule('.ob-module-card .ob-module-actions', true), /display:grid;grid-template-columns:minmax\(0,1fr\);width:100%/)
+  assert.match(rule('.ob-module-card .ob-module-actions > .ob-btn'), /width:100%/)
+  assert.match(rule('.ob-module-toolbar .ob-btn,.ob-module-actions .ob-btn'), /min-height:44px/)
+  assert.match(rule('.ob-number-control'), /flex-wrap:wrap/)
+  assert.match(rule('.ob-number-control', true), /flex-direction:column;align-items:stretch/)
+  assert.match(rule('.ob-number-control .ob-input', true), /flex:1 1 auto;width:100%;min-height:44px/)
 })
