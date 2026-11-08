@@ -35,8 +35,9 @@ export function assembleServices({
     store, clock, scheduler, runtimeAdapter, sourceRegistry, embeddingAdapter, deliverySleep,
     access, media, providerRegistry, deliveryRegistry, turnHooks, executionSandbox,
   })
+  const runtimeConfig = () => cognition.services.settings?.resolveConfig() || getConfig()
   const modules = createModuleKernel({
-    dataDir: join(dataRoot, 'modules'), getConfig, ctx: eventBus, logger, cognition,
+    dataDir: join(dataRoot, 'modules'), getConfig: runtimeConfig, ctx: eventBus, logger, cognition,
     media, stickers, access, gateway, providerRegistry, deliveryRegistry, turnHooks,
     reminderControl, registry, discoverExternal, clock, scheduler,
     outbound: cognition.services.outbound, delivery: cognition.services.delivery,

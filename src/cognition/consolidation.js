@@ -19,7 +19,7 @@ function summaryText(item) {
   return String(item?.summary || item?.content || '').trim()
 }
 
-export function createConsolidationService({ memory, llm = null, getConfig, clock, scheduler = null, logger = null } = {}) {
+export function createConsolidationService({ memory, llm = null, getConfig, clock, scheduler = null, logger = null, settings = null } = {}) {
   const log = logger?.child?.('consolidation') || logger || { debug() {}, warn() {} }
   const state = {
     runs: 0,
@@ -86,7 +86,11 @@ export function createConsolidationService({ memory, llm = null, getConfig, cloc
     }
   }
 
-  async function runOnce({ force = false, reflect = null } = {}) {
+  function runOnce(options) {
+    return settings ? settings.withRuntime(() => runCaptured(options), { fresh: true }) : runCaptured(options)
+  }
+
+  async function runCaptured({ force = false, reflect = null } = {}) {
     if (!enabled() && !force) return { ok: false, skipped: true, reason: 'disabled' }
     if (!memory || typeof memory.consolidateAll !== 'function') return { ok: false, error: 'MEMORY_UNAVAILABLE' }
     state.runs += 1

@@ -183,6 +183,9 @@ test('host production builtin owns reminders; toggles restore core commands and 
   }
   host.setConfig({ ...host.getConfig(), access: { ownerQQ: '10001' },
     cognition: { ...host.getConfig().cognition, dryRun: true, reminders: { enabled: true } } })
+  const settings = host.cognition.services.settings
+  settings.patch({ scope: 'profile', id: host.cognition.activePersonaId(),
+    revision: settings.view({ scope: 'profile', id: host.cognition.activePersonaId() }).revision, patch: { 'cognition.dryRun': true } })
   const add = t.mock.method(host.cognition.services.reminders, 'add')
   const command = text => host.cognition.services.commands.handle({ text, senderId: '10001', chatType: 'private', chatId: '10001' })
   const created = await command('/remind 60 shared')

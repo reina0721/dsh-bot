@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- 激活 profile 运行时：认知、模型/命令、轮次、人格与后台任务统一解析 active profile；在途轮次捕获配置及数据人格，后续轮次应用保存/切换结果，System 安全策略与模块绑定保持实时读取。
+- C02 切换刷新未编辑快照的真实 legacy 行为，保留明确 overrides，事务迁移/重启幂等；旧人格编辑/reset/演化同步 revision。profile 不可用或迁移失败整份回退 legacy 并禁用编辑，保留稳定错误与脱敏。
+- 设置 API 报告 profile/applied；UI 移除 staged/旧编辑模式，显示应用状态、冲突和重新读取。legacy `/config` 与 `/model` 写 active profile；实际跨 owner 的 `/quiet`、`/active` 明确拒绝且零写入。新增运行行为、异步路由/人设捕获、数据隔离、迁移/CAS/回退/UI 回归。无版本变更、推送、部署、tag 或 release。
+
 - C09（仅 AstrBot 对齐验收，基线 C08 `81304d2`）：补齐 C01–C08 提交链、六区/全量旧别名、staged 设置迁移、Chat 零真实发送、broker fail-closed 与 P1 不可用清单；增加客户端旧对象导航和非 ready/过期 broker 工具白名单集成测试，双格式包逐字节检查全部新文件/ADR/验收文档并扫描凭据/私有路径，规范化既有图表证据中的机器路径，保留历史状态/hash、不重跑浏览器。证据见 [AstrBot 对齐验收](docs/architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。无新生产功能；真实 Linux containment 未认证，macOS 仅探测，无 egress/真实模型 preview/Windows 执行，保留真实浏览器与安全 preset 联调缺口。版本保持 0.11.15，仅本地检查与提交。
 
 - C08（仅 P1 能力边界，基线 C07 `a6740fd`）：新增 macOS Seatbelt discovery driver，auto 在 macOS 选择 local-macos；只检查固定 `/usr/bin/sandbox-exec` 的安全属性/可执行性，公开未证明的 enforcement 能力。即使二进制可用，仍因 RESOURCE_LIMITS_UNPROVEN 拒绝全部脚本执行，不启动 host shell，不声称 Seatbelt containment 已验证。

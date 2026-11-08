@@ -560,11 +560,15 @@ export function createPipeline({
     trace(turn.id, 'forward_expand', { text: `展开 ${ids.length} 条合并转发`, data: { chars: body.length } })
   }
 
-  async function handleTurn(turn) {
-    // Shadow capture only: legacy services keep their existing runtime reads.
-    if (turn && settings) {
-      try { settingsContexts.set(turn, settings.capture()) } catch { /* Legacy runtime remains available. */ }
-    }
+  function handleTurn(turn) {
+    if (settings) return settings.withRuntime(captured => {
+      if (turn) settingsContexts.set(turn, captured)
+      return handleCapturedTurn(turn)
+    }, { fresh: true })
+    return handleCapturedTurn(turn)
+  }
+
+  async function handleCapturedTurn(turn) {
     const c = cfg()
     const admitted = turn && c.enabled && !c.paused && !(turn.senderId && (turn.senderId === turn.selfId || turn.senderId === String(getConfig()?.botQQ || '')))
     const loop = admitted ? observeLoop(observer, 'begin', { kind: 'social', turnId: turn.id }) : null
@@ -817,7 +821,10 @@ export function createPipeline({
 
   return {
     settingsContext: turn => settingsContexts.get(turn) || null,
-    handleTurn, handleRecall, handlePoke, handleReaction, observeIncoming, stats: statsSnapshot, trace, setTurnAggregator,
+    handleTurn,
+    handleRecall: input => settings ? settings.withRuntime(() => handleRecall(input), { fresh: true }) : handleRecall(input),
+    handlePoke: input => settings ? settings.withRuntime(() => handlePoke(input), { fresh: true }) : handlePoke(input),
+    handleReaction, observeIncoming, stats: statsSnapshot, trace, setTurnAggregator,
     groupMode: effectiveGroupMode, _pending: pending,
   }
 }

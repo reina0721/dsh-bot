@@ -1,6 +1,6 @@
 # dsh-bot 用户手册
 
-C09 的 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)集中记录六区导航与完整旧入口兼容、staged profile、离线 Chat 零真实发送和执行 broker 限制。离线 Sandbox 的“发送成功”只表示 capture；profile 保存不改变实际运行。执行能力需独立 broker ready/授权及宿主安全 preset，当前环境不可执行；macOS probe、egress/preview 状态不代表能力已开放。页面交互仅有 Node shim 证据，真实浏览器仍待验收。
+C09 的 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)集中记录六区导航与完整旧入口兼容、当时的 staged profile、离线 Chat 零真实发送和执行 broker 限制。离线 Sandbox 的“发送成功”只表示 capture；现已完成 profile 运行切换：保存当前人格影响后续轮次，其他人格的设置在激活后使用。执行能力需独立 broker ready/授权及宿主安全 preset，当前环境不可执行；macOS probe、egress/preview 状态不代表能力已开放。页面交互仅有 Node shim 证据，真实浏览器仍待验收。
 
 本手册面向「已经能打开 DeepSeek Harness（DSH）Web，想把 QQ 接进来」的用户。
 安装细节与全部配置项分别见 [README](../README.md) 与 [CONFIG.md](CONFIG.md)。
@@ -196,7 +196,7 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 只影响认知分析与回复生成，不改变 DSH 面板的默认模型；`agent` 引擎的 Session 模型仍由 DSH preset 决定。
 
-**今日 LLM 预算**：打开「System → 模型」，卡片同时显示全局与当前人格的今日已用、预算、剩余、进度和 UTC 日期，并显示当前模式的有效剩余。「Profiles → 模型」中的 staged「预算作用域」可选全局（`global`，默认）、按人格（`persona`）或两者取最小（`both`）；全局与人格预算默认均为 300000，可分别编辑。两项计数始终记录，切换模式不会清零。分析与回复计入两项用量，学习预算在 `cog-learning` 单独配置。达到 80% 提示；参与约束的预算耗尽后阻止后续模型调用，仅跟踪的预算耗尽不会阻止。服务层预算 0 也视为耗尽。
+**今日 LLM 预算**：打开「System → 模型」，卡片同时显示全局与当前人格的今日已用、预算、剩余、进度和 UTC 日期，并显示当前模式的有效剩余。「Profiles → 模型」中的「预算作用域」可选全局（`global`，默认）、按人格（`persona`）或两者取最小（`both`）；全局与人格预算默认均为 300000，可分别编辑。两项计数始终记录，切换模式不会清零。分析与回复计入两项用量，学习预算在 `cog-learning` 单独配置。达到 80% 提示；参与约束的预算耗尽后阻止后续模型调用，仅跟踪的预算耗尽不会阻止。服务层预算 0 也视为耗尽。
 
 点「刷新」更新数据，读取失败时可「重试」。「重置全局今日」清除所有人格共享的全局今日计数；「重置当前人格今日」只清除当前人格的今日计数，两者均弹出确认，取消不发请求。不会修改预算、模式、人格或配置，其他日期保留。人格重置不影响其他人格；全局重置不清除各人格计数。加载、错误、重置中或对应行用量为 0 时重置按钮不可用。重置不撤销供应商用量，执行中的调用仍可随后增加计数，归属请求开始时的人格。旧全局计数保留在全局存储，不再迁到人格；人格计数从新增双计数后开始记录。若已运行中间迁移实现，不自动合并其历史人格记录。详见[配置说明](CONFIG.md#llm-每日预算与今日用量)。
 
@@ -290,7 +290,7 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 ### 3.4 回复分条、引用/@ 与群聊节奏
 
-**私聊输入状态（M7-q，默认关闭）**：在「Profiles → 轮次与群聊参与（staged；私聊输入状态设置请到 Extensions → builtin-typing）」打开「私聊输入状态」（`cognition.typing.enabled`）。支持此扩展的网关会在私聊/C2C 轮次处理前收到输入中状态，处理结束后收到暂停状态；命令提前返回或处理异常也会尝试暂停。网关拒绝/不支持时不影响回复，不记录含聊天 ID 的原始异常；等待网关可能增加耗时。群聊、手动发送和媒体发送不增加输入状态。现有入站 `input_status` 通知仍忽略；无群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板，只有配置开关。真实 QQ 效果尚未验证，仅离线测试；#9 为 steer + 私聊 typing，仍 partial、remaining 47，#31/#42/#49/#50 不变，未完成全量验收。详见[配置说明](CONFIG.md#私聊输入状态m7-q)。
+**私聊输入状态（M7-q，默认关闭）**：在「Extensions → builtin-typing」打开「私聊输入状态」（`cognition.typing.enabled`）。支持此扩展的网关会在私聊/C2C 轮次处理前收到输入中状态，处理结束后收到暂停状态；命令提前返回或处理异常也会尝试暂停。网关拒绝/不支持时不影响回复，不记录含聊天 ID 的原始异常；等待网关可能增加耗时。群聊、手动发送和媒体发送不增加输入状态。现有入站 `input_status` 通知仍忽略；无群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板，只有配置开关。真实 QQ 效果尚未验证，仅离线测试；#9 为 steer + 私聊 typing，仍 partial、remaining 47，#31/#42/#49/#50 不变，未完成全量验收。详见[配置说明](CONFIG.md#私聊输入状态m7-q)。
 
 「配置 → 回复与出站」：
 
@@ -449,7 +449,11 @@ QQ空间明确未实现：它需要 QQ 登录授权，并涉及平台授权与�
 
 内部目的地写入 URL 的 `ob-nav` 参数；保留 DSH 外层 path/hash、其它 query 和 history state。支持刷新恢复、后退/前进与同区更新；moduleId、anchor、decisionId、taskId 保持完整 ID。旧 `#ob-tab-*` 链接在没有 `ob-nav` 时也会解析。
 
-**C03 的 profile 仍为 staged 预览。** 在所有者设置选择「预览人格」后，读取/保存指定 ID 的 profile API（revision 冲突需重新读取），不会激活该人格，也不会改变运行输出。业务数据/动作仍属于当前激活人格。Profiles → 人格表达可切到「当前运行人格（旧编辑器）」继续编辑当前实际人设；同一目的地每次只挂一个编辑模式，旧编辑不回写 staged。其余旧运行参数仍由原配置文件维护，不能把 staged 保存当作已生效。人格库保留创建/复制/切换/删除/导入与数据复制；不再重复承载表达或群聊参数编辑。
+**Profile 设置已应用于运行。** 在所有者设置选择「设置人格」后，读取/保存指定 ID，检查或保存其他人格不会激活它。当前人格显示「已应用」，其他人格显示「激活后应用」；保存影响后续轮次/任务，在途轮次继续使用原人格快照。业务数据/操作仍属于当前激活人格。revision 冲突时保留草稿并显示错误，可点击「重新读取」丢弃草稿后重试。迁移/profile 不可用时运行整份回退旧配置，profile 编辑被拒绝，检查迁移错误后重启重试；System/module 不受影响。
+
+Profiles → 人格表达只有一个编辑器。人格库保留创建/复制/切换/删除/导入与数据复制；旧人格 API 编辑、reset、慢演化同步同一份 profile revision。已有 C02 未修改的快照参数会采用切换前的真实 legacy 行为，曾明确保存的 staged overrides 从本次切换开始生效；重启不会重复迁移。
+
+命令 `/model` 同样写当前 profile。`/quiet`、`/active` 若同时改变群聊模式与主动开关，返回 SETTINGS_MULTI_OWNER 且零写入，请分别在 Profiles → 轮次与群聊参与和 Extensions → proactivity 保存。
 
 System/数据治理设置按 owner revision 保存；凭据输入空白保留，填写新值显式 set，点击「清除」后保存才 clear。外观和内置模块旧绑定继续即时串行保存；sample/外部模块文件配置沿用模块 schema/revision。没有全量配置 reset 或第二个通用编辑器。下面按既有功能名称说明操作，位置以上表和搜索为准。
 
@@ -553,7 +557,7 @@ System、Profiles 和 Data & Logs 的具体分区只渲染本目的地字段；�
 
 ### 人格
 
-在 Profiles → 人格库管理多个人格；在 Profiles → 人格表达编辑 staged 人设，或明确切到当前运行人格旧编辑器。轮次与群聊参与参数属于 Profiles → 轮次与群聊参与（staged）。
+在 Profiles → 人格库管理多个人格；在 Profiles → 人格表达编辑人设并应用于后续轮次。轮次与群聊参与参数属于 Profiles → 轮次与群聊参与。
 
 - **人格库**：保存多份互相独立的人格；下拉切换当前人格，切换后下一轮消息立即使用新人格；
 - **新建人格**：填名字创建空白人格；**复制当前**：复制当前 profile/数值/风格，生成独立副本；
@@ -582,13 +586,13 @@ System、Profiles 和 Data & Logs 的具体分区只渲染本目的地字段；�
 - 文本人设保存在认知 SQLite 的 persona 记录，和 `config.json` 的数值初值分离；旧 persona 读取时补空 profile，不覆盖已有内容。
 - 群聊仍只读本群/本作用域记忆；私聊记忆不会进入群聊 prompt。
 
-**群聊词法相关度（M7-p，默认关闭）**：在「Profiles → 轮次与群聊参与（staged；私聊输入状态设置请到 Extensions → builtin-typing）」打开「群聊词法相关度门控」，最低分默认 0.15（范围 0–1）。未点名群消息在原有概率、分钟上限、连续上限、冷却检查通过后，复用已检索记忆的最高词法相关度；缺信号时按文本与记忆摘要的词法重合计算。无记忆或低于阈值会跳过分析/回复 LLM，但仍记忆该消息，诊断原因是 `low_relevance`。点名/回复/唤醒词绕过相关度检查，仍受分钟上限约束；私聊不受影响，关闭即保持原行为。门控不新增外部调用，计算异常放行。只做词法记忆相关度，没有 LLM 话题理解、接梗或语义打分；#20 仍 partial、remaining 47。字段和检查顺序见[配置说明](CONFIG.md#群聊词法相关度门控m7-p)。
+**群聊词法相关度（M7-p，默认关闭）**：在「Profiles → 轮次与群聊参与」打开「群聊词法相关度门控」，最低分默认 0.15（范围 0–1）。未点名群消息在原有概率、分钟上限、连续上限、冷却检查通过后，复用已检索记忆的最高词法相关度；缺信号时按文本与记忆摘要的词法重合计算。无记忆或低于阈值会跳过分析/回复 LLM，但仍记忆该消息，诊断原因是 `low_relevance`。点名/回复/唤醒词绕过相关度检查，仍受分钟上限约束；私聊不受影响，关闭即保持原行为。门控不新增外部调用，计算异常放行。只做词法记忆相关度，没有 LLM 话题理解、接梗或语义打分；#20 仍 partial、remaining 47。字段和检查顺序见[配置说明](CONFIG.md#群聊词法相关度门控m7-p)。
 
 ### 模型
 
-System → 模型管理运行中的 Provider/协议与全局额度；Profiles → 模型只编辑 staged 的人格模型选择与生成参数：
+System → 模型管理运行中的 Provider/协议与全局额度；Profiles → 模型编辑人格模型选择与生成参数并应用于后续轮次：
 
-- **路由模式**：在 Profiles → 模型预览；当前运行仍读 legacy，Provider 的「设为直连/备用」操作沿用原模型服务；
+- **路由模式**：在 Profiles → 模型保存后应用于当前人格后续轮次，Provider 的「设为直连/备用」操作沿用原模型服务；
 - **预设**：OpenAI Chat、OpenAI Responses、Anthropic、DeepSeek、OpenRouter、OpenCode Go（OpenAI 与
   Anthropic 两种端点）、Command Code（两种）、Gemini、Ollama、Custom；
 - **Provider 编辑器**：协议、base URL、请求路径、模型列表路径、认证方式、环境变量、API key、额外 headers、

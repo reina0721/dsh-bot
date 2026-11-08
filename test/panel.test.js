@@ -2960,7 +2960,7 @@ function ownerHarness(props) {
   return { render, effects, settle, async load() { render(); effects.find(row => row.deps?.length === 3 && typeof row.deps[0] === 'function').effect(); await settle(); return render() }, restore() { reactShim.useEffect = original } }
 }
 
-test('C03 profile staged editor reads inactive IDs, sends only changed owner fields with revision and retains conflicts', async () => {
+test('profile applied editor reads inactive IDs, sends only changed owner fields with revision and retains conflicts', async () => {
   const original = globalThis.fetch, calls = [], toasts = []
   const props = { navigation: { area: 'profiles', section: 'reply' }, configInfo: { groups: CONFIG_GROUPS }, toast: (...args) => toasts.push(args) }
   let conflict = false
@@ -2968,22 +2968,23 @@ test('C03 profile staged editor reads inactive IDs, sends only changed owner fie
     const body = init.body && JSON.parse(init.body); calls.push({ path, body })
     return { ok: true, json: async () => path.endsWith('/profiles') ? { ok: true, activeId: 'active', items: [{ id: 'active' }, { id: 'inactive' }] }
       : body ? conflict ? { ok: false, code: 'SETTINGS_CONFLICT' } : { ok: true, revision: 8, values: { ...Object.fromEntries(panel.ownerFields(props.navigation).map(field => [field.path, true])), ...body.patch } }
-      : { ok: true, id: path.endsWith('inactive') ? 'inactive' : 'active', revision: 7, values: Object.fromEntries(panel.ownerFields(props.navigation).map(field => [field.path, true])), runtimeMode: 'legacy', profileEditsApply: 'staged' } }
+      : { ok: true, id: path.endsWith('inactive') ? 'inactive' : 'active', revision: 7, values: Object.fromEntries(panel.ownerFields(props.navigation).map(field => [field.path, true])), runtimeMode: 'profile', profileEditsApply: 'applied' } }
   }
   const harness = ownerHarness(props)
   try {
     harness.render(); harness.effects.find(row => row.deps?.length === 1 && row.deps[0] === true).effect(); await harness.settle()
     let tree = await harness.load()
-    field(tree, '预览人格').props.onChange({ target: { value: 'inactive' } }); tree = await harness.load()
+    field(tree, '设置人格').props.onChange({ target: { value: 'inactive' } }); tree = await harness.load()
     assert.ok(calls.at(-1).path.endsWith('/profiles/config?id=inactive'))
-    assert.match(JSON.stringify(tree), /staged/)
+    assert.match(JSON.stringify(tree), /激活后应用/)
+    assert.doesNotMatch(JSON.stringify(tree), /staged|Staged|旧编辑器/)
     const editors = treeNodes(tree).filter(node => node.type?.name === 'FieldRow')
     assert.deepEqual(editors.map(node => node.props.spec.path).sort(), panel.ownerFields(props.navigation).map(field => field.path).sort())
     editors.find(node => node.props.spec.path === 'cognition.notices.enabled').props.onChange(false)
     await moduleControl(harness.render(), '保存设置').props.onClick()
     assert.deepEqual(calls.find(row => row.body).body, { id: 'inactive', revision: 7, patch: { 'cognition.notices.enabled': false } })
     assert.ok(calls.find(row => row.body).path.endsWith('/profiles/config/save'))
-    assert.match(toasts.at(-1)[0], /运行配置未切换/)
+    assert.match(toasts.at(-1)[0], /激活该人格后使用新设置/)
     tree = harness.render(); treeNodes(tree).find(node => node.type?.name === 'FieldRow').props.onChange(false)
     conflict = true
     await moduleControl(harness.render(), '保存设置').props.onClick()
@@ -3028,7 +3029,7 @@ test('C03 persona library has management only; runtime expression editor stays i
   assert.ok(titles(render({ runtimeEditor: true })).includes('人格'))
   assert.equal(titles(render({ runtimeEditor: true })).includes('群聊参与'), false)
   const staged = panel.OwnerSettings({ ...props, navigation: { area: 'profiles', section: 'persona' } })
-  assert.match(JSON.stringify(staged), /Staged 预览/)
+  assert.match(JSON.stringify(staged), /Profile 设置与运行状态/)
   assert.equal(treeNodes(staged).filter(node => node.type === panel.PersonaTab).length, 0)
 })
 
@@ -3081,7 +3082,7 @@ test('C03 every mounted owner form renders each of its fields exactly once and n
     const navigation = { area: area.id, section: section.id }, fields = panel.ownerFields(navigation)
     if (!fields.length) continue
     const values = Object.fromEntries(fields.map(field => [field.path, field.sensitivity.startsWith('secret') ? { masked: true, present: true } : panel.getByPath(DEFAULTS, field.path)]))
-    stateOverrides = [[], 'active', { revision: 1, values }, {}, '', false, 'staged']
+    stateOverrides = [[], 'active', { revision: 1, values }, 'active', {}, '', false]
     let tree
     try { tree = panel.OwnerSettings({ navigation, configInfo: { groups: CONFIG_GROUPS } }) } finally { stateOverrides = null }
     const rendered = treeNodes(tree).filter(node => node.props?.['data-setting-path']).map(node => node.props['data-setting-path'])

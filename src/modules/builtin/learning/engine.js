@@ -33,7 +33,10 @@ export function createLearningEngine({ port, getConfig, scheduler, health } = {}
       if (currentLease === lease) currentLease = null
     }
   }
-  function runPending({ max = 1, automatic = false } = {}) {
+  function runPending(...args) {
+    return port.withRuntime ? port.withRuntime(() => runPendingCaptured(...args)) : runPendingCaptured(...args)
+  }
+  function runPendingCaptured({ max = 1, automatic = false } = {}) {
     if (!active) return Promise.resolve({ ok: false, reason: 'MODULE_DISABLED' })
     if (flight) return Promise.resolve({ ok: false, reason: 'busy' })
     const epoch = generation

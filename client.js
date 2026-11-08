@@ -2,7 +2,7 @@
 //
 // 侧栏 bot 名称入口 + 六区整页面板；内部导航不替换 DSH 外层路由。
 // 只读写宿主半边的 /onebot-qq/api/* 接口；所有配置项（含默认值、范围、选项）全部来自
-// GET /config 的 groups 与共享 settings-schema；profile 保存为 staged，运行门控仍为 legacy。
+// GET /config 的 groups 与共享 settings-schema；profile 保存后由运行解析器应用。
 //
 // 视觉与动效：令牌、排版、圆角/阴影、页面配方与语义动效体系参考 console-web（社区版 UI 基座）：
 //   - 颜色/圆角/阴影/字号来自 TOKEN_CSS（唯一允许十六进制色值的区块）；
@@ -3367,8 +3367,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const profile = fields[0]?.ownerClass === 'profile'
       const scope = profile ? 'profile' : fields[0]?.ownerClass === 'module' ? 'module:' + props.navigation.moduleId : 'system'
       const [catalog, setCatalog] = useState([]), [id, setId] = useState(''), [view, setView] = useState(null)
+      const [activeId, setActiveId] = useState('')
       const [changes, setChanges] = useState({}), [error, setError] = useState(''), [busy, setBusy] = useState(false)
-      const [mode, setMode] = useState('staged')
       const request = useRef(0), savingGuard = useRef(false)
       useEffect(() => {
         if (!profile) return
@@ -3376,7 +3376,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         get('/profiles').then(result => {
           if (!alive) return
           if (!result.ok) { setError(result.code || 'PROFILES_UNAVAILABLE'); return }
-          setCatalog(safeArray(result.items)); setId(result.activeId || '')
+          setCatalog(safeArray(result.items)); setId(result.activeId || ''); setActiveId(result.activeId || '')
         }).catch(() => { if (alive) setError('PROFILES_UNAVAILABLE') })
         return () => { alive = false }
       }, [profile])
@@ -3385,10 +3385,17 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         setView(null); setChanges({}); setError('')
         if (profile && !id) return
         try {
+          if (profile) {
+            const profiles = await get('/profiles')
+            if (ticket !== request.current) return
+            if (!profiles.ok) { setError(profiles.code || 'PROFILES_UNAVAILABLE'); return }
+            setCatalog(safeArray(profiles.items)); setActiveId(profiles.activeId || '')
+          }
           const result = await get(profile ? '/profiles/config?id=' + encodeURIComponent(id) : '/settings/view?scope=' + encodeURIComponent(scope))
           if (ticket !== request.current) return
           if (!result.ok) { setError(result.code || 'SETTINGS_READ_UNAVAILABLE'); return }
           setView(result)
+          if (profile && result.activeId !== undefined) setActiveId(result.activeId)
         } catch { if (ticket === request.current) setError('SETTINGS_READ_UNAVAILABLE') }
       }, [scope, id, profile])
       useEffect(() => { load(); return () => { request.current++ } }, [load, props.navigation.area, props.navigation.section])
@@ -3405,22 +3412,19 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           if (ticket !== request.current) return
           if (!result.ok) { setError(result.code || 'SETTINGS_WRITE_UNAVAILABLE'); return }
           setView(result); setChanges({})
-          props.toast?.(profile ? '已保存 staged 预览；运行配置未切换' : '设置已保存', 'ok')
+          if (profile && result.activeId !== undefined) setActiveId(result.activeId)
+          props.toast?.(profile ? (id === (result.activeId ?? activeId) ? '已保存并应用；后续轮次使用新设置' : '已保存；激活该人格后使用新设置') : '设置已保存', 'ok')
           props.refreshAll?.()
         } catch { if (ticket === request.current) setError('SETTINGS_WRITE_UNAVAILABLE') }
         finally { savingGuard.current = false; setBusy(false) }
       }
       if (!fields.length) return null
-      const legacyPersona = profile && props.navigation.section === 'persona' && mode === 'legacy'
       return h('section', { className: 'ob-stack', 'aria-label': '所有者设置' },
-        profile ? h(Banner, { tone: 'warn', message: 'Profile 设置为 staged 预览：保存不会改变当前运行。认知数据与业务操作仍使用当前激活人格；其余旧运行参数暂由原配置文件维护。' }) : null,
-        profile ? h('label', null, '预览人格 ', h('select', { className: 'ob-select', 'aria-label': '预览人格', value: id, disabled: busy || legacyPersona,
+        profile ? h(Banner, { tone: view?.runtimeMode === 'legacy' || error === 'SETTINGS_MIGRATION_UNAVAILABLE' ? 'warn' : view ? 'ok' : undefined, message: view?.runtimeMode === 'legacy' || error === 'SETTINGS_MIGRATION_UNAVAILABLE' ? 'Profile 不可用：运行已回退旧配置，请重新读取或检查迁移错误。' : !view ? (error ? 'Profile 设置读取失败，请重新读取。' : '正在读取 Profile 设置与运行状态…') : 'Profile 运行已启用：保存当前激活人格会应用于后续轮次；编辑其他人格不会激活它。业务数据与操作属于当前激活人格。' }) : null,
+        profile ? h('label', null, '设置人格 ', h('select', { className: 'ob-select', 'aria-label': '设置人格', value: id, disabled: busy,
           onChange: event => { request.current++; setView(null); setChanges({}); setId(event.target.value) } }, catalog.map(item => h('option', { key: item.id, value: item.id }, item.displayName || item.name || item.id)))) : null,
-        profile && props.navigation.section === 'persona' ? h('label', null, '编辑目标 ', h('select', { className: 'ob-select', 'aria-label': '人格编辑目标', value: mode, disabled: busy,
-          onChange: event => { setMode(event.target.value); setChanges({}) } }, h('option', { value: 'staged' }, 'Staged 预览'), h('option', { value: 'legacy' }, '当前运行人格（旧编辑器）'))) : null,
         error ? h(Banner, { tone: 'err', message: error + '；重新读取会丢弃草稿。', actions: h(Btn, { onClick: load, disabled: busy }, '重新读取') }) : null,
-        legacyPersona ? h(Fragment, null, h(Banner, { tone: 'warn', message: '旧编辑器修改当前激活人格，立即影响运行；不会回写 staged 设置。' }), h(PersonaTab, { ...props, ownerIntegration: true, runtimeEditor: true }))
-          : !view ? h(PanelSkeleton, { rows: 3 }) : h(Panel, { title: SECTION_LABELS[props.navigation.section] || '设置', description: profile ? 'Staged · revision ' + view.revision : '按所有者保存',
+        !view ? h(PanelSkeleton, { rows: 3 }) : h(Panel, { title: SECTION_LABELS[props.navigation.section] || '设置', description: profile ? (id === activeId ? '已应用 · ' : '激活后应用 · ') + 'revision ' + view.revision : '按所有者保存',
             actions: h('div', { className: 'ob-row' }, h(Btn, { onClick: save, disabled: busy || !Object.keys(changes).length || view.editingAvailable === false && profile }, '保存设置'), h(Btn, { onClick: load, disabled: busy }, '重新读取')) },
             fields.map(field => {
               const spec = fieldSpecByPath(props.configInfo?.groups, field.path) || { path: field.path, label: field.path, type: Array.isArray(view.values[field.path]) ? 'string-list' : typeof view.values[field.path] === 'number' ? 'number' : typeof view.values[field.path] === 'boolean' ? 'switch' : 'text' }

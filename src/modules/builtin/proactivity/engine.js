@@ -9,7 +9,10 @@ export function isQuietHour(hour, start, end) {
 export function createProactivityEngine({ port, getConfig, scheduler, health } = {}) {
   let active = false, timer = null, generation = 0, running = false, token = null, sendWork = null
   const state = { lastTickAt: 0, lastError: '', sent: 0, skipped: 0 }
-  async function tick() {
+  function tick(...args) {
+    return port.withRuntime ? port.withRuntime(() => tickCaptured(...args)) : tickCaptured(...args)
+  }
+  async function tickCaptured() {
     if (!active) return { ok: false, reason: 'MODULE_DISABLED' }
     if (running) return { ok: false, reason: 'busy' }
     running = true

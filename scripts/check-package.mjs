@@ -37,7 +37,7 @@ try {
     const settings = await import(pathToFileURL(join(base, 'src/core/settings-schema.js')).href);
     const profiles = await import(pathToFileURL(join(base, 'src/core/profile-settings.js')).href);
     assert.equal(typeof profiles.createProfileSettings, 'function');
-    assert.equal(profiles.PROFILE_RUNTIME_MODE, 'legacy');
+    assert.equal(profiles.PROFILE_RUNTIME_MODE, 'profile');
     const navigation = await import(pathToFileURL(join(base, 'src/core/navigation.js')).href);
     assert.deepEqual(settings.validateSettingsSchema(), { fields: 311, groups: 32, aliases: 620 });
     assert.deepEqual(navigation.go('config'), { area: 'system', section: 'general' });

@@ -48,7 +48,7 @@ import { createClock, createRng, createScheduler, nowMs, safeJson, uid, truncate
 
 export function createCognition({
   ctx,
-  getConfig,
+  getConfig: readConfig,
   gateway,
   logger,
   clock = createClock(),
@@ -84,6 +84,7 @@ export function createCognition({
     stats: { raw: 0, observed: 0, accepted: 0, dropped: 0, turns: 0 },
     services: {},
   }
+  const getConfig = () => state.services.settings?.resolveConfig() || readConfig()
   const knowledgeSources = new Map()
   const capabilities = new Map()
   const pendingWork = new Set()
@@ -117,20 +118,25 @@ export function createCognition({
       const pausedRecord = state.store.get('setting', 'cognition.paused')
       if (pausedRecord) state.paused = Boolean(pausedRecord.value)
       state.services.identities = createIdentityService({ store: state.store, clock, logger: log })
-      state.services.persona = createPersonaService({ store: state.store, getConfig, clock, settingsHooks: {
+      state.services.persona = createPersonaService({ store: state.store, getConfig: readConfig, clock, settingsHooks: {
+        config: getConfig,
+        currentId: () => state.services.settings?.runtimePersonaId(),
+        read: value => state.services.settings?.personaView(value) || value,
+        runtimeRead: value => state.services.settings?.runtimePersona(value) || value,
+        saved: (previous, next) => state.services.settings?.personaSaved(previous, next),
         created: (id, from) => {
           if (state.services.settings?.status().editingAvailable) state.services.settings.initialize(id, from)
         },
       } })
       const activePersona = state.services.persona.ensure()
-      state.services.settings = createProfileSettings({ store: state.store, persona: state.services.persona, getConfig, setConfig, clock })
+      state.services.settings = createProfileSettings({ store: state.store, persona: state.services.persona, getConfig: readConfig, setConfig, clock })
       state.services.settings.migrate()
       const migrationTarget = state.services.persona.getById('self') ? 'self' : activePersona.id
       const migration = migrateLegacyPersonaData({ base: state.store, targetId: migrationTarget, clock })
       if (migration.migrated) log.info?.(`认知数据已迁移到人格 ${migrationTarget}：${migration.migrated} 条`)
       state.scopedStore = createPersonaScopedStore({
         base: state.store,
-        getPersonaId: () => state.services.persona?.activeId?.() || migrationTarget,
+        getPersonaId: () => state.services.settings?.runtimePersonaId() || migrationTarget,
       })
       const personaStore = state.scopedStore
       state.services.personaStore = personaStore
@@ -145,6 +151,7 @@ export function createCognition({
       state.services.purpose = createPurposeService({ store: personaStore, getConfig, clock, log })
       state.services.timeline = createTimelineService({ store: state.store, scopedStore: personaStore, clock })
       state.services.consolidation = createConsolidationService({
+        settings: state.services.settings,
         memory: state.services.memory,
         llm: state.services.llm,
         getConfig,
@@ -190,7 +197,7 @@ export function createCognition({
       state.services.commands = createCommandService({
         delivery: state.services.delivery,
         getConfig,
-        setConfig,
+        setConfig: next => state.services.settings.saveRuntimeConfig(next),
         access,
         outbound: state.services.outbound,
         llm: state.services.llm,
