@@ -3436,7 +3436,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       privacy: '隐私与保留', import: '导入', connection: '连接', timeouts: '超时与验证', appearance: '外观', security: '安全', access: '访问控制',
       runtime: '运行时', diagnostics: '诊断', about: '关于',
     }
-    const COMPACT_AREA_LABELS = { overview: '概览', chat: '聊天与沙盒', profiles: '人格', extensions: '模块', data: '数据与日志', system: '系统' }
+    const COMPACT_AREA_LABELS = { overview: '概览', chat: '聊天与沙盒', profiles: '人格', extensions: '扩展', data: '数据与日志', system: '系统' }
     const TABS = NAVIGATION_REGISTRY.map(area => ({ id: area.id, label: area.label, icon: 'layout' }))
     function ownerFields(target) {
       return SETTINGS_FIELDS.filter(field => field.apply !== 'read-only' && field.storage === 'config.json'
