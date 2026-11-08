@@ -55,7 +55,10 @@ try {
       assert.equal(name, 'react');
       return { createElement() {}, createContext: () => ({}), Component: class {}, Fragment: 'fragment' };
     });
-    for (const name of ['SandboxChat', 'OwnerSettings', 'AreaContent', 'NavigationMenu', 'searchNavigation', 'readNavigationUrl', 'navigationUrl', 'CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    for (const name of ['SandboxChat', 'OwnerSettings', 'AreaContent', 'CommandBar', 'PageHeader', 'searchNavigation', 'readNavigationUrl', 'navigationUrl', 'CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    assert.equal(client.NavigationMenu, undefined);
+    assert.match(client.PANEL_CSS, /\.ob-commandbar\{position:sticky;top:0/);
+    assert.doesNotMatch(client.PANEL_CSS, /ob-area-shell|ob-navigation|ob-nav-dialog|grid-template-columns:(?:240|72)px/);
     assert.deepEqual(Array.from(client.TABS, tab => tab.id), ['overview', 'chat', 'profiles', 'extensions', 'data', 'system']);
     for (const [alias] of Object.entries(settings.LEGACY_ALIASES)) assert.equal(JSON.stringify(client.resolveLegacyGo(alias)), JSON.stringify(navigation.go(alias)), alias);
     for (const field of settings.SETTINGS_FIELDS) {
