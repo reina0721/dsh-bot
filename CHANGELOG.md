@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- C07：新增六个 Agent sandbox 工具，严格 job/相对路径输入，每次调用检查 broker ready、服务端角色/群策略及人格/策略代次；有界输出与固定错误码。Python 保持不可用，action 仅 C06 file.delete，无新 P1 能力。
+- live broker 经 host/assembly/cognition 注入 runtime；会话绑定环境、人格/发送者/聊天/preset/策略代次和 runtime/session 实例。超时/撤权/卸载先撤销工具、取消作业、尝试 abort 并退休会话；迟到 admission、输出、事件与 QQ 动作不再接纳，oneshot 文本不转执行。原三个 QQ 工具行为保留。
+- 沙盒模式独立安全 preset，缺失时安全失败/oneshot 回退，无 generic fs/web/exec fallback。当前 host driver unavailable，实际不挂 sandbox 工具；preset 配置缺口记录于 [ADR-022](docs/architecture/ADR-022-agent-execution-broker.md#c07-preset-缺口不改-live-patch)，`cordis.patch.yml` / `.archify/` 未修改。新增工具/runtime/装配回归；fake ready 证据不代表真实 containment。版本不变，仅本地校验、打包及提交。
+
 - C06：新增默认关闭的 Agent execution broker、服务端 scope/策略代次、接纳/并发/取消/幂等、64 MiB/1024 项工作区与只读快照、artifact、metadata-only 持久审计及八个管理 API。System/security 新增 sandbox 配置；网络固定关闭，主人私聊默认可用，群/操作员默认无执行能力。
 - Linux 驱动要求真实 bwrap + cgroup v2 委派，通过 namespace/最小 rootfs/env allowlist/进程树与资源限制探针后才 ready；缺失/不安全 fail closed，Windows/其它平台 unavailable。独立文件操作不依赖执行隔离。fake service 测试与真实 containment 测试分开，本环境 bwrap 缺失、cgroup 只读，真实隔离七项 skip，执行拒绝。
 - 安全边界与已知限制见 [ADR-022](docs/architecture/ADR-022-agent-execution-broker.md)。仅 C06；不接 Agent 工具/preset，不改 Chat sandbox；版本不变，仅本地验证、打包及提交。

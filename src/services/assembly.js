@@ -17,7 +17,7 @@ export function assembleServices({
   store = null, clock, scheduler, runtimeAdapter = null, sourceRegistry = null,
   embeddingAdapter = null, deliverySleep = null, logger = { info() {}, warn() {}, debug() {}, error() {} }, media = null, stickers = null,
   registry = builtinRegistry, discoverExternal = true, eventDataRoot = dataRoot,
-  reminderControl = {},
+  reminderControl = {}, executionSandbox = null,
 } = {}) {
   if (!dataRoot) throw new Error('Service assembly requires dataRoot')
   let config = structuredClone(configSnapshot)
@@ -33,7 +33,7 @@ export function assembleServices({
     ctx: runtimeContext, getConfig, setConfig, gateway, logger, models: modelAdapter,
     dataRoot: join(dataRoot, 'cognition'), runtimeDataRoot: join(dataRoot, 'runtime'),
     store, clock, scheduler, runtimeAdapter, sourceRegistry, embeddingAdapter, deliverySleep,
-    access, media, providerRegistry, deliveryRegistry, turnHooks,
+    access, media, providerRegistry, deliveryRegistry, turnHooks, executionSandbox,
   })
   const modules = createModuleKernel({
     dataDir: join(dataRoot, 'modules'), getConfig, ctx: eventBus, logger, cognition,

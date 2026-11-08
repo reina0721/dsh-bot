@@ -168,8 +168,14 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 此外，运行时只给主人私聊（`level=full`）挂 3 个当前会话 QQ 工具：额外发送文本、给当前私聊对象点赞/戳一戳。social/group session 不注册这些工具；群信息/成员信息通过 `/groupinfo` `/memberinfo` 命令使用。额外文本仍经过访问控制和限频。工具不能指定其它聊天，也不提供资料编辑、群管理、精华、撤回、文件工具或通用 action bus。
 
+**Agent 沙盒工具（C07，默认关闭）**：仅 sandbox enabled、broker ready 且当前会话策略许可时挂载 `sandbox_file_list`、`sandbox_file_read`、`sandbox_file_write`、`sandbox_shell`、`sandbox_python`、`sandbox_action`。参数仅作业输入/工作区相对路径；不能指定角色、宿主路径、环境或网络。当前没有 Python，调用返回固定不可用；action 仅删除工作区文件。默认仅主人私聊许可，操作员/他人/群聊拒绝；输出最多 16 KiB，完整 broker artifact 最多 64 KiB。一次性模型回复中的 JSON/代码只是文本，不触发执行。
+
+沙盒启用后必须另行提供 `dsh-bot-sandbox-private` / `dsh-bot-sandbox-social` 安全 preset，排除通用 fs/fs-search/web/shell 工具。当前受保护 bundle patch 未修改，**这两个 preset 尚未配置**；缺失时 Agent 安全失败、回退 oneshot 文本，不回退 legacy 本机工具。broker unavailable/disabled 时不挂 sandbox 工具，当前宿主尚无可用执行驱动。默认 sandbox 关闭时沿用上述 legacy preset/QQ 行为；进入沙盒模式后本 runtime 不降级 legacy preset。具体 preset 内容与限制见 [ADR-022](architecture/ADR-022-agent-execution-broker.md#c07-preset-缺口不改-live-patch)。
+
+会话同时绑定人格/策略代次、发送者、聊天、preset 与 runtime/session 实例；切换或编辑人格、撤权、卸载均撤销旧工具引用、取消作业并更换会话，跨重启不恢复旧绑定。已接纳的 QQ 发送/文件原子写入不能回滚。
+
 会话映射写在数据目录 `runtime/sessions.json`，工作区默认在 `runtime/workspace`；单轮等待上限由
-「会话运行时 → 单轮回复超时」控制（默认 120s，超时只放弃等待，不强杀会话）。概览「运行诊断」会显示
+「会话运行时 → 单轮回复超时」控制（默认 120s，超时撤销工具、取消沙盒作业并退休会话，尝试停止 Agent；迟到事件被忽略）。概览「运行诊断」会显示
 `运行时：agent/oneshot` 与当前会话数；也可看 `GET /onebot-qq/api/runtime/stats`、`/runtime/sessions`。
 
 建议先在测试号打开 `agent`，确认回复、工具调用与回退都正常，再考虑默认开启。`agent` 仍是实验路径：真实 QQ 工具调用尚未完成真机验证；按聊天模型只影响认知 LLM，不改变 Agent Session 模型。

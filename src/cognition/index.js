@@ -36,6 +36,7 @@ import { createPipeline } from './pipeline.js'
 import { createOutbound } from './outbound.js'
 import { createDeliveryService } from '../delivery/service.js'
 import { createAgentRuntime } from '../runtime/agent.js'
+import { digest } from '../sandbox/policy.js'
 import { createReminderService } from './reminders.js'
 import { createCommandService } from './commands.js'
 import { createNoticeService } from './notices.js'
@@ -65,6 +66,7 @@ export function createCognition({
   store = null,
   runtimeAdapter = null,
   runtimeDataRoot = null,
+  executionSandbox = null,
   sourceRegistry = null,
   embeddingAdapter = null,
   deliverySleep = null,
@@ -168,6 +170,8 @@ export function createCognition({
       state.services.delivery = createDeliveryService({ outbound: state.services.outbound })
       state.services.runtime = runtimeAdapter || createAgentRuntime({
         delivery: state.services.delivery,
+        executionSandbox,
+        getPersona: () => ({ id: state.services.persona.activeId(), generation: digest([state.services.persona.scopeGeneration(), state.services.persona.get()]) }),
         ctx,
         getConfig,
         access,

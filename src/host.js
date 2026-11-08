@@ -72,18 +72,18 @@ export function apply(ctx, rowConfig) {
   }
   const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
+  const executionSandbox = bootstrapSandbox({ root: dataDir('sandbox'), getConfig })
   const reminderControl = {}
   const { access, events, providerRegistry, cognition, modules, ingress, modulesReady: startingModules } = assembleServices({
     dataRoot: dataDir(), getConfig, setConfig, eventBus: ctx, runtimeContext: ctx,
     actionTransport: { get actions() { return gatewayRef?.actions || null } },
-    modelAdapter: models, logger, media, stickers, reminderControl, eventDataRoot: null,
+    modelAdapter: models, logger, media, stickers, reminderControl, eventDataRoot: null, executionSandbox,
   })
   const modulesReady = startingModules.catch((error) => {
     log.warn('本地模块初始化失败：', error.message)
     return []
   })
   const simulations = createSimulationService({ dataRoot: dataDir('simulations') })
-  const executionSandbox = bootstrapSandbox({ root: dataDir('sandbox'), getConfig })
 
   /** 把人格/规则注册成 DSH 提示词变量，供 preset 的 {{dshbot_*}} 使用。 */
   function registerPromptVariables() {

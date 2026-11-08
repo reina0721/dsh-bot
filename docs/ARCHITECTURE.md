@@ -339,7 +339,7 @@ outbound 在限频检查后调用 guard；block 返回 `{ok:false,error:'LEAK_BL
 ### 3.12 DSH Session 运行时（`src/runtime/agent.js`）
 
 ```js
-createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger, dataRoot }) -> {
+createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger, dataRoot, executionSandbox, getPersona }) -> {
   available(), active(), engine(),
   levelFor(turn), presetFor(level),
   compose({ turn, system, user }),  // -> { ok, text, sessionId } | { ok:false, error }
@@ -350,15 +350,16 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger
 
 - 服务探测：`ctx.get('sessionController')`、`workspaceRegistry`、`agents`、`systemPrompt`；缺一个则 `available=false`。
 - `runtime.engine` 默认 `oneshot`；只有 `agent` 且服务齐全时 `active=true`，否则 `compose` 返回 `RUNTIME_INACTIVE`，调用方回退一次性 LLM。
-- 会话映射：`<dataDir>/runtime/sessions.json`，key 为 `chatType:chatId`；preset/level 变化或恢复失败时新建。
-- preset：主人私聊 `dsh-bot-private`（fs/fs-search/web 工具），群聊/他人私聊 `dsh-bot-social`（无本机工具）。
-- QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本经 DeliveryService/executor 走 outbound 的访问控制与限频。social/group session 注册 0 个；注册失败只记安全日志，dispose 逐项移除。
+- 会话映射：`<dataDir>/runtime/sessions.json`，key 为 `chatType:chatId`；当前实例绑定 environment/runtime instance/persona ID 与代次/principal/chat/preset/policy generation/session instance。变化或就绪状态变化时退休旧会话；重启不复用没有当前实例绑定的旧 Session。
+- preset：从未启用 sandbox 时保留主人私聊 `dsh-bot-private`（legacy fs/fs-search/web）与 `dsh-bot-social`。启用后使用独立 `dsh-bot-sandbox-private` / `dsh-bot-sandbox-social`，不可含通用 fs/web/exec；缺失则安全失败、允许 oneshot 文本回退，不降级到 legacy preset。所需配置见 ADR-022，受保护 patch 未修改。
+- C07 sandbox 工具：host 独立 broker 经 assembly/cognition 注入。仅 enabled + ready + session 策略许可时挂载 `sandbox_file_list/read/write`、`sandbox_shell/python/action`；仅 job 输入与相对路径。Python 固定不可用，action 仅 file.delete，无新 P1 能力。每次调用/等待核对就绪、人格与策略代次；artifact ≤64 KiB，输出 ≤16 KiB，固定错误码。无通用文件/网络 fallback，oneshot 文本不转执行。
+- QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本经 DeliveryService/executor 走 outbound 的访问控制与限频。social/group session 注册 0 个 QQ 工具；注册失败只记安全日志，dispose 逐项移除。QQ 工具执行前也检查会话绑定，旧引用拒绝迟到动作。
 - 上下文：`agent.ctx.systemPrompt.context({ name, order, text })` 挂认知 system 文本；没有该 API 时退回把 system 前置到 user 消息。
-- 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT` 不强杀。
+- 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT`，同步撤销工具接纳、取消 broker 作业并退休 Session；尝试宿主 agent.abort，不能停止时隔离旧 Session，迟到事件不结算。策略/人格变更与 dispose 同样撤销，100ms monitor 清理，create 迟到返回也取消。
 - 显式插话（M7-o）：主人 `/steer 文本` 经命令身份/禁用列表/访问闸门调用 `runtime.steer(turn,text)`；要求 active、private/group 正整数安全数字 ID、非空 1–1000 Unicode 字符。通过 `sessionFor(turn)` 复用或创建 Session，调用 `agent.steer({content:[{type:'text',text}],source:{kind:'user'}})`，不写配置或直接调用模型。Session 解析单独串行以避免与 compose 并发创建；steer 不等待 compose 的 turn/end。
 - 插话结果：缺方法返回 `STEER_UNAVAILABLE`，异常只返回/记录固定 `STEER_FAILED`，不回显原始异常/文本；成功累加 `summary().stats.steers` 并更新 lastAt。普通回合仍只用 followup，不自动 steer，无非主人插话、typing/`set_input_status` 或插话面板/API；fake agent 离线测试，真实 DSH/QQ 未验证，#9 partial。
 - 人格/规则：插件在 `host.apply` 注册 `dshbot_persona` / `dshbot_rules_private` / `dshbot_rules_social` 提示词变量，preset 只引用变量。
-- 边界：analysis/policy/记忆仍由认知内核负责；没有通用 action bus，也不提供资料编辑、群管理、精华、撤回或文件 Agent 工具；真实 QQ 工具调用仍待真机验证。
+- 边界：analysis/policy/记忆仍由认知内核负责；没有通用 action bus，也不提供资料编辑、群管理、精华或撤回；文件能力仅经 C07 sandbox broker。真实 QQ 工具调用仍待真机验证。
 
 ### 3.13 QQ 命令与按聊天模型
 
@@ -594,4 +595,4 @@ commands 注入 requests 服务，三个内置命令不能被模块覆盖；命�
 主人 `/remind`、`/reminders`、`/forgetreminder` 先检查 owner/access/开关；服务对创建和取消再校验 owner 与 scope。命令与提醒都走 outbound。没有提醒 REST API/管理面板、新 Agent 工具、自动审批、DSH jobs/长任务/LLM 任务执行；仅 fake clock/scheduler/gateway 与本地持久化测试，真实 timer/QQ 未验证，#8/#40 为 partial。
 
 
-Agent 执行 broker（C06）的工作区、Linux bwrap/cgroup fail-closed 边界、管理 API、持久审计与验证限制见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。与离线 simulation/Chat 服务分离，默认关闭，未接 Agent 工具或 preset。
+Agent 执行 broker（C06）与 Agent 工具/会话隔离（C07）的工作区、Linux bwrap/cgroup fail-closed 边界、管理 API、持久审计、工具契约、preset 缺口与验证限制见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。与离线 simulation/Chat 服务分离，默认关闭。当前驱动 unavailable 时不挂 sandbox 工具；独立安全 preset 尚未配置，live patch 保持原样。

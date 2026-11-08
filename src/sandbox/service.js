@@ -64,10 +64,14 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
     try { await h.writeFile(content); await h.sync() } finally { await h.close() }
     row.outputBytes = content.length; row.artifact = true
   }
-  async function perform(original, input, context) {
+  async function perform(original, input, context, admissionSignal) {
     const row = { ...original }
     const ctl = new AbortController(); controllers.set(row.id, ctl); running++
+    const revoke = () => ctl.abort()
+    admissionSignal?.addEventListener('abort', revoke, { once: true })
+    if (admissionSignal?.aborted) revoke()
     try {
+      if (ctl.signal.aborted) return
       await workspace.locked(row.scope, async base => {
         const { scope, effective } = policy(context)
         refresh()
@@ -81,7 +85,7 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
           const snapshot = await workspace.snapshot(base)
           let result
           try {
-            if (policy(context).effective.generation !== row.policyGeneration) { ctl.abort(); return }
+            if (ctl.signal.aborted || policy(context).effective.generation !== row.policyGeneration) { ctl.abort(); return }
             result = await driver.execute({ code: input.code, snapshot: snapshot.path, limits: effective.limits, signal: ctl.signal })
           } catch { readiness = 'failed'; reason = 'DRIVER_FAILED'; fail('DRIVER_FAILED') }
           finally { await snapshot.dispose() }
@@ -109,6 +113,7 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
       row.at = now()
       await save(row).catch(() => { row.reason = 'AUDIT_UNAVAILABLE'; row.state = 'failed' })
       jobs.set(row.id, { ...row })
+      admissionSignal?.removeEventListener('abort', revoke)
       controllers.delete(row.id); running--
       pump()
     }
@@ -120,7 +125,7 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
       if (running >= cfg.limits.concurrency) break
       pending.delete(id)
       if (jobs.get(id)?.state !== 'queued') continue
-      void perform(jobs.get(id), item.input, item.context)
+      void perform(jobs.get(id), item.input, item.context, item.admissionSignal)
     }
   }
   const monitor = setInterval(() => { refresh(); pump() }, 100)
@@ -152,8 +157,11 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
       })()
       return probePromise
     },
-    create: (context, raw) => serial(async () => {
-      await init; const input = validateJob(raw), { scope, effective } = policy(context)
+    // Internal AbortSignal is never read from job/HTTP input; rechecked before execution.
+    create: (context, raw, { signal: admissionSignal } = {}) => serial(async () => {
+      await init;
+      if (admissionSignal?.aborted) fail('POLICY_CHANGED')
+      const input = validateJob(raw), { scope, effective } = policy(context)
       refresh()
       if (stopping) fail('SANDBOX_DRAINING')
       if (auditFailed) fail('AUDIT_UNAVAILABLE')
@@ -175,7 +183,7 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
         commandHash: digest(input.kind === 'execute' ? input.code : { kind: input.kind, path: input.path, content: input.content }), requestHash, fingerprint, policyGeneration: effective.generation, artifact: false, outputBytes: 0 }
       await save(row) // Durable admission precedes every side effect.
       jobs.set(row.id, row)
-      pending.set(row.id, { input, context: structuredClone(context) })
+      pending.set(row.id, { input, context: structuredClone(context), admissionSignal })
       setImmediate(pump)
       return { ok: true, job: view(row), reused: false }
     }),
