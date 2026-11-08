@@ -1,5 +1,7 @@
 # 实现状态（v0.11.15 发布后，M7-v 工作区）
 
+AstrBot alignment 当前基线（C01–C08 `81304d2`，C09 离线验收，I/T/L）：六区/旧别名、settings ownership、staged profile 迁移/API/UI、隔离模拟图和零真实发送 Chat、执行 broker/Agent 会话边界已实现并有测试。profile 运行解析仍 legacy；本机 bwrap 缺失/cgroup 委派 EROFS，真实 Linux containment 未认证；macOS 仅 discovery，无 egress/真实模型 preview/Windows execution。安全 preset 由宿主补齐，真实 ready Agent 与浏览器未验证，不标 V。提交链、检查结果和包证据见 [C09 验收](../architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。版本保持 0.11.15；下列其它 C01–C08 链和计数为既有历史阶段。
+
 闭环 v2 当前基线（C01–C07 已实现，C08 离线验收，I/T/L）：七个内置模块（sample 默认关闭），贴纸库/发送授权分离；模块 health、实际 Provider owner、固定动作与人工 restart/operation；人格隔离 loop/receipt、反馈事务/provenance 与研究 attempt；核心 UI 健康动作、导航与闭环。提交链和测试/双格式包证据见 [C08 最终验收](../architecture/CLOSED-LOOP-ACCEPTANCE.md)。C08 仅文档/测试/包断言，保持 0.11.12，无新生产功能、自动 restart、exactly-once、外部同源 UI 或权限扩展。环境无浏览器二进制，未作 live/浏览器验证（不标 V），无 push/部署/tag/release。以下各阶段及计数为历史记录，不代表 C08 当前全套结果。
 
 one-shot 模块 1（未发布，I/T）：新增第五个默认启用的 builtin-media-features，独占 Bilibili 解释/命令和贴纸策略/命令。核心固定窄 transport 与一次性发送令牌，媒体凭据/文件/存储保留核心；模块停用关闭相关命令与 HTTP，无功能回退。六个配置字段与 Bilibili 面板移入模块详情，贴纸控件留核心并咨询 provider，配置/数据无迁移。详见 [ADR-015](../architecture/ADR-015-builtin-media-features.md)。以下 Phase 14 等段落保留历史阶段记录。

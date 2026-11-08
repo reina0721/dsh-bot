@@ -6,12 +6,12 @@
   "type": "workflow",
   "quality": "showcase",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
+    "path": "./docs/visuals/src/parity-roadmap.json",
     "sha256": "443ab931f0d574a841656a8031057a4f267ac60176457058b82a19b68f7b781b",
     "bytes": 5297
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
+    "path": "./docs/visuals/parity-roadmap.html",
     "sha256": "f436b2d07be174ca8cdf62ab10f6b8d84bd027d32249edbce545efde75a917a5",
     "bytes": 763414
   },
@@ -28,9 +28,9 @@
     "truncated": false
   },
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/parity-roadmap/parity-roadmap.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/parity-roadmap/parity-roadmap.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/parity-roadmap/parity-roadmap.browser-check.json"
+    "receipt": "./docs/visuals/evidence/parity-roadmap/parity-roadmap.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/parity-roadmap/parity-roadmap.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/parity-roadmap/parity-roadmap.browser-check.json"
   },
   "update": {
     "status": "update_available",

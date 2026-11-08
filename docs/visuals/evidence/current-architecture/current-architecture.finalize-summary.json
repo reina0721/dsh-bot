@@ -6,12 +6,12 @@
   "type": "architecture",
   "quality": "showcase",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
+    "path": "./docs/visuals/src/current-architecture.json",
     "sha256": "91ec58eea04a16a8774ae5938a916e755c434ad6a6b3987ba963499380b8ac25",
     "bytes": 7101
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
+    "path": "./docs/visuals/current-architecture.html",
     "sha256": "8f531ccb4f752b0c069f939f6dfb9589b38371f497be7883b9ae3187d3b19b1e",
     "bytes": 777695
   },
@@ -28,9 +28,9 @@
     "truncated": false
   },
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/current-architecture/current-architecture.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/current-architecture/current-architecture.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/current-architecture/current-architecture.browser-check.json"
+    "receipt": "./docs/visuals/evidence/current-architecture/current-architecture.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/current-architecture/current-architecture.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/current-architecture/current-architecture.browser-check.json"
   },
   "update": {
     "status": "update_available",

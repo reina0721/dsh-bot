@@ -8,7 +8,7 @@
   "provenance": "current",
   "deliveryReceiptId": "a649c19d-59c5-4ffc-8d32-8f85e92484d6",
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+    "path": "./docs/visuals/target-architecture.html",
     "sha256": "54ab12385be797c7ae01028df55a2d13227360ea8e42d00ad39c62366ccd71f1",
     "bytes": 769801
   },
@@ -18,7 +18,7 @@
   },
   "chrome": {
     "status": "available",
-    "executable": "/home/node/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
+    "executable": "<tool-home>/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
   },
   "diagnostics": [],
   "containment": {
@@ -715,7 +715,7 @@
     "contactSheet": null
   },
   "sidecars": {
-    "directory": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture",
+    "directory": "./docs/visuals/evidence/target-architecture",
     "receipt": "target-architecture.browser-check.json",
     "files": []
   }

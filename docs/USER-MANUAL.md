@@ -1,5 +1,7 @@
 # dsh-bot 用户手册
 
+C09 的 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)集中记录六区导航与完整旧入口兼容、staged profile、离线 Chat 零真实发送和执行 broker 限制。离线 Sandbox 的“发送成功”只表示 capture；profile 保存不改变实际运行。执行能力需独立 broker ready/授权及宿主安全 preset，当前环境不可执行；macOS probe、egress/preview 状态不代表能力已开放。页面交互仅有 Node shim 证据，真实浏览器仍待验收。
+
 本手册面向「已经能打开 DeepSeek Harness（DSH）Web，想把 QQ 接进来」的用户。
 安装细节与全部配置项分别见 [README](../README.md) 与 [CONFIG.md](CONFIG.md)。
 
@@ -443,7 +445,7 @@ QQ空间明确未实现：它需要 QQ 登录授权，并涉及平台授权与�
 | Data & Logs | 媒体、内容、事件、日志、备份、隐私与导入；数据治理设置放在对应页面 |
 | System | 常规、连接、超时、外观、安全、访问、运行时、媒体基础设施、模型全局预算/Provider、诊断与关于 |
 
-搜索只索引页面标签、旧名称和配置路径，不索引当前值、默认值或密钥。选择设置路径会直接进入唯一所有者位置，混合旧组不会生成第二份编辑器。旧 15 标签、15 认知分区、30 配置组、五个外观分类、模块 ID、字段与 `ob-media-*` / `ob-cog-*` / 模块锚点继续直接解析。`config` 落在 System 常规；`cognition` 落在 Profiles 概览；未知目标回到 Overview。
+搜索只索引页面标签、旧名称和配置路径，不索引当前值、默认值或密钥。选择设置路径会直接进入唯一所有者位置，混合旧组不会生成第二份编辑器。旧 15 标签、15 认知分区、31 配置组（含新增 sandbox）、五个外观分类、模块 ID、字段与 `ob-media-*` / `ob-cog-*` / 模块锚点继续直接解析。`config` 落在 System 常规；`cognition` 落在 Profiles 概览；未知目标回到 Overview。
 
 内部目的地写入 URL 的 `ob-nav` 参数；保留 DSH 外层 path/hash、其它 query 和 history state。支持刷新恢复、后退/前进与同区更新；moduleId、anchor、decisionId、taskId 保持完整 ID。旧 `#ob-tab-*` 链接在没有 `ob-nav` 时也会解析。
 

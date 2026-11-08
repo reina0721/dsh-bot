@@ -1,12 +1,14 @@
 # dsh-bot · 架构与实现契约
 
+AstrBot alignment C09 已完成 C01–C08 的离线验收，生产基线为 C08 `81304d2`。六区导航/唯一设置所有者、staged profile、capture-only Chat sandbox、独立执行 broker 与 Agent 工具边界见 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。profile 运行仍为 legacy；真实 Linux containment 未认证，macOS 仅 discovery，无 egress/真实模型 preview/Windows 执行；真实浏览器与宿主安全 preset 联调仍有缺口。C09 只改测试、包断言和文档，版本保持 0.11.15。
+
 > 本文件描述当前模块边界与接口契约。接口变更需同步更新本文、测试及用户文档。
 
 ## AstrBot alignment C04：离线模拟服务图
 
 [ADR-021](architecture/ADR-021-simulation-service.md) 定义共享 `src/services/assembly.js` 装配和 `src/simulation/` 离线会话服务。host 保留 apply 注册、真实 QQ/model/media 与动态提醒所有权；模拟复用真实 normalization/access/ingress/aggregation/command/cognition/delivery，注入独立根目录/store/config/persona/bus/runtime namespace、fixture 模型/知识源、虚拟 scheduler 和捕获 OneBot transport。raw/unknown 动作 fail closed，captures 与业务 receipts 分开且标记 `environment: simulation`；没有 process.env/global fetch/live persona 切换或 QQ 发送。
 
-后端 `/onebot-qq/api/simulations/{create,events,advance,state,reset,delete}` 使用独立 mutation 路径，拒绝 opaque frame、任意 raw/身份/权限/路径/凭据输入。事件只描述 private/group 消息、有限通知和请求，由服务生成合成身份；requestId 幂等，advance 后读取 transcript/captures/receipts。typing/reply-delivery/reminders 使用真实内置模块与私有状态，外部模块发现关闭；媒体、learning、proactivity 和 DSH Agent 工具不加载。没有 Chat UI（C05）或任意代码执行沙箱（C06），完整字段、关闭顺序和限制见 ADR-021。
+后端 `/onebot-qq/api/simulations/{create,events,advance,state,reset,delete}` 使用独立 mutation 路径，拒绝 opaque frame、任意 raw/身份/权限/路径/凭据输入。事件只描述 private/group 消息、有限通知和请求，由服务生成合成身份；requestId 幂等，advance 后读取 transcript/captures/receipts。typing/reply-delivery/reminders 使用真实内置模块与私有状态，外部模块发现关闭；媒体、learning、proactivity 和 DSH Agent 工具不加载。C05 已在六区中接入 Chat/event UI；C06–C08 执行 broker 单独在 live host 装配，不进入 simulation graph。完整字段、关闭顺序和限制见 ADR-021/022。
 
 ## 闭环 v2（C01–C07 已实现，C08 离线验收）
 

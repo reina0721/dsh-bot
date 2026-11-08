@@ -423,3 +423,34 @@ test('C07 broker admission signal prevents execution after cancellation during d
   do { await pause(10); terminal = (await broker.detail(context, second)).job } while (terminal.state !== 'cancelled')
   assert.equal(calls.length, 1)
 })
+
+
+test('C09 sandbox enabled: every non-ready or stale broker state fails closed without generic DSH/web tools', async t => {
+  const sandboxNames = ['sandbox_file_list', 'sandbox_file_read', 'sandbox_file_write', 'sandbox_python', 'sandbox_shell', 'sandbox_action']
+  const qqNames = ['qq_send_text', 'qq_like_user', 'qq_poke_user']
+  const cases = [
+    ...['disabled', 'checking', 'unavailable', 'draining', 'failed'].map(state => ({ state })),
+    { state: 'ready', policyGeneration: 'stale' }, {}, null, 'throws',
+  ]
+  for (const status of cases) {
+    for (const turn of [owner, { ...owner, chatType: 'group' }]) {
+      const e = runtimeEnv(t)
+      e.broker.status = async () => {
+        if (status === 'throws') throw Error('private broker detail')
+        return status && { policyGeneration: policyGeneration(e.cfg), ...status }
+      }
+      const result = await compose(e, turn)
+      assert.equal(result.ok, true, JSON.stringify(status))
+      assert.equal(e.created[0].preset, turn.chatType === 'private' ? SANDBOX_PRIVATE_PRESET : SANDBOX_SOCIAL_PRESET)
+      const names = [...e.agents.get(result.sessionId).registered.keys()]
+      assert.deepEqual(names, turn.chatType === 'private' ? qqNames : [])
+      assert.equal(names.some(name => sandboxNames.includes(name)), false)
+      assert.equal(e.broker.calls.length, 0)
+      e.runtime.dispose()
+    }
+  }
+  // A ready fake broker proves the registration allowlist, never OS containment.
+  const e = runtimeEnv(t), result = await compose(e)
+  assert.deepEqual([...e.agents.get(result.sessionId).registered.keys()], [...qqNames, ...sandboxNames])
+  assert.equal(e.created[0].preset, SANDBOX_PRIVATE_PRESET)
+})

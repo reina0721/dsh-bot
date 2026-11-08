@@ -7,12 +7,12 @@
   "quality": "showcase",
   "startedAt": "2026-11-06T05:55:25.174Z",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/message-lifecycle.json",
+    "path": "./docs/visuals/src/message-lifecycle.json",
     "sha256": "5250814deb6c21f3ef16ba7f6ccffee1eeb9b85ff1fd6a1fff27fb7a7def4880",
     "bytes": 4293
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+    "path": "./docs/visuals/message-lifecycle.html",
     "sha256": "7dfb4ec5eb1acc8ecd530752c472d8636a5d4d977ca6c156f0c4d5d6c576672c",
     "bytes": 761887
   },
@@ -24,11 +24,11 @@
       "execution": "embedded-in-deliver",
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "deliver",
         "workflow",
-        "/workspace/dsh-bot/docs/visuals/src/message-lifecycle.json",
-        "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+        "./docs/visuals/src/message-lifecycle.json",
+        "./docs/visuals/message-lifecycle.html",
         "--quality",
         "showcase",
         "--json"
@@ -57,11 +57,11 @@
       "durationMs": 485,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "deliver",
         "workflow",
-        "/workspace/dsh-bot/docs/visuals/src/message-lifecycle.json",
-        "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+        "./docs/visuals/src/message-lifecycle.json",
+        "./docs/visuals/message-lifecycle.html",
         "--quality",
         "showcase",
         "--json"
@@ -72,8 +72,8 @@
         "ok": true,
         "command": "deliver",
         "type": "workflow",
-        "input": "/workspace/dsh-bot/docs/visuals/src/message-lifecycle.json",
-        "output": "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+        "input": "./docs/visuals/src/message-lifecycle.json",
+        "output": "./docs/visuals/message-lifecycle.html",
         "specification": {
           "sha256": "5250814deb6c21f3ef16ba7f6ccffee1eeb9b85ff1fd6a1fff27fb7a7def4880",
           "bytes": 4293
@@ -109,14 +109,14 @@
       "durationMs": 141,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "check",
-        "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+        "./docs/visuals/message-lifecycle.html",
         "--require-provenance"
       ],
       "receipt": {
         "ok": true,
-        "file": "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+        "file": "./docs/visuals/message-lifecycle.html",
         "artifact": {
           "sha256": "7dfb4ec5eb1acc8ecd530752c472d8636a5d4d977ca6c156f0c4d5d6c576672c",
           "bytes": 761887
@@ -270,13 +270,13 @@
       "durationMs": 2679,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "browser-check",
-        "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+        "./docs/visuals/message-lifecycle.html",
         "--json",
         "--require-provenance",
         "--out-dir",
-        "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle"
+        "./docs/visuals/evidence/message-lifecycle"
       ],
       "execution": "in-process",
       "receipt": {
@@ -289,7 +289,7 @@
         "provenance": "current",
         "deliveryReceiptId": "3695b724-70ff-44ee-acfb-2be877c8a4e3",
         "artifact": {
-          "path": "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+          "path": "./docs/visuals/message-lifecycle.html",
           "sha256": "7dfb4ec5eb1acc8ecd530752c472d8636a5d4d977ca6c156f0c4d5d6c576672c",
           "bytes": 761887
         },
@@ -299,7 +299,7 @@
         },
         "chrome": {
           "status": "available",
-          "executable": "/home/node/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
+          "executable": "<tool-home>/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
         },
         "diagnostics": [],
         "containment": {
@@ -1476,7 +1476,7 @@
           "contactSheet": null
         },
         "sidecars": {
-          "directory": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle",
+          "directory": "./docs/visuals/evidence/message-lifecycle",
           "receipt": "message-lifecycle.browser-check.json",
           "files": []
         }
@@ -1485,9 +1485,9 @@
   },
   "diagnostics": [],
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle/message-lifecycle.browser-check.json"
+    "receipt": "./docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/message-lifecycle/message-lifecycle.browser-check.json"
   },
   "visualReview": "not-requested",
   "finishedAt": "2026-11-06T05:55:29.885Z",

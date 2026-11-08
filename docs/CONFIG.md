@@ -1,10 +1,12 @@
 # 配置说明（CONFIG）
 
+C09 当前状态见 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)：311 个字段按唯一 owner 编辑，profile 迁移/API/UI 已实现但保存仍 staged、运行仍 legacy；System/module 保持原生效规则。broker 默认关闭，本机 bwrap 缺失且 cgroup 委派只读，execute fail closed；macOS 仅 probe，无 egress、真实模型 preview 或 Windows 执行。C09 无配置/迁移/版本变更。
+
 本文列出 `dsh-bot` 的**全部配置项**：路径、类型、默认值、取值范围、作用，以及配置文件位置、
 保存/热应用规则和环境变量。配置项来源是 `src/core/config.js` 的 `DEFAULTS`（默认值）与
 `CONFIG_GROUPS`（面板字段表）；面板表单完全按 `CONFIG_GROUPS` 数据驱动渲染。
 
-**C02 后端设置契约已实现，运行仍为 legacy，UI 尚未适配。** profile 设置保存在现有认知 records store，保存只产生 staged override；System/模块继续使用原存储与运行行为。`GET /config` 展示 active profile 的 staged 值，`GET /status` 的 config 展示 legacy 运行配置。不要把两者混为同一个运行快照。旧 UI 不携带 revision/personaId，保存会明确拒绝。完整门控、迁移/失败及接口契约见 [ADR-020 C02](architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
+**C02 后端设置契约已实现，运行仍为 legacy，C03 六区 UI 已适配。** profile 设置保存在现有认知 records store，保存只产生 staged override；System/模块继续使用原存储与运行行为。`GET /config` 展示 active profile 的 staged 值，`GET /status` 的 config 展示 legacy 运行配置。不要把两者混为同一个运行快照。未修改的旧 UI 不携带 revision/personaId，保存会明确拒绝；当前六区表单按 owner/revision 保存。完整门控、迁移/失败及接口契约见 [ADR-020 C02](architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
 
 后端接口统一前缀 `/onebot-qq/api`：`/settings/schema`、`/settings/view?scope=system|profile|module:<id>`（profile 另传 `id`）、`/settings/patch`，以及 `/profiles`、`/profiles/config?id=…`、`/profiles/config/save`。保存格式是 `{scope,id?,revision,patch:{完整字段路径:值}}`（profiles save 固定 profile），一个请求只允许一个 owner；过期 revision、跨 owner 和未知/只读字段拒绝。profile revision 为持久递增整数，System/legacy module 为内容摘要，module-file 沿用模块 revision。
 
@@ -15,7 +17,7 @@ secret/secret-reference patch 使用 `{op:'keep'}` / `{op:'set',value:'…'}` / 
 模块 WebUI Phase 1 只增加配置归属元数据（[ADR-014](architecture/ADR-014-module-webui.md)），不新增配置值或迁移编辑器。reply-delivery、typing、reminders 的 UI binding 为 `legacy-core`、available:false，继续使用原 cognition.reply/typing/reminders 存储 key 与配置页；sample 为 `module-file`、available:true，仍用原模块行内编辑与独立配置文件。UI schemaVersion:1 是描述契约元数据，不改变全局配置版本或配置值 revision。`GET /onebot-qq/api/modules/ui` 不读取或返回配置值、字段表、默认值或路径；外部声明无法开启配置编辑。未来配置 UI 归属模块页时仍须保留现有存储 key。
 
 > 结论先行：**没有任何写死的算法参数**。重连退避、超时、重试、核验缓冲、事件过滤、缓冲容量、
-> 日志级别、面板刷新间隔……都可以在 `config.json` 修改；System/模块保存仍按原规则热应用，profile API 保存为 staged，旧面板保存待后续适配。
+> 日志级别、面板刷新间隔……都可以在 `config.json` 修改；System/模块保存仍按原规则热应用，profile API 保存为 staged，六区面板按 owner/revision 保存。
 
 ### 手动身份登记（M7-v，无新增配置字段）
 

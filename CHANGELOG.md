@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- C09（仅 AstrBot 对齐验收，基线 C08 `81304d2`）：补齐 C01–C08 提交链、六区/全量旧别名、staged 设置迁移、Chat 零真实发送、broker fail-closed 与 P1 不可用清单；增加客户端旧对象导航和非 ready/过期 broker 工具白名单集成测试，双格式包逐字节检查全部新文件/ADR/验收文档并扫描凭据/私有路径，规范化既有图表证据中的机器路径，保留历史状态/hash、不重跑浏览器。证据见 [AstrBot 对齐验收](docs/architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。无新生产功能；真实 Linux containment 未认证，macOS 仅探测，无 egress/真实模型 preview/Windows 执行，保留真实浏览器与安全 preset 联调缺口。版本保持 0.11.15，仅本地检查与提交。
+
 - C08（仅 P1 能力边界，基线 C07 `a6740fd`）：新增 macOS Seatbelt discovery driver，auto 在 macOS 选择 local-macos；只检查固定 `/usr/bin/sandbox-exec` 的安全属性/可执行性，公开未证明的 enforcement 能力。即使二进制可用，仍因 RESOURCE_LIMITS_UNPROVEN 拒绝全部脚本执行，不启动 host shell，不声称 Seatbelt containment 已验证。
 - 受控 egress 明确不支持：策略/status 返回 NETWORK_POLICY_UNSUPPORTED；配置只接受 network=false，作业任何 network 字段均拒绝（管理作业 API 为 HTTP 400），无 host-network fallback。角色矩阵不变，普通用户默认授权仍关闭。
 - 真实模型 Chat preview 仅增加 JSDoc 类型契约与 REAL_MODEL_PREVIEW_UNAVAILABLE 状态；规定逐请求管理员许可、独立 preview 用量/预算和 capture-only transport，尚未接入 live adapter/凭据或自动调用。原因、后续接口与证据见 [ADR-022 P1 状态](docs/architecture/ADR-022-agent-execution-broker.md#c08-p1-能力状态与契约)。新增能力感知、macOS fake probe、拒绝执行/网络/preview 和打包回归；fake probe 不证明 OS enforcement。无新依赖、OS 包、版本变更、推送、部署、tag 或发布。

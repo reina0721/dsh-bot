@@ -1,5 +1,7 @@
 # 故障排查
 
+AstrBot alignment 的当前证据见 [C09 最终验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。profile 保存未生效时先看 runtimeMode=legacy / profileEditsApply=staged，不能通过切换人格把 staged 当作运行值；revision 冲突需重新读取。执行不可用先查 /sandbox/status 的固定 reason：本机 BWRAP_MISSING，cgroup 委派 EROFS；保持 fail closed，不改用 host shell。macOS RESOURCE_LIMITS_UNPROVEN、NETWORK_POLICY_UNSUPPORTED、REAL_MODEL_PREVIEW_UNAVAILABLE 均是未开放能力。安全 preset 缺失返回 RUNTIME_FAILED；需宿主提供排除通用 fs/search/web/exec 的 preset。真实 containment/浏览器/DSH 联调未完成。
+
 - **下载 404**：确认仓库已改名、目标标签已发布且包含安装资源。首次 Release 前使用源码安装。
 - **找不到 dsh**：先确认 DSH 已安装，脚本通过 `-DshPath` 或 `--dsh` 指定可执行路径；路径含空格时加引号。
 - **校验失败**：停止安装，重新下载同版本安装包和 SHA256SUMS；不要跳过校验。

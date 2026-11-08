@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { go as contractGo, goTo as contractGoTo } from '../src/core/navigation.js'
-import { SETTINGS_FIELDS, LEGACY_ALIASES, NAVIGATION_REGISTRY } from '../src/core/settings-schema.js'
+import { SETTINGS_FIELDS, LEGACY_ALIASES, NAVIGATION_REGISTRY, LEGACY_TABS, LEGACY_COGNITION_SECTIONS, LEGACY_CONFIG_GROUPS, LEGACY_MODULE_IDS } from '../src/core/settings-schema.js'
 import { CONFIG_GROUPS, DEFAULTS } from '../src/core/config.js'
 import { DIMENSIONS } from '../src/cognition/relationships.js'
 import { BUILTIN_COMPONENT_KEYS } from '../src/modules/webui.js'
@@ -3109,4 +3109,33 @@ test('C03 module-file setting search scrolls the local schema field after loadin
     cleanup?.()
     assert.deepEqual(ids, ['ob-field-message'])
   } finally { reactShim.useEffect = originalEffect; if (originalDocument === undefined) delete globalThis.document; else globalThis.document = originalDocument }
+})
+
+
+test('C09 client legacy object forms exhaustively match the canonical navigation contract (Node shim)', () => {
+  const check = input => assert.deepEqual(panel.navigationTarget(input), contractGoTo(input), JSON.stringify(input))
+  for (const alias of Object.keys(LEGACY_ALIASES)) assert.deepEqual(panel.resolveLegacyGo('#' + alias), contractGo('#' + alias), alias)
+  for (const tab of Object.keys(LEGACY_TABS)) {
+    for (const name of [tab, `tab:${tab}`, `ob-tab-${tab}`, `ob-panel-${tab}`]) check({ tab: name })
+  }
+  for (const section of Object.keys(LEGACY_COGNITION_SECTIONS)) check({ tab: 'cognition', section })
+  for (const group of Object.keys(LEGACY_CONFIG_GROUPS)) {
+    for (const input of [{ tab: 'config', section: group }, { tab: 'config', anchor: group }]) check(input)
+    if (group.startsWith('cog-')) {
+      check({ tab: 'cognition', section: group })
+      check({ tab: 'ob-tab-cognition', section: 'settings', anchor: group })
+    }
+  }
+  for (const moduleId of [...LEGACY_MODULE_IDS, 'Local.Module_v2:ABC-123']) {
+    for (const name of ['detail', 'config', 'panel', 'reminders']) {
+      check({ tab: 'modules', moduleId, section: name })
+      for (const anchor of [name, `ob-module-${name}`]) check({ tab: 'modules', moduleId, anchor })
+    }
+  }
+  for (const [name, section, key] of [['decision', 'policy', 'decisionId'], ['task', 'learning', 'taskId']]) {
+    for (const id of ['ABC_01:part.v2-3', 'Z'.repeat(96)]) {
+      check({ tab: 'cognition', section, [key]: id })
+      for (const anchor of [`${name}-${id}`, `ob-cog-${name}-${id}`]) check({ tab: 'cognition', section, anchor, [key]: id })
+    }
+  }
 })
