@@ -7,12 +7,12 @@
   "quality": "showcase",
   "startedAt": "2026-11-06T05:55:38.403Z",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/turn-lifecycle.json",
+    "path": "./docs/visuals/src/turn-lifecycle.json",
     "sha256": "7644d31ff865ac32c9eca5e52e5262b96abd0bdfafea99741574744c6ddc5e2d",
     "bytes": 4343
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+    "path": "./docs/visuals/turn-lifecycle.html",
     "sha256": "dbc9f45d3007447e3c2fb58f2567fe91b300b2c5b514ed7a4d9c119608ea1be8",
     "bytes": 765058
   },
@@ -24,11 +24,11 @@
       "execution": "embedded-in-deliver",
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "deliver",
         "lifecycle",
-        "/workspace/dsh-bot/docs/visuals/src/turn-lifecycle.json",
-        "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+        "./docs/visuals/src/turn-lifecycle.json",
+        "./docs/visuals/turn-lifecycle.html",
         "--quality",
         "showcase",
         "--json"
@@ -57,11 +57,11 @@
       "durationMs": 413,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "deliver",
         "lifecycle",
-        "/workspace/dsh-bot/docs/visuals/src/turn-lifecycle.json",
-        "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+        "./docs/visuals/src/turn-lifecycle.json",
+        "./docs/visuals/turn-lifecycle.html",
         "--quality",
         "showcase",
         "--json"
@@ -72,8 +72,8 @@
         "ok": true,
         "command": "deliver",
         "type": "lifecycle",
-        "input": "/workspace/dsh-bot/docs/visuals/src/turn-lifecycle.json",
-        "output": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+        "input": "./docs/visuals/src/turn-lifecycle.json",
+        "output": "./docs/visuals/turn-lifecycle.html",
         "specification": {
           "sha256": "7644d31ff865ac32c9eca5e52e5262b96abd0bdfafea99741574744c6ddc5e2d",
           "bytes": 4343
@@ -109,14 +109,14 @@
       "durationMs": 145,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "check",
-        "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+        "./docs/visuals/turn-lifecycle.html",
         "--require-provenance"
       ],
       "receipt": {
         "ok": true,
-        "file": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+        "file": "./docs/visuals/turn-lifecycle.html",
         "artifact": {
           "sha256": "dbc9f45d3007447e3c2fb58f2567fe91b300b2c5b514ed7a4d9c119608ea1be8",
           "bytes": 765058
@@ -245,13 +245,13 @@
       "durationMs": 2308,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "browser-check",
-        "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+        "./docs/visuals/turn-lifecycle.html",
         "--json",
         "--require-provenance",
         "--out-dir",
-        "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle"
+        "./docs/visuals/evidence/turn-lifecycle"
       ],
       "execution": "in-process",
       "receipt": {
@@ -264,7 +264,7 @@
         "provenance": "current",
         "deliveryReceiptId": "b6898677-5af8-463a-8b5d-6c65094cfeb7",
         "artifact": {
-          "path": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+          "path": "./docs/visuals/turn-lifecycle.html",
           "sha256": "dbc9f45d3007447e3c2fb58f2567fe91b300b2c5b514ed7a4d9c119608ea1be8",
           "bytes": 765058
         },
@@ -274,7 +274,7 @@
         },
         "chrome": {
           "status": "available",
-          "executable": "/home/node/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
+          "executable": "<tool-home>/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
         },
         "diagnostics": [],
         "containment": {
@@ -947,7 +947,7 @@
           "contactSheet": null
         },
         "sidecars": {
-          "directory": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle",
+          "directory": "./docs/visuals/evidence/turn-lifecycle",
           "receipt": "turn-lifecycle.browser-check.json",
           "files": []
         }
@@ -956,9 +956,9 @@
   },
   "diagnostics": [],
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle/turn-lifecycle.browser-check.json"
+    "receipt": "./docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/turn-lifecycle/turn-lifecycle.browser-check.json"
   },
   "visualReview": "not-requested",
   "finishedAt": "2026-11-06T05:55:43.112Z",

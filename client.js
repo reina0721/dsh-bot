@@ -1,8 +1,8 @@
 // dsh-bot · 网页半边（浏览器端，单文件）
 //
-// 侧栏 bot 名称入口 + 整页面板（概览 / 连接 / 消息 / 配置 / 日志 / 关于）。
+// 侧栏 bot 名称入口 + 六区整页面板；内部导航不替换 DSH 外层路由。
 // 只读写宿主半边的 /onebot-qq/api/* 接口；所有配置项（含默认值、范围、选项）全部来自
-// GET /config 的 groups 字段表，客户端不写死任何默认值。
+// GET /config 的 groups 与共享 settings-schema；profile 保存为 staged，运行门控仍为 legacy。
 //
 // 视觉与动效：令牌、排版、圆角/阴影、页面配方与语义动效体系参考 console-web（社区版 UI 基座）：
 //   - 颜色/圆角/阴影/字号来自 TOKEN_CSS（唯一允许十六进制色值的区块）；
@@ -43,6 +43,225 @@ window.__ModuleLoader__.load({
     // =====================================================================
     // 纯函数区（挂到 module.exports，便于 node:test 直接断言）
     // =====================================================================
+
+    // BEGIN SHARED NAVIGATION (scripts/sync-client-navigation.mjs)
+    const DEFAULT_TARGET = {"area":"overview","section":"overview"}
+    const NAVIGATION_REGISTRY = [{"id":"overview","label":"Overview","sections":[{"id":"overview","components":["Overview"],"availability":"existing"}]},{"id":"chat","label":"Chat & Sandbox","sections":[{"id":"messages","components":["Messages"],"availability":"existing"},{"id":"sandbox","components":["SandboxChat"],"availability":"existing"}]},{"id":"profiles","label":"Profiles","sections":[{"id":"overview","components":["CognitionTab"],"availability":"existing"},{"id":"library","components":["PersonaTab"],"availability":"existing"},{"id":"general","components":["CogSettings"],"availability":"existing"},{"id":"persona","components":["CogPersona"],"availability":"existing"},{"id":"models","components":["CogSettings"],"availability":"existing"},{"id":"turn","components":["CogSettings"],"availability":"existing"},{"id":"reply","components":["CogSettings"],"availability":"existing"},{"id":"persons","components":["CogPersons"],"availability":"existing"},{"id":"relationships","components":["CogRelationships"],"availability":"existing"},{"id":"memories","components":["CogMemories"],"availability":"existing"},{"id":"timeline","components":["CogTimeline"],"availability":"existing"},{"id":"emotion","components":["CogEmotion"],"availability":"existing"},{"id":"purpose","components":["CogPurpose"],"availability":"existing"},{"id":"policy","components":["CogPolicy"],"availability":"existing"},{"id":"proactivity","components":["CogProactivity"],"availability":"existing"},{"id":"loop","components":["CogLoop"],"availability":"existing"},{"id":"learning","components":["CogLearning"],"availability":"existing"},{"id":"skills","components":["CogSkills"],"availability":"existing"},{"id":"meta","components":["CogMeta"],"availability":"existing"},{"id":"settings","components":["CogSettings"],"availability":"existing"}]},{"id":"extensions","label":"Extensions","sections":[{"id":"modules","components":["ModulesPage"],"availability":"existing"},{"id":"module","components":["CoreModuleHealth","CoreModuleActions"],"availability":"module-dependent"}]},{"id":"data","label":"Data & Logs","sections":[{"id":"media","components":["MediaPage"],"availability":"existing"},{"id":"content","components":["ContentPage"],"availability":"existing"},{"id":"logs","components":["Logs"],"availability":"existing"},{"id":"events","components":["Messages"],"availability":"existing"},{"id":"backup","components":["BackupPage"],"availability":"existing"},{"id":"privacy","components":["CogSettings"],"availability":"existing"},{"id":"import","components":["CogSettings"],"availability":"existing"}]},{"id":"system","label":"System","sections":[{"id":"general","components":["ConfigTab"],"availability":"existing"},{"id":"connection","components":["Connect"],"availability":"existing"},{"id":"timeouts","components":["ConfigTab"],"availability":"existing"},{"id":"appearance","components":["SettingsTab"],"availability":"existing"},{"id":"security","components":["SecurityPage"],"availability":"existing"},{"id":"access","components":["ConfigTab"],"availability":"existing"},{"id":"runtime","components":["ConfigTab"],"availability":"existing"},{"id":"media","components":["ConfigTab"],"availability":"existing"},{"id":"models","components":["ModelTab"],"availability":"existing"},{"id":"diagnostics","components":["CogSettings"],"availability":"existing"},{"id":"about","components":["About"],"availability":"existing"}]}]
+    const LEGACY_ALIASES = {"tab:overview":{"area":"overview","section":"overview"},"ob-tab-overview":{"area":"overview","section":"overview"},"ob-panel-overview":{"area":"overview","section":"overview"},"tab:connect":{"area":"system","section":"connection"},"ob-tab-connect":{"area":"system","section":"connection"},"ob-panel-connect":{"area":"system","section":"connection"},"tab:messages":{"area":"chat","section":"messages"},"ob-tab-messages":{"area":"chat","section":"messages"},"ob-panel-messages":{"area":"chat","section":"messages"},"tab:media":{"area":"data","section":"media"},"ob-tab-media":{"area":"data","section":"media"},"ob-panel-media":{"area":"data","section":"media"},"tab:content":{"area":"data","section":"content"},"ob-tab-content":{"area":"data","section":"content"},"ob-panel-content":{"area":"data","section":"content"},"tab:modules":{"area":"extensions","section":"modules"},"ob-tab-modules":{"area":"extensions","section":"modules"},"ob-panel-modules":{"area":"extensions","section":"modules"},"tab:backup":{"area":"data","section":"backup"},"ob-tab-backup":{"area":"data","section":"backup"},"ob-panel-backup":{"area":"data","section":"backup"},"tab:security":{"area":"system","section":"security"},"ob-tab-security":{"area":"system","section":"security"},"ob-panel-security":{"area":"system","section":"security"},"tab:config":{"area":"system","section":"general"},"ob-tab-config":{"area":"system","section":"general"},"ob-panel-config":{"area":"system","section":"general"},"tab:persona":{"area":"profiles","section":"library"},"ob-tab-persona":{"area":"profiles","section":"library"},"ob-panel-persona":{"area":"profiles","section":"library"},"tab:models":{"area":"system","section":"models"},"ob-tab-models":{"area":"system","section":"models"},"ob-panel-models":{"area":"system","section":"models"},"tab:settings":{"area":"system","section":"appearance"},"ob-tab-settings":{"area":"system","section":"appearance"},"ob-panel-settings":{"area":"system","section":"appearance"},"tab:cognition":{"area":"profiles","section":"overview"},"ob-tab-cognition":{"area":"profiles","section":"overview"},"ob-panel-cognition":{"area":"profiles","section":"overview"},"tab:logs":{"area":"data","section":"logs"},"ob-tab-logs":{"area":"data","section":"logs"},"ob-panel-logs":{"area":"data","section":"logs"},"tab:about":{"area":"system","section":"about"},"ob-tab-about":{"area":"system","section":"about"},"ob-panel-about":{"area":"system","section":"about"},"cognition:overview":{"area":"profiles","section":"overview"},"cognition:persona":{"area":"profiles","section":"persona"},"cognition:persons":{"area":"profiles","section":"persons"},"cognition:relationships":{"area":"profiles","section":"relationships"},"cognition:memories":{"area":"profiles","section":"memories"},"cognition:timeline":{"area":"profiles","section":"timeline"},"cognition:emotion":{"area":"profiles","section":"emotion"},"cognition:purpose":{"area":"profiles","section":"purpose"},"cognition:policy":{"area":"profiles","section":"policy"},"cognition:proactivity":{"area":"profiles","section":"proactivity"},"cognition:loop":{"area":"profiles","section":"loop"},"cognition:learning":{"area":"profiles","section":"learning"},"cognition:skills":{"area":"profiles","section":"skills"},"cognition:meta":{"area":"profiles","section":"meta"},"cognition:settings":{"area":"profiles","section":"settings"},"group:sandbox":{"area":"system","section":"security"},"group:basic":{"area":"system","section":"general"},"group:endpoint":{"area":"system","section":"connection"},"group:snowluma":{"area":"system","section":"connection"},"group:timeouts":{"area":"system","section":"timeouts"},"group:events":{"area":"data","section":"events"},"group:logging":{"area":"data","section":"logs"},"group:ui":{"area":"system","section":"appearance"},"group:security":{"area":"system","section":"security"},"group:access":{"area":"system","section":"access"},"group:runtime":{"area":"system","section":"runtime"},"group:media":{"area":"system","section":"media"},"group:content":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"group:ops":{"area":"data","section":"backup"},"group:cog-core":{"area":"profiles","section":"general"},"group:cog-permissions":{"area":"system","section":"access"},"group:cog-reminders":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"group:cog-llm":{"area":"profiles","section":"models"},"group:cog-turn":{"area":"profiles","section":"turn"},"group:cog-reply":{"area":"profiles","section":"reply"},"group:cog-admin":{"area":"system","section":"access"},"group:cog-purpose":{"area":"profiles","section":"purpose"},"group:cog-persona":{"area":"profiles","section":"persona"},"group:cog-emotion":{"area":"profiles","section":"emotion"},"group:cog-relationship":{"area":"profiles","section":"relationships"},"group:cog-memory":{"area":"profiles","section":"memories"},"group:cog-import":{"area":"data","section":"import"},"group:cog-policy":{"area":"profiles","section":"policy"},"group:cog-learning":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"group:cog-proactivity":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"group:cog-privacy":{"area":"data","section":"privacy"},"settings:appearance":{"area":"system","section":"appearance","anchor":"appearance"},"settings:layout":{"area":"system","section":"appearance","anchor":"layout"},"settings:data":{"area":"system","section":"appearance","anchor":"data"},"settings:motion":{"area":"system","section":"appearance","anchor":"motion"},"settings:reset":{"area":"system","section":"appearance","anchor":"reset"},"module:builtin-learning":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-detail"},"module:builtin-proactivity":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-detail"},"module:builtin-media-features":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-detail"},"module:builtin-reminders":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-detail"},"module:builtin-typing":{"area":"extensions","section":"module","moduleId":"builtin-typing","anchor":"ob-module-detail"},"module:builtin-reply-delivery":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-detail"},"module:builtin-sample":{"area":"extensions","section":"module","moduleId":"builtin-sample","anchor":"ob-module-detail"},"ob-media-stickers":{"area":"data","section":"media","anchor":"ob-media-stickers"},"ob-cog-unknowns":{"area":"profiles","section":"learning","anchor":"ob-cog-unknowns"},"ob-cog-tasks":{"area":"profiles","section":"learning","anchor":"ob-cog-tasks"},"ob-cog-claims":{"area":"profiles","section":"learning","anchor":"ob-cog-claims"},"ob-module-detail":{"area":"extensions","section":"module","anchor":"ob-module-detail"},"ob-module-config":{"area":"extensions","section":"module","anchor":"ob-module-config"},"ob-module-panel":{"area":"extensions","section":"module","anchor":"ob-module-panel"},"ob-module-reminders":{"area":"extensions","section":"module","anchor":"ob-module-reminders"}}
+    const LEGACY_TABS = {"overview":{"area":"overview","section":"overview"},"connect":{"area":"system","section":"connection"},"messages":{"area":"chat","section":"messages"},"media":{"area":"data","section":"media"},"content":{"area":"data","section":"content"},"modules":{"area":"extensions","section":"modules"},"backup":{"area":"data","section":"backup"},"security":{"area":"system","section":"security"},"config":{"area":"system","section":"general"},"persona":{"area":"profiles","section":"library"},"models":{"area":"system","section":"models"},"settings":{"area":"system","section":"appearance"},"cognition":{"area":"profiles","section":"overview"},"logs":{"area":"data","section":"logs"},"about":{"area":"system","section":"about"}}
+    const LEGACY_COGNITION_SECTIONS = {"overview":{"area":"profiles","section":"overview"},"persona":{"area":"profiles","section":"persona"},"persons":{"area":"profiles","section":"persons"},"relationships":{"area":"profiles","section":"relationships"},"memories":{"area":"profiles","section":"memories"},"timeline":{"area":"profiles","section":"timeline"},"emotion":{"area":"profiles","section":"emotion"},"purpose":{"area":"profiles","section":"purpose"},"policy":{"area":"profiles","section":"policy"},"proactivity":{"area":"profiles","section":"proactivity"},"loop":{"area":"profiles","section":"loop"},"learning":{"area":"profiles","section":"learning"},"skills":{"area":"profiles","section":"skills"},"meta":{"area":"profiles","section":"meta"},"settings":{"area":"profiles","section":"settings"}}
+    const LEGACY_CONFIG_GROUPS = {"sandbox":{"area":"system","section":"security"},"basic":{"area":"system","section":"general"},"endpoint":{"area":"system","section":"connection"},"snowluma":{"area":"system","section":"connection"},"timeouts":{"area":"system","section":"timeouts"},"events":{"area":"data","section":"events"},"logging":{"area":"data","section":"logs"},"ui":{"area":"system","section":"appearance"},"security":{"area":"system","section":"security"},"access":{"area":"system","section":"access"},"runtime":{"area":"system","section":"runtime"},"media":{"area":"system","section":"media"},"content":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"ops":{"area":"data","section":"backup"},"cog-core":{"area":"profiles","section":"general"},"cog-permissions":{"area":"system","section":"access"},"cog-reminders":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"cog-llm":{"area":"profiles","section":"models"},"cog-turn":{"area":"profiles","section":"turn"},"cog-reply":{"area":"profiles","section":"reply"},"cog-admin":{"area":"system","section":"access"},"cog-purpose":{"area":"profiles","section":"purpose"},"cog-persona":{"area":"profiles","section":"persona"},"cog-emotion":{"area":"profiles","section":"emotion"},"cog-relationship":{"area":"profiles","section":"relationships"},"cog-memory":{"area":"profiles","section":"memories"},"cog-import":{"area":"data","section":"import"},"cog-policy":{"area":"profiles","section":"policy"},"cog-learning":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"cog-proactivity":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"cog-privacy":{"area":"data","section":"privacy"}}
+    const LEGACY_MODULE_IDS = ["builtin-learning","builtin-proactivity","builtin-media-features","builtin-reminders","builtin-typing","builtin-reply-delivery","builtin-sample"]
+    const LEGACY_ANCHORS = {"ob-media-stickers":{"area":"data","section":"media","anchor":"ob-media-stickers"},"ob-cog-unknowns":{"area":"profiles","section":"learning","anchor":"ob-cog-unknowns"},"ob-cog-tasks":{"area":"profiles","section":"learning","anchor":"ob-cog-tasks"},"ob-cog-claims":{"area":"profiles","section":"learning","anchor":"ob-cog-claims"},"ob-module-detail":{"area":"extensions","section":"module","anchor":"ob-module-detail"},"ob-module-config":{"area":"extensions","section":"module","anchor":"ob-module-config"},"ob-module-panel":{"area":"extensions","section":"module","anchor":"ob-module-panel"},"ob-module-reminders":{"area":"extensions","section":"module","anchor":"ob-module-reminders"}}
+    const LEGACY_SETTINGS_SECTIONS = {"appearance":{"area":"system","section":"appearance","anchor":"appearance"},"layout":{"area":"system","section":"appearance","anchor":"layout"},"data":{"area":"system","section":"appearance","anchor":"data"},"motion":{"area":"system","section":"appearance","anchor":"motion"},"reset":{"area":"system","section":"appearance","anchor":"reset"}}
+    const SETTINGS_FIELDS = [{"path":"sandbox.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.enabled","group:sandbox/sandbox.enabled"]},{"path":"sandbox.driver","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.driver","group:sandbox/sandbox.driver"]},{"path":"sandbox.network","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.network","group:sandbox/sandbox.network"]},{"path":"sandbox.limits.concurrency","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.limits.concurrency","group:sandbox/sandbox.limits.concurrency"]},{"path":"sandbox.limits.jobs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.limits.jobs","group:sandbox/sandbox.limits.jobs"]},{"path":"sandbox.limits.timeoutMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.limits.timeoutMs","group:sandbox/sandbox.limits.timeoutMs"]},{"path":"sandbox.limits.outputBytes","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.limits.outputBytes","group:sandbox/sandbox.limits.outputBytes"]},{"path":"sandbox.limits.memoryMiB","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.limits.memoryMiB","group:sandbox/sandbox.limits.memoryMiB"]},{"path":"sandbox.limits.processes","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.limits.processes","group:sandbox/sandbox.limits.processes"]},{"path":"sandbox.policy.ownerPrivate","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.policy.ownerPrivate","group:sandbox/sandbox.policy.ownerPrivate"]},{"path":"sandbox.policy.operatorPrivate","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.policy.operatorPrivate","group:sandbox/sandbox.policy.operatorPrivate"]},{"path":"sandbox.policy.otherPrivate","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.policy.otherPrivate","group:sandbox/sandbox.policy.otherPrivate"]},{"path":"sandbox.policy.group","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"sandbox","aliases":["sandbox.policy.group","group:sandbox/sandbox.policy.group"]},{"path":"version","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"runtime"},"sensitivity":"public","apply":"read-only","exposure":"internal","storage":"config.json","legacyGroup":null,"aliases":["version"]},{"path":"cognition.delivery.engine","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"runtime"},"sensitivity":"public","apply":"read-only","exposure":"internal","storage":"config.json","legacyGroup":null,"aliases":["cognition.delivery.engine"]},{"path":"enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"general"},"sensitivity":"public","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"basic","aliases":["enabled","group:basic/enabled"]},{"path":"gateway","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"general"},"sensitivity":"public","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"basic","aliases":["gateway","group:basic/gateway"]},{"path":"botQQ","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"general"},"sensitivity":"private","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"basic","aliases":["botQQ","group:basic/botQQ"]},{"path":"accountCheck","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"general"},"sensitivity":"public","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"basic","aliases":["accountCheck","group:basic/accountCheck"]},{"path":"onebot.wsUrl","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"private","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["onebot.wsUrl","group:endpoint/onebot.wsUrl"]},{"path":"onebot.httpUrl","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"private","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["onebot.httpUrl","group:endpoint/onebot.httpUrl"]},{"path":"onebot.wsToken","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"secret","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["onebot.wsToken","group:endpoint/onebot.wsToken"]},{"path":"onebot.httpToken","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"secret","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["onebot.httpToken","group:endpoint/onebot.httpToken"]},{"path":"onebot.httpAuth","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"public","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["onebot.httpAuth","group:endpoint/onebot.httpAuth"]},{"path":"reconnect.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["reconnect.enabled","group:endpoint/reconnect.enabled"]},{"path":"reconnect.minDelayMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["reconnect.minDelayMs","group:endpoint/reconnect.minDelayMs"]},{"path":"reconnect.maxDelayMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["reconnect.maxDelayMs","group:endpoint/reconnect.maxDelayMs"]},{"path":"reconnect.factor","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["reconnect.factor","group:endpoint/reconnect.factor"]},{"path":"reconnect.jitterRatio","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"endpoint","aliases":["reconnect.jitterRatio","group:endpoint/reconnect.jitterRatio"]},{"path":"snowluma.dir","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"private","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"snowluma","aliases":["snowluma.dir","group:snowluma/snowluma.dir"]},{"path":"snowluma.uin","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"private","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"snowluma","aliases":["snowluma.uin","group:snowluma/snowluma.uin"]},{"path":"snowluma.autoDetect","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"connection"},"sensitivity":"public","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"snowluma","aliases":["snowluma.autoDetect","group:snowluma/snowluma.autoDetect"]},{"path":"timeouts.callMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["timeouts.callMs","group:timeouts/timeouts.callMs"]},{"path":"timeouts.connectMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["timeouts.connectMs","group:timeouts/timeouts.connectMs"]},{"path":"timeouts.verifyMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["timeouts.verifyMs","group:timeouts/timeouts.verifyMs"]},{"path":"timeouts.probeMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["timeouts.probeMs","group:timeouts/timeouts.probeMs"]},{"path":"timeouts.maxRetries","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["timeouts.maxRetries","group:timeouts/timeouts.maxRetries"]},{"path":"timeouts.retryDelaysMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["timeouts.retryDelaysMs","group:timeouts/timeouts.retryDelaysMs"]},{"path":"verification.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"gateway-reconnect","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["verification.enabled","group:timeouts/verification.enabled"]},{"path":"verification.bufferSize","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"timeouts"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"timeouts","aliases":["verification.bufferSize","group:timeouts/verification.bufferSize"]},{"path":"events.enabled","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.enabled","group:events/events.enabled"]},{"path":"events.bufferSize","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.bufferSize","group:events/events.bufferSize"]},{"path":"events.includeSelfMessages","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.includeSelfMessages","group:events/events.includeSelfMessages"]},{"path":"events.kinds.message","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.kinds.message","group:events/events.kinds.message"]},{"path":"events.kinds.notice","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.kinds.notice","group:events/events.kinds.notice"]},{"path":"events.kinds.request","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.kinds.request","group:events/events.kinds.request"]},{"path":"events.kinds.meta_event","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.kinds.meta_event","group:events/events.kinds.meta_event"]},{"path":"events.messageSubTypes.private","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.messageSubTypes.private","group:events/events.messageSubTypes.private"]},{"path":"events.messageSubTypes.group","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.messageSubTypes.group","group:events/events.messageSubTypes.group"]},{"path":"events.ignoreUsers","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.ignoreUsers","group:events/events.ignoreUsers"]},{"path":"events.ignoreGroups","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.ignoreGroups","group:events/events.ignoreGroups"]},{"path":"events.rawMaxBytes","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.rawMaxBytes","group:events/events.rawMaxBytes"]},{"path":"events.persist.enabled","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.persist.enabled","group:events/events.persist.enabled"]},{"path":"events.persist.file","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.persist.file","group:events/events.persist.file"]},{"path":"events.persist.maxMB","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"events"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"events","aliases":["events.persist.maxMB","group:events/events.persist.maxMB"]},{"path":"logging.level","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"logs"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"logging","aliases":["logging.level","group:logging/logging.level"]},{"path":"logging.bufferSize","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"logs"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"logging","aliases":["logging.bufferSize","group:logging/logging.bufferSize"]},{"path":"logging.persist.enabled","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"logs"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"logging","aliases":["logging.persist.enabled","group:logging/logging.persist.enabled"]},{"path":"logging.redact","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"logs"},"sensitivity":"public","apply":"next-use","exposure":"config-file","storage":"config.json","legacyGroup":"logging","aliases":["logging.redact","group:logging/logging.redact"]},{"path":"ui.refreshMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.refreshMs","group:ui/ui.refreshMs"]},{"path":"ui.eventPageSize","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.eventPageSize","group:ui/ui.eventPageSize"]},{"path":"ui.logPageSize","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.logPageSize","group:ui/ui.logPageSize"]},{"path":"ui.accent","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.accent","group:ui/ui.accent"]},{"path":"ui.density","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.density","group:ui/ui.density"]},{"path":"ui.fontScale","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.fontScale","group:ui/ui.fontScale"]},{"path":"ui.contentWidth","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.contentWidth","group:ui/ui.contentWidth"]},{"path":"ui.motion","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.motion","group:ui/ui.motion"]},{"path":"ui.pageTransition","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.pageTransition","group:ui/ui.pageTransition"]},{"path":"ui.contrast","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"appearance"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ui","aliases":["ui.contrast","group:ui/ui.contrast"]},{"path":"security.allowRawAction","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"security","aliases":["security.allowRawAction","group:security/security.allowRawAction"]},{"path":"security.leakGuard.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"security","aliases":["security.leakGuard.enabled","group:security/security.leakGuard.enabled"]},{"path":"security.leakGuard.action","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"security"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"security","aliases":["security.leakGuard.action","group:security/security.leakGuard.action"]},{"path":"ops.upgrade.enabled","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.upgrade.enabled","group:ops/ops.upgrade.enabled"]},{"path":"ops.upgrade.channel","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.upgrade.channel","group:ops/ops.upgrade.channel"]},{"path":"ops.upgrade.repo","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.upgrade.repo","group:ops/ops.upgrade.repo"]},{"path":"ops.upgrade.timeoutMs","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.upgrade.timeoutMs","group:ops/ops.upgrade.timeoutMs"]},{"path":"ops.upgrade.cacheMinutes","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.upgrade.cacheMinutes","group:ops/ops.upgrade.cacheMinutes"]},{"path":"ops.backup.enabled","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.backup.enabled","group:ops/ops.backup.enabled"]},{"path":"ops.backup.includeMedia","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.backup.includeMedia","group:ops/ops.backup.includeMedia"]},{"path":"ops.backup.maxSnapshots","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.backup.maxSnapshots","group:ops/ops.backup.maxSnapshots"]},{"path":"ops.backup.maxBytes","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.backup.maxBytes","group:ops/ops.backup.maxBytes"]},{"path":"ops.backup.maxFiles","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.backup.maxFiles","group:ops/ops.backup.maxFiles"]},{"path":"ops.backup.prune","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.backup.prune","group:ops/ops.backup.prune"]},{"path":"ops.backup.allowRestore","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"backup"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"ops","aliases":["ops.backup.allowRestore","group:ops/ops.backup.allowRestore"]},{"path":"media.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.enabled","group:media/media.enabled"]},{"path":"media.maxBytes","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.maxBytes","group:media/media.maxBytes"]},{"path":"media.dir","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.dir","group:media/media.dir"]},{"path":"media.tts.maxChars","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.tts.maxChars","group:media/media.tts.maxChars"]},{"path":"media.images.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.enabled","group:media/media.images.enabled"]},{"path":"media.images.visionEnabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.visionEnabled","group:media/media.images.visionEnabled"]},{"path":"media.images.visionBaseUrl","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.visionBaseUrl","group:media/media.images.visionBaseUrl"]},{"path":"media.images.visionModel","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.visionModel","group:media/media.images.visionModel"]},{"path":"media.images.visionApiKeyEnv","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"secret-reference","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.visionApiKeyEnv","group:media/media.images.visionApiKeyEnv"]},{"path":"media.images.generateEnabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.generateEnabled","group:media/media.images.generateEnabled"]},{"path":"media.images.generateBaseUrl","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.generateBaseUrl","group:media/media.images.generateBaseUrl"]},{"path":"media.images.generateModel","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.generateModel","group:media/media.images.generateModel"]},{"path":"media.images.generateApiKeyEnv","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"secret-reference","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.generateApiKeyEnv","group:media/media.images.generateApiKeyEnv"]},{"path":"media.images.generateSize","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.generateSize","group:media/media.images.generateSize"]},{"path":"media.images.editEnabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.editEnabled","group:media/media.images.editEnabled"]},{"path":"media.images.editBaseUrl","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.editBaseUrl","group:media/media.images.editBaseUrl"]},{"path":"media.images.editModel","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.editModel","group:media/media.images.editModel"]},{"path":"media.images.editApiKeyEnv","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"secret-reference","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.editApiKeyEnv","group:media/media.images.editApiKeyEnv"]},{"path":"media.images.editSize","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.images.editSize","group:media/media.images.editSize"]},{"path":"media.audio.asrEnabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.asrEnabled","group:media/media.audio.asrEnabled"]},{"path":"media.audio.asrBaseUrl","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.asrBaseUrl","group:media/media.audio.asrBaseUrl"]},{"path":"media.audio.asrModel","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.asrModel","group:media/media.audio.asrModel"]},{"path":"media.audio.asrApiKeyEnv","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"secret-reference","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.asrApiKeyEnv","group:media/media.audio.asrApiKeyEnv"]},{"path":"media.audio.ttsEnabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.ttsEnabled","group:media/media.audio.ttsEnabled"]},{"path":"media.audio.ttsBaseUrl","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.ttsBaseUrl","group:media/media.audio.ttsBaseUrl"]},{"path":"media.audio.ttsModel","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.ttsModel","group:media/media.audio.ttsModel"]},{"path":"media.audio.ttsVoice","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.ttsVoice","group:media/media.audio.ttsVoice"]},{"path":"media.audio.ttsApiKeyEnv","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"secret-reference","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.audio.ttsApiKeyEnv","group:media/media.audio.ttsApiKeyEnv"]},{"path":"media.files.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"media"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.files.enabled","group:media/media.files.enabled"]},{"path":"media.stickers.enabled","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.stickers.enabled","group:media/media.stickers.enabled"]},{"path":"media.stickers.maxCount","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.stickers.maxCount","group:media/media.stickers.maxCount"]},{"path":"media.stickers.maxBytes","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"media","aliases":["media.stickers.maxBytes","group:media/media.stickers.maxBytes"]},{"path":"content.bilibili.enabled","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"content","aliases":["content.bilibili.enabled","group:content/content.bilibili.enabled"]},{"path":"content.bilibili.timeoutMs","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"content","aliases":["content.bilibili.timeoutMs","group:content/content.bilibili.timeoutMs"]},{"path":"content.bilibili.maxResults","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-media-features","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"content","aliases":["content.bilibili.maxResults","group:content/content.bilibili.maxResults"]},{"path":"access.mode","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"access","aliases":["access.mode","group:access/access.mode"]},{"path":"access.ownerQQ","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"access","aliases":["access.ownerQQ","group:access/access.ownerQQ"]},{"path":"access.ownerName","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"access","aliases":["access.ownerName","group:access/access.ownerName"]},{"path":"access.operators","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"access","aliases":["access.operators","group:access/access.operators"]},{"path":"access.private","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"access","aliases":["access.private","group:access/access.private"]},{"path":"access.groups","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"access","aliases":["access.groups","group:access/access.groups"]},{"path":"access.auditSize","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"access","aliases":["access.auditSize","group:access/access.auditSize"]},{"path":"runtime.engine","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"runtime"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"runtime","aliases":["runtime.engine","group:runtime/runtime.engine"]},{"path":"runtime.workspaceDir","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"runtime"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"runtime","aliases":["runtime.workspaceDir","group:runtime/runtime.workspaceDir"]},{"path":"runtime.replyTimeoutMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"runtime"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"runtime","aliases":["runtime.replyTimeoutMs","group:runtime/runtime.replyTimeoutMs"]},{"path":"cognition.enabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"general"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-core","aliases":["cognition.enabled","group:cog-core/cognition.enabled"]},{"path":"cognition.paused","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"general"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-core","aliases":["cognition.paused","group:cog-core/cognition.paused"]},{"path":"cognition.dryRun","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"general"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-core","aliases":["cognition.dryRun","group:cog-core/cognition.dryRun"]},{"path":"cognition.locale","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"general"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-core","aliases":["cognition.locale","group:cog-core/cognition.locale"]},{"path":"cognition.timezone","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"general"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-core","aliases":["cognition.timezone","group:cog-core/cognition.timezone"]},{"path":"cognition.typing.enabled","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-typing","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.typing.enabled","group:cog-turn/cognition.typing.enabled"]},{"path":"cognition.turn.privateBaseMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.privateBaseMs","group:cog-turn/cognition.turn.privateBaseMs"]},{"path":"cognition.turn.privateMaxMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.privateMaxMs","group:cog-turn/cognition.turn.privateMaxMs"]},{"path":"cognition.turn.groupMaxMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.groupMaxMs","group:cog-turn/cognition.turn.groupMaxMs"]},{"path":"cognition.turn.fastPathMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.fastPathMs","group:cog-turn/cognition.turn.fastPathMs"]},{"path":"cognition.turn.shortMsgMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.shortMsgMs","group:cog-turn/cognition.turn.shortMsgMs"]},{"path":"cognition.turn.incompleteFactorMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.incompleteFactorMs","group:cog-turn/cognition.turn.incompleteFactorMs"]},{"path":"cognition.turn.habitAdjMaxMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.habitAdjMaxMs","group:cog-turn/cognition.turn.habitAdjMaxMs"]},{"path":"cognition.turn.maxAggregateMessages","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.maxAggregateMessages","group:cog-turn/cognition.turn.maxAggregateMessages"]},{"path":"cognition.turn.groupReplyMode","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.groupReplyMode","group:cog-turn/cognition.turn.groupReplyMode"]},{"path":"cognition.turn.groupReplyProbability","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.groupReplyProbability","group:cog-turn/cognition.turn.groupReplyProbability"]},{"path":"cognition.turn.groupRelevance.enabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.groupRelevance.enabled","group:cog-turn/cognition.turn.groupRelevance.enabled"]},{"path":"cognition.turn.groupRelevance.minScore","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.groupRelevance.minScore","group:cog-turn/cognition.turn.groupRelevance.minScore"]},{"path":"cognition.turn.groupCooldownMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.groupCooldownMs","group:cog-turn/cognition.turn.groupCooldownMs"]},{"path":"cognition.turn.groupMaxRepliesPerMinute","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.groupMaxRepliesPerMinute","group:cog-turn/cognition.turn.groupMaxRepliesPerMinute"]},{"path":"cognition.turn.maxConsecutiveGroupReplies","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.maxConsecutiveGroupReplies","group:cog-turn/cognition.turn.maxConsecutiveGroupReplies"]},{"path":"cognition.turn.addressedOnlyGroups","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"read-only","exposure":"internal","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.addressedOnlyGroups","group:cog-turn/cognition.turn.addressedOnlyGroups"]},{"path":"cognition.turn.wakeWords","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"turn"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-turn","aliases":["cognition.turn.wakeWords","group:cog-turn/cognition.turn.wakeWords"]},{"path":"cognition.reply.split","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.reply.split","group:cog-reply/cognition.reply.split"]},{"path":"cognition.reply.maxChars","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.reply.maxChars","group:cog-reply/cognition.reply.maxChars"]},{"path":"cognition.reply.maxParts","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.reply.maxParts","group:cog-reply/cognition.reply.maxParts"]},{"path":"cognition.reply.delayMs","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.reply.delayMs","group:cog-reply/cognition.reply.delayMs"]},{"path":"cognition.reply.quote","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.reply.quote","group:cog-reply/cognition.reply.quote"]},{"path":"cognition.reply.atSender","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reply-delivery","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.reply.atSender","group:cog-reply/cognition.reply.atSender"]},{"path":"cognition.notices.enabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"reply"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.notices.enabled","group:cog-reply/cognition.notices.enabled"]},{"path":"cognition.requests.enabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"reply"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.requests.enabled","group:cog-reply/cognition.requests.enabled"]},{"path":"cognition.notice.patReply","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"reply"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.notice.patReply","group:cog-reply/cognition.notice.patReply"]},{"path":"cognition.notice.patCooldownMs","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"reply"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reply","aliases":["cognition.notice.patCooldownMs","group:cog-reply/cognition.notice.patCooldownMs"]},{"path":"cognition.permissions.deniedCommands","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-permissions","aliases":["cognition.permissions.deniedCommands","group:cog-permissions/cognition.permissions.deniedCommands"]},{"path":"cognition.reminders.enabled","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reminders","aliases":["cognition.reminders.enabled","group:cog-reminders/cognition.reminders.enabled"]},{"path":"cognition.reminders.maxActive","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reminders","aliases":["cognition.reminders.maxActive","group:cog-reminders/cognition.reminders.maxActive"]},{"path":"cognition.reminders.minIntervalSeconds","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reminders","aliases":["cognition.reminders.minIntervalSeconds","group:cog-reminders/cognition.reminders.minIntervalSeconds"]},{"path":"cognition.reminders.maxIntervalSeconds","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-reminders","aliases":["cognition.reminders.maxIntervalSeconds","group:cog-reminders/cognition.reminders.maxIntervalSeconds"]},{"path":"cognition.reminders.tickMs","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-reminders","anchor":"ob-module-config"},"sensitivity":"public","apply":"module-restart","exposure":"panel","storage":"config.json","legacyGroup":"cog-reminders","aliases":["cognition.reminders.tickMs","group:cog-reminders/cognition.reminders.tickMs"]},{"path":"cognition.qqAdmin.enabled","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-admin","aliases":["cognition.qqAdmin.enabled","group:cog-admin/cognition.qqAdmin.enabled"]},{"path":"cognition.qqAdmin.requireApproval","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-admin","aliases":["cognition.qqAdmin.requireApproval","group:cog-admin/cognition.qqAdmin.requireApproval"]},{"path":"cognition.qqAdmin.requireConfirm","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-admin","aliases":["cognition.qqAdmin.requireConfirm","group:cog-admin/cognition.qqAdmin.requireConfirm"]},{"path":"cognition.qqAdmin.maxText","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"access"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-admin","aliases":["cognition.qqAdmin.maxText","group:cog-admin/cognition.qqAdmin.maxText"]},{"path":"cognition.purpose.enabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"purpose"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-purpose","aliases":["cognition.purpose.enabled","group:cog-purpose/cognition.purpose.enabled"]},{"path":"cognition.purpose.maxActive","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"purpose"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-purpose","aliases":["cognition.purpose.maxActive","group:cog-purpose/cognition.purpose.maxActive"]},{"path":"cognition.purpose.injectPrompt","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"purpose"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-purpose","aliases":["cognition.purpose.injectPrompt","group:cog-purpose/cognition.purpose.injectPrompt"]},{"path":"cognition.purpose.promptLimit","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"purpose"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-purpose","aliases":["cognition.purpose.promptLimit","group:cog-purpose/cognition.purpose.promptLimit"]},{"path":"cognition.import.enabled","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"import"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-import","aliases":["cognition.import.enabled","group:cog-import/cognition.import.enabled"]},{"path":"cognition.import.maxBytes","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"import"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-import","aliases":["cognition.import.maxBytes","group:cog-import/cognition.import.maxBytes"]},{"path":"cognition.import.maxItems","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"import"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-import","aliases":["cognition.import.maxItems","group:cog-import/cognition.import.maxItems"]},{"path":"cognition.consolidation.enabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.consolidation.enabled","group:cog-memory/cognition.consolidation.enabled"]},{"path":"cognition.consolidation.hour","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.consolidation.hour","group:cog-memory/cognition.consolidation.hour"]},{"path":"cognition.consolidation.reflect","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.consolidation.reflect","group:cog-memory/cognition.consolidation.reflect"]},{"path":"cognition.consolidation.reflectMinEpisodes","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.consolidation.reflectMinEpisodes","group:cog-memory/cognition.consolidation.reflectMinEpisodes"]},{"path":"cognition.memory.retrievalTopK","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.retrievalTopK","group:cog-memory/cognition.memory.retrievalTopK"]},{"path":"cognition.memory.maxContextChars","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.maxContextChars","group:cog-memory/cognition.memory.maxContextChars"]},{"path":"cognition.memory.recencyWeight","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.recencyWeight","group:cog-memory/cognition.memory.recencyWeight"]},{"path":"cognition.memory.importanceWeight","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.importanceWeight","group:cog-memory/cognition.memory.importanceWeight"]},{"path":"cognition.memory.relevanceWeight","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.relevanceWeight","group:cog-memory/cognition.memory.relevanceWeight"]},{"path":"cognition.memory.emotionWeight","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.emotionWeight","group:cog-memory/cognition.memory.emotionWeight"]},{"path":"cognition.memory.relationshipWeight","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.relationshipWeight","group:cog-memory/cognition.memory.relationshipWeight"]},{"path":"cognition.memory.associationWeight","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.associationWeight","group:cog-memory/cognition.memory.associationWeight"]},{"path":"cognition.memory.recencyHalfLifeDays","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.recencyHalfLifeDays","group:cog-memory/cognition.memory.recencyHalfLifeDays"]},{"path":"cognition.memory.forgetHalfLifeDays","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.forgetHalfLifeDays","group:cog-memory/cognition.memory.forgetHalfLifeDays"]},{"path":"cognition.memory.consolidateEvery","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.consolidateEvery","group:cog-memory/cognition.memory.consolidateEvery"]},{"path":"cognition.memory.semanticIndex","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.semanticIndex","group:cog-memory/cognition.memory.semanticIndex"]},{"path":"cognition.memory.embedding.enabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.embedding.enabled","group:cog-memory/cognition.memory.embedding.enabled"]},{"path":"cognition.memory.embedding.baseUrl","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.embedding.baseUrl","group:cog-memory/cognition.memory.embedding.baseUrl"]},{"path":"cognition.memory.embedding.model","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.embedding.model","group:cog-memory/cognition.memory.embedding.model"]},{"path":"cognition.memory.embedding.apiKeyEnv","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"secret-reference","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.embedding.apiKeyEnv","group:cog-memory/cognition.memory.embedding.apiKeyEnv"]},{"path":"cognition.memory.embedding.weight","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"memories"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-memory","aliases":["cognition.memory.embedding.weight","group:cog-memory/cognition.memory.embedding.weight"]},{"path":"cognition.llm.mode","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.mode","group:cog-llm/cognition.llm.mode"]},{"path":"cognition.llm.provider","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.provider","group:cog-llm/cognition.llm.provider"]},{"path":"cognition.llm.model","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.model","group:cog-llm/cognition.llm.model"]},{"path":"cognition.llm.reasoningEffort","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.reasoningEffort","group:cog-llm/cognition.llm.reasoningEffort"]},{"path":"cognition.llm.temperature","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.temperature","group:cog-llm/cognition.llm.temperature"]},{"path":"cognition.llm.analysisMaxTokens","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.analysisMaxTokens","group:cog-llm/cognition.llm.analysisMaxTokens"]},{"path":"cognition.llm.composeMaxTokens","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.composeMaxTokens","group:cog-llm/cognition.llm.composeMaxTokens"]},{"path":"cognition.llm.budgetScope","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.budgetScope","group:cog-llm/cognition.llm.budgetScope"]},{"path":"cognition.llm.personaDailyTokenBudget","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.personaDailyTokenBudget","group:cog-llm/cognition.llm.personaDailyTokenBudget"]},{"path":"cognition.modelRouting.privateDefault","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.modelRouting.privateDefault","group:cog-llm/cognition.modelRouting.privateDefault"]},{"path":"cognition.modelRouting.groupDefault","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.modelRouting.groupDefault","group:cog-llm/cognition.modelRouting.groupDefault"]},{"path":"cognition.modelRouting.routes","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"models"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.modelRouting.routes","group:cog-llm/cognition.modelRouting.routes"]},{"path":"cognition.llm.fallbackToDsh","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.fallbackToDsh","group:cog-llm/cognition.llm.fallbackToDsh"]},{"path":"cognition.llm.timeoutMs","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.timeoutMs","group:cog-llm/cognition.llm.timeoutMs"]},{"path":"cognition.llm.dailyTokenBudget","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.dailyTokenBudget","group:cog-llm/cognition.llm.dailyTokenBudget"]},{"path":"cognition.llm.maxConcurrency","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.maxConcurrency","group:cog-llm/cognition.llm.maxConcurrency"]},{"path":"cognition.llm.retry","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.retry","group:cog-llm/cognition.llm.retry"]},{"path":"cognition.llm.cache","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"models"},"sensitivity":"public","apply":"next-use","exposure":"config-file","storage":"config.json","legacyGroup":"cog-llm","aliases":["cognition.llm.cache","group:cog-llm/cognition.llm.cache"]},{"path":"cognition.persona.traits.extraversion","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.extraversion","group:cog-persona/cognition.persona.traits.extraversion"]},{"path":"cognition.persona.traits.openness","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.openness","group:cog-persona/cognition.persona.traits.openness"]},{"path":"cognition.persona.traits.agreeableness","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.agreeableness","group:cog-persona/cognition.persona.traits.agreeableness"]},{"path":"cognition.persona.traits.conscientiousness","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.conscientiousness","group:cog-persona/cognition.persona.traits.conscientiousness"]},{"path":"cognition.persona.traits.emotionalSensitivity","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.emotionalSensitivity","group:cog-persona/cognition.persona.traits.emotionalSensitivity"]},{"path":"cognition.persona.traits.humor","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.humor","group:cog-persona/cognition.persona.traits.humor"]},{"path":"cognition.persona.traits.socialInitiative","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.socialInitiative","group:cog-persona/cognition.persona.traits.socialInitiative"]},{"path":"cognition.persona.traits.caution","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.caution","group:cog-persona/cognition.persona.traits.caution"]},{"path":"cognition.persona.traits.expressiveness","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.expressiveness","group:cog-persona/cognition.persona.traits.expressiveness"]},{"path":"cognition.persona.traits.conflictApproach","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.conflictApproach","group:cog-persona/cognition.persona.traits.conflictApproach"]},{"path":"cognition.persona.traits.riskTolerance","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.riskTolerance","group:cog-persona/cognition.persona.traits.riskTolerance"]},{"path":"cognition.persona.traits.consistency","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.traits.consistency","group:cog-persona/cognition.persona.traits.consistency"]},{"path":"cognition.persona.style.formality","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.style.formality","group:cog-persona/cognition.persona.style.formality"]},{"path":"cognition.persona.style.verbosity","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.style.verbosity","group:cog-persona/cognition.persona.style.verbosity"]},{"path":"cognition.persona.style.emojiRate","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.style.emojiRate","group:cog-persona/cognition.persona.style.emojiRate"]},{"path":"cognition.persona.style.punctuation","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"config-file","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.style.punctuation","group:cog-persona/cognition.persona.style.punctuation"]},{"path":"cognition.persona.style.teasingBound","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.style.teasingBound","group:cog-persona/cognition.persona.style.teasingBound"]},{"path":"cognition.persona.style.warmth","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.style.warmth","group:cog-persona/cognition.persona.style.warmth"]},{"path":"cognition.persona.values","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.values","group:cog-persona/cognition.persona.values"]},{"path":"cognition.persona.profile.displayName","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.displayName","group:cog-persona/cognition.persona.profile.displayName"]},{"path":"cognition.persona.profile.tagline","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.tagline","group:cog-persona/cognition.persona.profile.tagline"]},{"path":"cognition.persona.profile.identity","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.identity","group:cog-persona/cognition.persona.profile.identity"]},{"path":"cognition.persona.profile.background","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.background","group:cog-persona/cognition.persona.profile.background"]},{"path":"cognition.persona.profile.personality","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.personality","group:cog-persona/cognition.persona.profile.personality"]},{"path":"cognition.persona.profile.speakingStyle","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.speakingStyle","group:cog-persona/cognition.persona.profile.speakingStyle"]},{"path":"cognition.persona.profile.likes","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.likes","group:cog-persona/cognition.persona.profile.likes"]},{"path":"cognition.persona.profile.dislikes","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.dislikes","group:cog-persona/cognition.persona.profile.dislikes"]},{"path":"cognition.persona.profile.boundaries","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.boundaries","group:cog-persona/cognition.persona.profile.boundaries"]},{"path":"cognition.persona.profile.examples","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"profile-editor","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.profile.examples","group:cog-persona/cognition.persona.profile.examples"]},{"path":"cognition.persona.evolutionPerDay","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.evolutionPerDay","group:cog-persona/cognition.persona.evolutionPerDay"]},{"path":"cognition.persona.evolutionEnabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.evolutionEnabled","group:cog-persona/cognition.persona.evolutionEnabled"]},{"path":"cognition.persona.min","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"config-file","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.min","group:cog-persona/cognition.persona.min"]},{"path":"cognition.persona.max","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"persona"},"sensitivity":"private","apply":"next-use","exposure":"config-file","storage":"config.json","legacyGroup":"cog-persona","aliases":["cognition.persona.max","group:cog-persona/cognition.persona.max"]},{"path":"cognition.emotion.sensitivity","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"emotion"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-emotion","aliases":["cognition.emotion.sensitivity","group:cog-emotion/cognition.emotion.sensitivity"]},{"path":"cognition.emotion.regulation","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"emotion"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-emotion","aliases":["cognition.emotion.regulation","group:cog-emotion/cognition.emotion.regulation"]},{"path":"cognition.emotion.valenceHalfLifeMin","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"emotion"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-emotion","aliases":["cognition.emotion.valenceHalfLifeMin","group:cog-emotion/cognition.emotion.valenceHalfLifeMin"]},{"path":"cognition.emotion.arousalHalfLifeMin","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"emotion"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-emotion","aliases":["cognition.emotion.arousalHalfLifeMin","group:cog-emotion/cognition.emotion.arousalHalfLifeMin"]},{"path":"cognition.emotion.stressHalfLifeMin","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"emotion"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-emotion","aliases":["cognition.emotion.stressHalfLifeMin","group:cog-emotion/cognition.emotion.stressHalfLifeMin"]},{"path":"cognition.emotion.moodHalfLifeMin","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"emotion"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-emotion","aliases":["cognition.emotion.moodHalfLifeMin","group:cog-emotion/cognition.emotion.moodHalfLifeMin"]},{"path":"cognition.emotion.effectsEnabled","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"emotion"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-emotion","aliases":["cognition.emotion.effectsEnabled","group:cog-emotion/cognition.emotion.effectsEnabled"]},{"path":"cognition.relationship.learningRate","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"relationships"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-relationship","aliases":["cognition.relationship.learningRate","group:cog-relationship/cognition.relationship.learningRate"]},{"path":"cognition.relationship.trustRate","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"relationships"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-relationship","aliases":["cognition.relationship.trustRate","group:cog-relationship/cognition.relationship.trustRate"]},{"path":"cognition.relationship.intimacyRate","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"relationships"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-relationship","aliases":["cognition.relationship.intimacyRate","group:cog-relationship/cognition.relationship.intimacyRate"]},{"path":"cognition.relationship.conflictRise","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"relationships"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-relationship","aliases":["cognition.relationship.conflictRise","group:cog-relationship/cognition.relationship.conflictRise"]},{"path":"cognition.relationship.conflictDecay","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"relationships"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-relationship","aliases":["cognition.relationship.conflictDecay","group:cog-relationship/cognition.relationship.conflictDecay"]},{"path":"cognition.relationship.inertia","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"relationships"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-relationship","aliases":["cognition.relationship.inertia","group:cog-relationship/cognition.relationship.inertia"]},{"path":"cognition.relationship.repairThreshold","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"relationships"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-relationship","aliases":["cognition.relationship.repairThreshold","group:cog-relationship/cognition.relationship.repairThreshold"]},{"path":"cognition.policy.replyThreshold","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.replyThreshold","group:cog-policy/cognition.policy.replyThreshold"]},{"path":"cognition.policy.waitThreshold","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.waitThreshold","group:cog-policy/cognition.policy.waitThreshold"]},{"path":"cognition.policy.silenceThreshold","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.silenceThreshold","group:cog-policy/cognition.policy.silenceThreshold"]},{"path":"cognition.policy.addressedBoost","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.addressedBoost","group:cog-policy/cognition.policy.addressedBoost"]},{"path":"cognition.policy.groupPenalty","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.groupPenalty","group:cog-policy/cognition.policy.groupPenalty"]},{"path":"cognition.policy.epsilon","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.epsilon","group:cog-policy/cognition.policy.epsilon"]},{"path":"cognition.policy.dailyGlobalLimit","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.dailyGlobalLimit","group:cog-policy/cognition.policy.dailyGlobalLimit"]},{"path":"cognition.policy.perChatPrivate","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.perChatPrivate","group:cog-policy/cognition.policy.perChatPrivate"]},{"path":"cognition.policy.perChatGroup","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.perChatGroup","group:cog-policy/cognition.policy.perChatGroup"]},{"path":"cognition.policy.maxConsecutiveBotMessages","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.maxConsecutiveBotMessages","group:cog-policy/cognition.policy.maxConsecutiveBotMessages"]},{"path":"cognition.policy.proactive","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.proactive","group:cog-policy/cognition.policy.proactive"]},{"path":"cognition.policy.groupAmbient","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"config-file","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.groupAmbient","group:cog-policy/cognition.policy.groupAmbient"]},{"path":"cognition.policy.analyzeWithLlm","ownerClass":"profile","scope":"profile","canonical":{"area":"profiles","section":"policy"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-policy","aliases":["cognition.policy.analyzeWithLlm","group:cog-policy/cognition.policy.analyzeWithLlm"]},{"path":"cognition.learning.enabled","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.enabled","group:cog-learning/cognition.learning.enabled"]},{"path":"cognition.learning.autoResearch","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.autoResearch","group:cog-learning/cognition.learning.autoResearch"]},{"path":"cognition.learning.detectUnknowns","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.detectUnknowns","group:cog-learning/cognition.learning.detectUnknowns"]},{"path":"cognition.learning.maxTasksPerHour","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.maxTasksPerHour","group:cog-learning/cognition.learning.maxTasksPerHour"]},{"path":"cognition.learning.maxQueries","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.maxQueries","group:cog-learning/cognition.learning.maxQueries"]},{"path":"cognition.learning.maxSources","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.maxSources","group:cog-learning/cognition.learning.maxSources"]},{"path":"cognition.learning.dailyTokenBudget","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.dailyTokenBudget","group:cog-learning/cognition.learning.dailyTokenBudget"]},{"path":"cognition.learning.taskTtlHours","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.taskTtlHours","group:cog-learning/cognition.learning.taskTtlHours"]},{"path":"cognition.learning.retry","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.retry","group:cog-learning/cognition.learning.retry"]},{"path":"cognition.learning.minConfidence","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.minConfidence","group:cog-learning/cognition.learning.minConfidence"]},{"path":"cognition.learning.sources.web","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.sources.web","group:cog-learning/cognition.learning.sources.web"]},{"path":"cognition.learning.sources.wikipedia","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.sources.wikipedia","group:cog-learning/cognition.learning.sources.wikipedia"]},{"path":"cognition.learning.sources.openalex","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.sources.openalex","group:cog-learning/cognition.learning.sources.openalex"]},{"path":"cognition.learning.sources.github","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.sources.github","group:cog-learning/cognition.learning.sources.github"]},{"path":"cognition.learning.sources.rss","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.sources.rss","group:cog-learning/cognition.learning.sources.rss"]},{"path":"cognition.learning.sources.local","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-learning","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-learning","aliases":["cognition.learning.sources.local","group:cog-learning/cognition.learning.sources.local"]},{"path":"cognition.proactivity.enabled","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-proactivity","aliases":["cognition.proactivity.enabled","group:cog-proactivity/cognition.proactivity.enabled"]},{"path":"cognition.proactivity.quietStart","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-proactivity","aliases":["cognition.proactivity.quietStart","group:cog-proactivity/cognition.proactivity.quietStart"]},{"path":"cognition.proactivity.quietEnd","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-proactivity","aliases":["cognition.proactivity.quietEnd","group:cog-proactivity/cognition.proactivity.quietEnd"]},{"path":"cognition.proactivity.maxPrivatePerDay","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-proactivity","aliases":["cognition.proactivity.maxPrivatePerDay","group:cog-proactivity/cognition.proactivity.maxPrivatePerDay"]},{"path":"cognition.proactivity.maxGroupPerDay","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-proactivity","aliases":["cognition.proactivity.maxGroupPerDay","group:cog-proactivity/cognition.proactivity.maxGroupPerDay"]},{"path":"cognition.proactivity.minFamiliarity","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-proactivity","aliases":["cognition.proactivity.minFamiliarity","group:cog-proactivity/cognition.proactivity.minFamiliarity"]},{"path":"cognition.proactivity.backoffHours","ownerClass":"module","scope":"system","canonical":{"area":"extensions","section":"module","moduleId":"builtin-proactivity","anchor":"ob-module-config"},"sensitivity":"public","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-proactivity","aliases":["cognition.proactivity.backoffHours","group:cog-proactivity/cognition.proactivity.backoffHours"]},{"path":"cognition.privacy.privateIsolation","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"privacy"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-privacy","aliases":["cognition.privacy.privateIsolation","group:cog-privacy/cognition.privacy.privateIsolation"]},{"path":"cognition.privacy.learnFromPrivate","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"privacy"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-privacy","aliases":["cognition.privacy.learnFromPrivate","group:cog-privacy/cognition.privacy.learnFromPrivate"]},{"path":"cognition.privacy.rawRetentionDays","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"privacy"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-privacy","aliases":["cognition.privacy.rawRetentionDays","group:cog-privacy/cognition.privacy.rawRetentionDays"]},{"path":"cognition.privacy.traceRetentionDays","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"privacy"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-privacy","aliases":["cognition.privacy.traceRetentionDays","group:cog-privacy/cognition.privacy.traceRetentionDays"]},{"path":"cognition.privacy.decisionRetentionDays","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"privacy"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-privacy","aliases":["cognition.privacy.decisionRetentionDays","group:cog-privacy/cognition.privacy.decisionRetentionDays"]},{"path":"cognition.privacy.metricsRetentionDays","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"privacy"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-privacy","aliases":["cognition.privacy.metricsRetentionDays","group:cog-privacy/cognition.privacy.metricsRetentionDays"]},{"path":"cognition.privacy.exportSecret","ownerClass":"system","scope":"system","canonical":{"area":"data","section":"privacy"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-privacy","aliases":["cognition.privacy.exportSecret","group:cog-privacy/cognition.privacy.exportSecret"]},{"path":"cognition.debug.trace","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"diagnostics"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-core","aliases":["cognition.debug.trace","group:cog-core/cognition.debug.trace"]},{"path":"cognition.debug.keepPrompt","ownerClass":"system","scope":"system","canonical":{"area":"system","section":"diagnostics"},"sensitivity":"private","apply":"next-use","exposure":"panel","storage":"config.json","legacyGroup":"cog-core","aliases":["cognition.debug.keepPrompt","group:cog-core/cognition.debug.keepPrompt"]},{"path":"modules.builtin-sample.message","ownerClass":"module","scope":"module","canonical":{"area":"extensions","section":"module","moduleId":"builtin-sample","anchor":"ob-module-config"},"sensitivity":"private","apply":"next-use","exposure":"module-schema","storage":"module-file","legacyGroup":null,"aliases":["modules.builtin-sample.message","module:builtin-sample/message"]}]
+    const isCanonicalDestination = target => NAVIGATION_REGISTRY.some(area => area.id === target?.area && area.sections.some(section => section.id === target.section))
+    // Shared normalization for the WebUI and legacy feature links.
+
+    const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/
+    const fieldAliases = new Map(SETTINGS_FIELDS.flatMap(field => field.aliases.map(alias => [
+      alias, { ...field.canonical, fieldPath: field.path },
+    ])))
+    const own = (object, key) => Object.hasOwn(object, key) ? object[key] : undefined
+    const copy = target => target ? { ...target } : null
+    const fallback = () => ({ ...DEFAULT_TARGET })
+
+    /** Unambiguous namespaces are preferred; bare names prefer tabs, then groups. */
+    function resolveAlias(value) {
+      if (typeof value !== 'string' || !value) return null
+      const id = value.startsWith('#') ? value.slice(1) : value
+      return copy(own(LEGACY_ALIASES, id) || fieldAliases.get(id)
+        || own(LEGACY_TABS, id) || own(LEGACY_CONFIG_GROUPS, id)
+        || own(LEGACY_COGNITION_SECTIONS, id)
+        || (LEGACY_MODULE_IDS.includes(id) ? LEGACY_ALIASES[`module:${id}`] : null)
+        || dynamicAnchor(id))
+    }
+
+    function dynamicAnchor(anchor) {
+      const match = /^(ob-cog-(decision|task)-)(.+)$/.exec(anchor)
+      if (!match || !ID.test(anchor) || !ID.test(match[3])) return null
+      return {
+        area: 'profiles', section: match[2] === 'decision' ? 'policy' : 'learning',
+        anchor, [match[2] === 'decision' ? 'decisionId' : 'taskId']: match[3],
+      }
+    }
+
+    function samePlace(a, b) {
+      return a.area === b.area && a.section === b.section
+        && (!a.moduleId || !b.moduleId || a.moduleId === b.moduleId)
+    }
+
+    function normalize(input) {
+      if (!input || typeof input !== 'object' || Array.isArray(input)
+        || ![Object.prototype, null].includes(Object.getPrototypeOf(input))) return null
+      const allowed = ['tab', 'area', 'section', 'moduleId', 'anchor', 'decisionId', 'taskId', 'fieldPath']
+      if (Object.keys(input).some(key => !allowed.includes(key))) return null
+      for (const key of allowed) {
+        if (input[key] != null && input[key] !== '' && (typeof input[key] !== 'string'
+          || (key !== 'fieldPath' && !ID.test(input[key])))) return null
+      }
+      const canonical = Boolean(input.area)
+      const legacyTab = input.tab?.replace(/^(?:tab:|ob-tab-|ob-panel-)/, '')
+      if (canonical && input.tab) return null
+      let target = canonical
+        ? { area: input.area, section: input.section || NAVIGATION_REGISTRY.find(area => area.id === input.area)?.sections[0].id }
+        : resolveAlias(input.tab)
+      if (!target) return null
+
+      // Legacy section names live in their tab's namespace. A section may be a
+      // config group, whose landing destination can belong to another area.
+      if (!canonical && input.section) {
+        const tab = legacyTab
+        let sectionTarget
+        if (tab === 'cognition') sectionTarget = own(LEGACY_COGNITION_SECTIONS, input.section)
+          || (input.section.startsWith('cog-') && own(LEGACY_CONFIG_GROUPS, input.section))
+        else if (tab === 'config') sectionTarget = own(LEGACY_CONFIG_GROUPS, input.section)
+        else if (tab === 'settings') sectionTarget = own(LEGACY_SETTINGS_SECTIONS, input.section)
+        else if (tab === 'modules' && ['detail', 'config', 'panel', 'reminders'].includes(input.section)) {
+          sectionTarget = { area: 'extensions', section: 'module', anchor: `ob-module-${input.section}` }
+        } else if (tab === 'media' && input.section === 'stickers') sectionTarget = LEGACY_ANCHORS['ob-media-stickers']
+        if (!sectionTarget) return null
+        target = { ...sectionTarget }
+      }
+      if (!isCanonicalDestination(target)) return null
+
+      if (input.moduleId) {
+        if (target.area !== 'extensions' || !['modules', 'module'].includes(target.section)
+          || (target.moduleId && target.moduleId !== input.moduleId)) return null
+        target = { ...target, section: 'module', moduleId: input.moduleId }
+      }
+
+      if (input.fieldPath) {
+        const field = fieldAliases.get(input.fieldPath)
+        if (!field || (canonical && !samePlace(target, field))
+          || (input.moduleId && input.moduleId !== field.moduleId)) return null
+        target = { ...field }
+      }
+
+      if (input.anchor) {
+        const anchor = input.anchor
+        // Old resolveLegacyGo('cognition', group) used section=settings, anchor=cog-*.
+        const group = own(LEGACY_CONFIG_GROUPS, anchor)
+        if (group && !canonical && (legacyTab === 'config'
+          || (legacyTab === 'cognition' && (!input.section || input.section === 'settings')))) {
+          target = { ...group }
+        } else {
+          const prefixed = anchor.startsWith('ob-') ? anchor
+            : target.area === 'extensions' ? `ob-module-${anchor}`
+              : target.area === 'profiles' ? `ob-cog-${anchor}`
+                : target.area === 'data' && target.section === 'media' ? `ob-media-${anchor}` : anchor
+          const anchorTarget = own(LEGACY_ANCHORS, prefixed) || dynamicAnchor(prefixed)
+          if (anchorTarget) {
+            // An unqualified cognition link may infer its subsection from the anchor.
+            const infer = !canonical && legacyTab === 'cognition' && !input.section
+            if (!infer && !samePlace(target, anchorTarget)) return null
+            target = { ...target, ...anchorTarget, ...(target.moduleId ? { moduleId: target.moduleId } : {}) }
+          } else if (target.area === 'system' && target.section === 'appearance'
+            && own(LEGACY_SETTINGS_SECTIONS, anchor)) target.anchor = anchor
+          else return null
+        }
+      }
+
+      if (input.decisionId && input.taskId) return null
+      for (const [key, section] of [['decisionId', 'policy'], ['taskId', 'learning']]) {
+        if (!input[key]) continue
+        if (target.area !== 'profiles' || (target.section !== section
+          && (canonical || input.section || input.anchor))) return null
+        if (target[key] && target[key] !== input[key]) return null
+        target = { ...target, section, [key]: input[key] }
+      }
+      if (target.area === 'extensions' && target.section === 'module') {
+        // Generic module anchors are templates; selecting a concrete module is
+        // required before scrolling. External local module IDs remain opaque.
+        if (!target.moduleId) return null
+        if (!target.anchor) target.anchor = 'ob-module-detail'
+        if (['detail', 'config', 'panel', 'reminders'].includes(target.anchor)) target.anchor = `ob-module-${target.anchor}`
+      }
+      // Later aliases must not silently replace an explicitly selected identity.
+      if (input.moduleId && target.moduleId !== input.moduleId) return null
+      if (input.fieldPath) {
+        const field = fieldAliases.get(input.fieldPath)
+        if (!samePlace(target, field)) return null
+        target.fieldPath = field.fieldPath
+      }
+      return target
+    }
+
+    /** Unknown/malformed input returns Overview, with no stale IDs or side effects. */
+    function goTo(target) {
+      try { return normalize(target) || fallback() } catch { return fallback() }
+    }
+
+    /** Compatibility with both resolveLegacyGo(tab) and resolveLegacyGo(tab, configGroup). */
+    function resolveLegacyGo(id, group = '') {
+      if (typeof id !== 'string' || typeof group !== 'string') return fallback()
+      if (!group) {
+        const alias = resolveAlias(id)
+        return alias ? goTo(alias) : fallback()
+      }
+      return goTo({ tab: id, ...(id === 'cognition' && group.startsWith('cog-')
+        ? { section: 'settings', anchor: group } : { section: group }) })
+    }
+
+    const normalizeNavigation = goTo
+
+
+    // Only this query parameter belongs to the panel. The host path/hash/state stay intact.
+    const NAVIGATION_PARAM = 'ob-nav'
+    function readNavigationUrl(href) {
+      try {
+        const url = new URL(href, 'http://localhost')
+        const value = url.searchParams.get(NAVIGATION_PARAM)
+        if (value !== null) return goTo(JSON.parse(value))
+        return resolveLegacyGo(decodeURIComponent(url.hash.slice(1)))
+      } catch { return fallback() }
+    }
+    function navigationUrl(href, target) {
+      const url = new URL(href, 'http://localhost')
+      url.searchParams.set(NAVIGATION_PARAM, JSON.stringify(goTo(target)))
+      return url.pathname + url.search + url.hash
+    }
+    function createNavigationHistory(host, onChange) {
+      const read = () => onChange(readNavigationUrl(host.location.href))
+      host.addEventListener('popstate', read)
+      host.addEventListener('hashchange', read)
+      return {
+        navigate(input) {
+          const target = goTo(input)
+          host.history.pushState(host.history.state, '', navigationUrl(host.location.href, target))
+          onChange(target)
+          return target
+        },
+        dispose() {
+          host.removeEventListener('popstate', read)
+          host.removeEventListener('hashchange', read)
+        },
+      }
+    }
+
+    // Metadata is explicitly projected: neither current settings nor defaults enter search.
+    function navigationSearchIndex(labels = {}) {
+      const rows = NAVIGATION_REGISTRY.flatMap(area => area.sections
+        .filter(section => section.id !== 'module' && !(area.id === 'profiles' && section.id === 'settings'))
+        .map(section => ({ label: area.label + ' / ' + (labels[section.id] || section.id), target: { area: area.id, section: section.id }, terms: area.label + ' ' + section.id + ' ' + (labels[section.id] || '') })))
+      for (const [alias, target] of Object.entries(LEGACY_ALIASES)) {
+        if (target.section === 'module' && !target.moduleId) continue
+        const row = rows.find(row => samePlace(row.target, target))
+        if (row) row.terms += ' ' + alias + ' ' + (labels[alias.replace(/^tab:/, '')] || '')
+        else rows.push({ label: labels[alias] || alias, target: goTo(target), terms: alias + ' ' + (labels[alias] || '') })
+      }
+      for (const field of SETTINGS_FIELDS) rows.push({
+        label: labels[field.path] || field.path, target: { ...field.canonical, fieldPath: field.path },
+        terms: [field.path, labels[field.path] || '', field.legacyGroup || '', labels['group:' + field.legacyGroup] || '', ...field.aliases].join(' '),
+      })
+      return rows
+    }
+    function searchNavigation(query, labels = {}) {
+      const terms = typeof query === 'string' ? query.trim().toLowerCase().split(/\s+/).filter(Boolean) : []
+      return terms.length ? navigationSearchIndex(labels).filter(row => terms.every(term => (row.label + ' ' + row.terms).toLowerCase().includes(term))) : []
+    }
+
+    // END SHARED NAVIGATION
 
     function clone(value) {
       if (value === undefined) return undefined
@@ -1808,7 +2027,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-cog-slider{display:flex;flex-direction:column;gap:4px;min-width:0}
 .ob-cog-slider-head{display:flex;justify-content:space-between;gap:8px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
 .ob-cog-slider input[type="range"]{width:100%;accent-color:var(--ob-brand);cursor:pointer}
-.ob-persona-prompt{margin:0;padding:12px 14px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-sm);background:var(--ob-surface-sunken);color:var(--ob-ink);font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow:auto}
+.ob-persona-prompt{margin:0;padding:12px 14px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface-sunken);color:var(--ob-ink);font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow:auto}
 .ob-persona-subtitle{margin:14px 0 6px;font-size:var(--ob-text-small);font-weight:var(--ob-weight-heading);color:var(--ob-ink)}
 .ob-persona-subtitle:first-child{margin-top:0}
 .ob-persona-library{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
@@ -1876,6 +2095,33 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
   .ob-hero-facts{grid-template-columns:minmax(0,1fr)}
   .ob-btn{padding:0 12px}
   .ob-toast{left:12px;right:12px;transform:none;max-width:none}
+}
+/* The six areas stay inside the existing main slot. */
+      .ob-sandbox { min-width:0; }
+      .ob-sandbox-badge { display:inline-block; padding:8px 12px; border:2px solid currentColor; border-radius:8px; }
+      .ob-sandbox-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+      .ob-sandbox .ob-row { flex-wrap:wrap; }
+      .ob-sandbox select { max-width:100%; }
+      .ob-sandbox-json { white-space:pre-wrap; overflow-wrap:anywhere; max-height:360px; overflow:auto; font-size:12px; }
+      .ob-sandbox-transcript { padding-left:24px; overflow-wrap:anywhere; white-space:pre-wrap; }
+      @media (max-width:900px) { .ob-sandbox-grid { grid-template-columns:minmax(0,1fr); } }
+
+.ob-area-shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;align-items:start}
+.ob-navigation{position:sticky;top:16px;max-height:calc(100dvh - 32px);overflow-y:auto;padding:16px 8px;background:var(--ob-surface);border-right:1px solid var(--ob-border)}
+.ob-nav-group{display:flex;flex-direction:column;gap:4px;margin:16px 0}
+.ob-nav-group h2{font-size:var(--ob-text-small);color:var(--ob-ink-muted);margin:8px}
+.ob-navigation button{font:inherit;color:var(--ob-ink);background:transparent;border:0;border-radius:var(--ob-radius-control);padding:8px 12px;text-align:left;cursor:pointer}
+.ob-navigation button[aria-current=page]{background:var(--ob-brand-soft);color:var(--ob-brand)}
+.ob-navigation button:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px}
+.ob-nav-results{display:flex;flex-direction:column;overflow-wrap:anywhere}
+.ob-nav-toggle,.ob-nav-close,.ob-nav-backdrop{display:none}
+@media (max-width:900px){
+  .ob-area-shell{display:block}
+  .ob-nav-toggle{display:inline-flex;margin-top:12px}
+  .ob-navigation{display:none;position:fixed;inset:0 auto 0 0;width:min(320px,85vw);max-height:100dvh;z-index:101;box-sizing:border-box;background:var(--ob-canvas);padding:16px;overscroll-behavior:contain}
+  .ob-navigation.is-open{display:block}
+  .ob-nav-backdrop{display:block;position:fixed;inset:0;z-index:100;border:0;background:var(--ob-scrim)}
+  .ob-navigation .ob-nav-close{display:block}
 }
 @media (pointer:coarse){
   .ob-input,.ob-select,.ob-textarea,.ob-tags input{font-size:16px}
@@ -3067,23 +3313,281 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     // 标签栏 / 反馈（banner / toast / savebar）/ 顶部进度
     // =====================================================================
 
-    const TABS = [
-      { id: 'overview', label: '概览', icon: 'overview' },
-      { id: 'connect', label: '连接', icon: 'connect' },
-      { id: 'messages', label: '消息', icon: 'message' },
-      { id: 'media', label: '媒体', icon: 'sparkles' },
-      { id: 'content', label: '内容', icon: 'play' },
-      { id: 'modules', label: '模块', icon: 'layout' },
-      { id: 'backup', label: '备份', icon: 'shield' },
-      { id: 'security', label: '安全', icon: 'shield' },
-      { id: 'config', label: '配置', icon: 'config' },
-      { id: 'persona', label: '人格', icon: 'sparkles' },
-      { id: 'models', label: '模型', icon: 'bolt' },
-      { id: 'settings', label: '系统设置', icon: 'palette' },
-      { id: 'cognition', label: '认知', icon: 'brain' },
-      { id: 'logs', label: '日志', icon: 'logs' },
-      { id: 'about', label: '关于', icon: 'about' },
-    ]
+    const LEGACY_NAV_LABELS = { connect: '连接', config: '配置', cognition: '认知', settings: '系统设置', persona: '人格', messages: '消息', modules: '模块', models: '模型', about: '关于' }
+    const SECTION_LABELS = {
+      overview: '概览', messages: '消息与事件', sandbox: '离线 Sandbox', library: '人格库', general: '常规', persona: '人格表达',
+      models: '模型', turn: '轮次与群聊参与', reply: '回复与通知', persons: '人物', relationships: '关系', memories: '记忆',
+      timeline: '时间轴', emotion: '情绪', purpose: '目的', policy: '策略与决策', proactivity: '主动行为', loop: '闭环', learning: '学习',
+      skills: '技能', meta: '元认知', modules: '模块目录', media: '媒体', content: '内容', logs: '日志', events: '事件', backup: '备份',
+      privacy: '隐私与保留', import: '导入', connection: '连接', timeouts: '超时与验证', appearance: '外观', security: '安全', access: '访问控制',
+      runtime: '运行时', diagnostics: '诊断', about: '关于',
+    }
+    const TABS = NAVIGATION_REGISTRY.map(area => ({ id: area.id, label: area.label, icon: 'layout' }))
+    function ownerFields(target) {
+      return SETTINGS_FIELDS.filter(field => field.apply !== 'read-only' && field.storage === 'config.json'
+        && field.canonical.area === target.area && field.canonical.section === target.section
+        && (field.canonical.moduleId || '') === (target.moduleId || ''))
+    }
+    function NavigationMenu({ navigation, goTo, configInfo }) {
+      const [open, setOpen] = useState(false), [query, setQuery] = useState('')
+      const labels = { ...LEGACY_NAV_LABELS, ...SECTION_LABELS }
+      for (const group of buildFieldSpecs(configInfo?.groups)) { labels['group:' + group.id] = group.title; for (const field of group.fields) labels[field.path] = field.label }
+      useEffect(() => {
+        if (open && typeof document !== 'undefined') document.getElementById('ob-navigation')?.querySelector('input')?.focus()
+      }, [open])
+      const select = target => { goTo(target); setOpen(false); setQuery('') }
+      const links = NAVIGATION_REGISTRY.map(area => h('section', { key: area.id, className: 'ob-nav-group' },
+        h('h2', null, area.label),
+        area.sections.filter(section => section.id !== 'module' && !(area.id === 'profiles' && section.id === 'settings')).map(section =>
+          h('button', { key: section.id, type: 'button', 'aria-current': navigation.area === area.id && navigation.section === section.id ? 'page' : undefined,
+            onClick: () => select({ area: area.id, section: section.id }) }, SECTION_LABELS[section.id] || section.id))))
+      return h(Fragment, null,
+        h('button', { className: 'ob-nav-toggle ob-btn', type: 'button', 'aria-expanded': open, 'aria-controls': 'ob-navigation', onClick: () => setOpen(!open) }, '导航与搜索'),
+        open ? h('button', { className: 'ob-nav-backdrop', 'aria-label': '关闭导航', onClick: () => setOpen(false) }) : null,
+        h('nav', { id: 'ob-navigation', className: cx('ob-navigation', open && 'is-open'), 'aria-label': '六区导航',
+          onKeyDown: event => {
+            if (event.key === 'Escape') { setOpen(false); if (typeof document !== 'undefined') document.querySelector('.ob-nav-toggle')?.focus() }
+            if (event.key === 'Tab' && open) {
+              const controls = [...event.currentTarget.querySelectorAll('button,input')].filter(node => node.getClientRects().length)
+              const first = controls[0], last = controls[controls.length - 1]
+              if (event.shiftKey && event.target === first) { event.preventDefault(); last?.focus() }
+              else if (!event.shiftKey && event.target === last) { event.preventDefault(); first?.focus() }
+            }
+          } },
+          h('button', { type: 'button', className: 'ob-nav-close ob-btn', onClick: () => setOpen(false) }, '关闭导航'),
+          h('input', { type: 'search', className: 'ob-input', 'aria-label': '搜索页面、旧名称或设置路径', value: query, onChange: event => setQuery(event.target.value) }),
+          query.trim() ? h('div', { className: 'ob-nav-results', 'aria-live': 'polite' },
+            searchNavigation(query, labels).map((row, index) => h('button', { type: 'button', key: index, onClick: () => select(row.target) }, row.label)),
+            searchNavigation(query, labels).length ? null : h('p', null, '没有匹配的页面或设置')) : links))
+    }
+
+    // One partition per destination. Profile edits use explicit IDs and CAS, without activation.
+    function OwnerSettings(props) {
+      const fields = ownerFields(props.navigation)
+      const profile = fields[0]?.ownerClass === 'profile'
+      const scope = profile ? 'profile' : fields[0]?.ownerClass === 'module' ? 'module:' + props.navigation.moduleId : 'system'
+      const [catalog, setCatalog] = useState([]), [id, setId] = useState(''), [view, setView] = useState(null)
+      const [changes, setChanges] = useState({}), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+      const [mode, setMode] = useState('staged')
+      const request = useRef(0), savingGuard = useRef(false)
+      useEffect(() => {
+        if (!profile) return
+        let alive = true
+        get('/profiles').then(result => {
+          if (!alive) return
+          if (!result.ok) { setError(result.code || 'PROFILES_UNAVAILABLE'); return }
+          setCatalog(safeArray(result.items)); setId(result.activeId || '')
+        }).catch(() => { if (alive) setError('PROFILES_UNAVAILABLE') })
+        return () => { alive = false }
+      }, [profile])
+      const load = useCallback(async () => {
+        const ticket = ++request.current
+        setView(null); setChanges({}); setError('')
+        if (profile && !id) return
+        try {
+          const result = await get(profile ? '/profiles/config?id=' + encodeURIComponent(id) : '/settings/view?scope=' + encodeURIComponent(scope))
+          if (ticket !== request.current) return
+          if (!result.ok) { setError(result.code || 'SETTINGS_READ_UNAVAILABLE'); return }
+          setView(result)
+        } catch { if (ticket === request.current) setError('SETTINGS_READ_UNAVAILABLE') }
+      }, [scope, id, profile])
+      useEffect(() => { load(); return () => { request.current++ } }, [load, props.navigation.area, props.navigation.section])
+      useEffect(() => {
+        if (!view || !props.navigation.fieldPath || typeof document === 'undefined') return
+        document.getElementById('ob-setting-' + props.navigation.fieldPath)?.scrollIntoView?.({ block: 'center' })
+      }, [props.navigation, view])
+      const save = async () => {
+        if (!view || savingGuard.current || !Object.keys(changes).length) return
+        savingGuard.current = true; setBusy(true); setError('')
+        const ticket = request.current
+        try {
+          const result = await post(profile ? '/profiles/config/save' : '/settings/patch', { ...(profile ? { id } : { scope }), revision: view.revision, patch: changes })
+          if (ticket !== request.current) return
+          if (!result.ok) { setError(result.code || 'SETTINGS_WRITE_UNAVAILABLE'); return }
+          setView(result); setChanges({})
+          props.toast?.(profile ? '已保存 staged 预览；运行配置未切换' : '设置已保存', 'ok')
+          props.refreshAll?.()
+        } catch { if (ticket === request.current) setError('SETTINGS_WRITE_UNAVAILABLE') }
+        finally { savingGuard.current = false; setBusy(false) }
+      }
+      if (!fields.length) return null
+      const legacyPersona = profile && props.navigation.section === 'persona' && mode === 'legacy'
+      return h('section', { className: 'ob-stack', 'aria-label': '所有者设置' },
+        profile ? h(Banner, { tone: 'warn', message: 'Profile 设置为 staged 预览：保存不会改变当前运行。认知数据与业务操作仍使用当前激活人格；其余旧运行参数暂由原配置文件维护。' }) : null,
+        profile ? h('label', null, '预览人格 ', h('select', { className: 'ob-select', 'aria-label': '预览人格', value: id, disabled: busy || legacyPersona,
+          onChange: event => { request.current++; setView(null); setChanges({}); setId(event.target.value) } }, catalog.map(item => h('option', { key: item.id, value: item.id }, item.displayName || item.name || item.id)))) : null,
+        profile && props.navigation.section === 'persona' ? h('label', null, '编辑目标 ', h('select', { className: 'ob-select', 'aria-label': '人格编辑目标', value: mode, disabled: busy,
+          onChange: event => { setMode(event.target.value); setChanges({}) } }, h('option', { value: 'staged' }, 'Staged 预览'), h('option', { value: 'legacy' }, '当前运行人格（旧编辑器）'))) : null,
+        error ? h(Banner, { tone: 'err', message: error + '；重新读取会丢弃草稿。', actions: h(Btn, { onClick: load, disabled: busy }, '重新读取') }) : null,
+        legacyPersona ? h(Fragment, null, h(Banner, { tone: 'warn', message: '旧编辑器修改当前激活人格，立即影响运行；不会回写 staged 设置。' }), h(PersonaTab, { ...props, ownerIntegration: true, runtimeEditor: true }))
+          : !view ? h(PanelSkeleton, { rows: 3 }) : h(Panel, { title: SECTION_LABELS[props.navigation.section] || '设置', description: profile ? 'Staged · revision ' + view.revision : '按所有者保存',
+            actions: h('div', { className: 'ob-row' }, h(Btn, { onClick: save, disabled: busy || !Object.keys(changes).length || view.editingAvailable === false && profile }, '保存设置'), h(Btn, { onClick: load, disabled: busy }, '重新读取')) },
+            fields.map(field => {
+              const spec = fieldSpecByPath(props.configInfo?.groups, field.path) || { path: field.path, label: field.path, type: Array.isArray(view.values[field.path]) ? 'string-list' : typeof view.values[field.path] === 'number' ? 'number' : typeof view.values[field.path] === 'boolean' ? 'switch' : 'text' }
+              const secret = ['secret', 'secret-reference'].includes(field.sensitivity)
+              const value = Object.hasOwn(changes, field.path) ? changes[field.path] : view.values[field.path]
+              return h('div', { key: field.path, id: 'ob-setting-' + field.path, 'data-setting-path': field.path },
+                secret ? h('div', { className: 'ob-stack' }, h('label', null, spec.label || field.path, h('input', { className: 'ob-input', type: 'password', autoComplete: 'new-password',
+                  'aria-label': field.path, value: value?.op === 'set' ? value.value : '', placeholder: view.values[field.path]?.present ? '已设置（留空保留）' : '未设置', disabled: busy,
+                  onChange: event => setChanges(previous => ({ ...previous, [field.path]: event.target.value ? { op: 'set', value: event.target.value } : { op: 'keep' } })) })),
+                  h(Btn, { disabled: busy, onClick: () => setChanges(previous => ({ ...previous, [field.path]: { op: 'clear' } })) }, '清除 ' + field.path), value?.op === 'clear' ? h('span', null, '保存后清除') : null)
+                  : h(FieldRow, { spec, value, disabled: busy, onChange: next => setChanges(previous => ({ ...previous, [field.path]: next })) }),
+                h('small', { className: 'ob-muted' }, field.path + ' · ' + field.apply))
+            })))
+    }
+
+    function ProfileOverview(props) {
+      const overview = useCognitionOverview(props)
+      return h(CogOverview, { ...props, data: overview.data || {}, error: overview.error, loading: overview.loading, reload: overview.reload })
+    }
+    function navigationFieldId(navigation) {
+      const field = SETTINGS_FIELDS.find(field => field.path === navigation.fieldPath)
+      const path = field?.storage === 'module-file' && field.canonical.moduleId === navigation.moduleId
+        ? field.path.slice(('modules.' + navigation.moduleId + '.').length) : navigation.fieldPath
+      return 'ob-field-' + path.replace(/[^a-zA-Z0-9_-]/g, '-')
+    }
+    function SandboxChat() {
+      const [items, setItems] = useState([])
+      const [id, setId] = useState('')
+      const [data, setData] = useState(null)
+      const [chatType, setChatType] = useState('private')
+      const [kind, setKind] = useState('message')
+      const [text, setText] = useState('')
+      const [ms, setMs] = useState('12000')
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const sequence = useRef(0)
+      const guard = useRef(false)
+      const requestId = () => 'ui_' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36) + '_' + Math.random().toString(36).slice(2))
+      const checked = (response, list = false) => {
+        if (!response || response.ok !== true) throw new Error(response?.code || 'SIMULATION_UNAVAILABLE')
+        if (response.environment !== 'simulation' || response.realSends !== 0 || (list ? !Array.isArray(response.items)
+          : !['transcript', 'captures', 'receipts', 'deliveryReceipts', 'loops', 'stages'].every(key => Array.isArray(response[key])))) throw new Error('SIMULATION_RESPONSE_INVALID')
+        return response
+      }
+      const run = async work => {
+        if (guard.current) return
+        guard.current = true
+        const ticket = ++sequence.current
+        setBusy(true); setError('')
+        try {
+          const apply = await work()
+          if (ticket === sequence.current) apply()
+        } catch (cause) {
+          if (ticket === sequence.current) {
+            const code = String(cause?.message || 'SIMULATION_UNAVAILABLE')
+            setError(code)
+            if (code === 'SIMULATION_NOT_FOUND') { setData(null); setId(''); setItems([]) }
+          }
+        } finally {
+          if (ticket === sequence.current) { guard.current = false; setBusy(false) }
+        }
+      }
+      const refresh = () => run(async () => {
+        const list = checked(await get('/sandbox/chat/list'), true)
+        const selected = list.items.some(row => row.id === id) ? id : ''
+        const next = selected ? checked(await get('/sandbox/chat/detail?id=' + encodeURIComponent(selected))) : null
+        return () => { setItems(list.items); setId(selected); setData(next) }
+      })
+      useEffect(() => { refresh(); return () => { sequence.current++; guard.current = false } }, [])
+      const select = next => {
+        if (guard.current) return
+        setData(null); setId(next)
+        if (!next) return
+        return run(async () => {
+          const result = checked(await get('/sandbox/chat/detail?id=' + encodeURIComponent(next)))
+          return () => setData(result)
+        })
+      }
+      const mutate = (action, payload = {}) => run(async () => {
+        const result = checked(await post('/sandbox/chat/' + action, { requestId: requestId(), ...(action === 'create' ? {} : { id }), ...payload }))
+        return () => {
+          if (action === 'delete') { setItems(previous => previous.filter(row => row.id !== id)); setId(''); setData(null) }
+          else {
+            setData(result); setId(result.id)
+            if (action === 'create') setItems(previous => [...previous, { id: result.id }])
+            if (action === 'event') setText('')
+          }
+        }
+      })
+      const sendEvent = () => {
+        if (!id || !data || busy) return
+        if (kind === 'message' && (!text.trim() || text.length > 4000)) { setError('INVALID_SIMULATION_INPUT'); return }
+        const event = { kind, chatType, ...(kind === 'message' ? { text, addressed: chatType === 'group' }
+          : { type: kind === 'notice' ? (chatType === 'group' ? 'group_increase' : 'friend_add') : (chatType === 'group' ? 'group' : 'friend') }) }
+        return mutate('event', { event })
+      }
+      const advance = () => {
+        const value = Number(ms)
+        if (!ms.trim() || !Number.isSafeInteger(value) || value < 0 || value > 86400000) { setError('INVALID_ADVANCE'); return }
+        return mutate('advance', { ms: value })
+      }
+      const records = (label, rows) => h('section', { className: 'ob-stack', 'aria-label': label }, h('h3', null, label),
+        rows.length ? rows.map((row, index) => h('details', { key: row.id || index },
+          h('summary', null, String(row.action || row.requestId || row.loopId || row.status || row.id || index + 1)),
+          h('pre', { className: 'ob-sandbox-json' }, JSON.stringify(row, null, 2))))
+          : h('p', { role: 'status', 'data-state': 'empty', className: 'ob-muted' }, '暂无' + label))
+      const locked = busy || !id || !data
+      return h('section', { className: 'ob-stack ob-sandbox', 'aria-label': '离线 Chat 沙盒', 'aria-busy': busy, 'data-environment': 'simulation' },
+        h(Panel, { title: 'Chat & Sandbox', description: '固定合成参与者与 fixture 回复；事件、命令和虚拟计时仅作用于本模拟。' },
+          h('strong', { className: 'ob-sandbox-badge', role: 'status' }, 'SIMULATION / zero real sends'),
+          h('p', { className: 'ob-muted' }, '人格绑定由服务端确定。模拟人格与配置快照只读；命令可改变模拟内部状态。媒体、真实模型、网络和执行沙箱均未接入。'),
+          h('div', { className: 'ob-row ob-wrap' },
+            h(Btn, { onClick: () => mutate('create'), disabled: busy }, '创建模拟'),
+            h('select', { className: 'ob-select', 'aria-label': '选择模拟', value: id, disabled: busy, onChange: event => select(event.target.value) },
+              h('option', { value: '' }, '选择当前人格的模拟'), items.map(row => h('option', { key: row.id, value: row.id }, row.id))),
+            h(Btn, { onClick: refresh, disabled: busy }, '刷新模拟'),
+            h(Btn, { onClick: () => mutate('reset'), disabled: locked }, '重置模拟'),
+            h(Btn, { onClick: () => mutate('delete'), kind: 'danger', disabled: locked }, '删除模拟'))),
+        busy ? h('p', { role: 'status', 'data-state': 'loading' }, '正在处理模拟…') : null,
+        error ? h('div', { role: 'alert', 'data-state': 'error' }, '模拟操作失败：' + error, h(Btn, { onClick: refresh, disabled: busy }, '重新读取模拟')) : null,
+        !data ? h('p', { role: 'status', 'data-state': 'empty' }, items.length ? '请选择一个模拟。' : '暂无模拟，创建后可离线发送文本或命令。') : h(Fragment, null,
+          h(Panel, { title: '模拟事件', description: '虚拟时间：' + formatDateTime(data.now) + ' · generation ' + data.generation },
+            h('div', { className: 'ob-row ob-wrap' },
+              h('label', null, '会话 ', h('select', { className: 'ob-select', 'aria-label': '模拟会话类型', value: chatType, disabled: locked, onChange: event => setChatType(event.target.value) }, h('option', { value: 'private' }, '私聊'), h('option', { value: 'group' }, '群聊（模拟 @）'))),
+              h('label', null, '事件 ', h('select', { className: 'ob-select', 'aria-label': '模拟事件类型', value: kind, disabled: locked, onChange: event => setKind(event.target.value) }, h('option', { value: 'message' }, '文本 / 命令'), h('option', { value: 'notice' }, '好友 / 入群通知'), h('option', { value: 'request' }, '好友 / 加群请求')))),
+            kind === 'message' ? h('textarea', { className: 'ob-input', 'aria-label': '模拟文本或命令', placeholder: '你好，或 /help、/like、/remind 60 离线提醒', rows: 3, maxLength: 4000, value: text, disabled: locked, onChange: event => setText(event.target.value) }) : null,
+            h(Btn, { onClick: sendEvent, disabled: locked || kind === 'message' && !text.trim() }, '提交模拟事件'),
+            h('div', { className: 'ob-row ob-wrap' }, h('label', null, '推进毫秒 ', h('input', { className: 'ob-input', 'aria-label': '推进虚拟时间（毫秒）', type: 'number', min: 0, max: 86400000, step: 1, value: ms, disabled: locked, onChange: event => setMs(event.target.value) })), h(Btn, { onClick: advance, disabled: locked }, '推进虚拟时间')),
+            h('p', { className: 'ob-muted' }, '文本聚合与提醒等待虚拟时钟，默认推进 12 秒；单次最多一天。')),
+          h(Panel, { title: '模拟 Transcript' },
+            data.transcript.length ? h('ol', { className: 'ob-sandbox-transcript' }, data.transcript.map((row, index) => h('li', { key: index },
+              h('small', { className: 'ob-muted' }, formatTime(row.at) + ' · ' + row.chatType + ' · ' + (row.direction === 'in' ? '输入' : '捕获输出')),
+              h('p', null, row.text || row.type || row.kind)))) : h('p', { role: 'status', 'data-state': 'empty' }, '暂无模拟消息。')),
+          h('div', { className: 'ob-sandbox-grid' },
+            h(Panel, { title: '捕获动作' }, records('Captured actions', data.captures)),
+            h(Panel, { title: 'Receipt / Loop' }, h('p', { className: 'ob-muted' }, 'sent / parts 仅为模拟 executor 结果，真实发送数始终为 0。'),
+              records('入站回执', data.receipts), records('交付回执', data.deliveryReceipts), records('闭环', data.loops), records('阶段', data.stages))),
+          h(Panel, { title: '人格 / 配置快照（只读）' }, h('p', null, '绑定人格：' + data.boundPersonaId),
+            h('pre', { className: 'ob-sandbox-json' }, JSON.stringify({ persona: data.persona, config: data.configSnapshot }, null, 2)))))
+    }
+
+    function AreaContent(props) {
+      useNavigationAnchor(props, '')
+      useEffect(() => {
+        if (!props.navigation?.fieldPath || typeof document === 'undefined') return
+        const timer = setTimeout(() => document.getElementById(navigationFieldId(props.navigation))?.scrollIntoView?.({ block: 'center' }), 0)
+        return () => clearTimeout(timer)
+      }, [props.navigation, props.configInfo])
+      const { area, section } = props.navigation
+      let Component = null
+      if (area === 'overview') Component = Overview
+      else if (area === 'chat') {
+        if (section === 'sandbox') return h(SandboxChat, props)
+        Component = Messages
+      } else if (area === 'extensions') Component = ModulesPage
+      else if (area === 'data') Component = { media: MediaPage, content: ContentPage, logs: Logs, events: Messages, backup: BackupPage }[section]
+      else if (area === 'system') Component = { connection: Connect, appearance: SettingsTab, security: SecurityPage, models: ModelTab, about: About }[section]
+      else if (area === 'profiles') Component = { overview: ProfileOverview, library: PersonaTab, persons: CogPersons, relationships: CogRelationships, memories: CogMemories, timeline: CogTimeline,
+        emotion: CogEmotion, purpose: CogPurpose, policy: CogPolicy, proactivity: CogProactivity, loop: CogLoop, learning: CogLearning, skills: CogSkills, meta: CogMeta }[section]
+      if (area === 'profiles' && section === 'settings') return h(Panel, { title: 'Profile 设置目录' }, NAVIGATION_REGISTRY.find(row => row.id === 'profiles').sections.filter(row => ownerFields({ area, section: row.id }).length).map(row =>
+        h(Btn, { key: row.id, onClick: () => props.goTo({ area, section: row.id }) }, SECTION_LABELS[row.id])))
+      return h('div', { className: 'ob-stack' },
+        area === 'profiles' ? h(Banner, { tone: 'info', message: '业务数据和操作属于当前激活人格；预览人格选择不会切换运行。' }) : null,
+        Component ? h(Component, { ...props, ownerIntegration: true, operationsOnly: true }) : null,
+        area === 'system' && section === 'models' ? h(CogBudgetCard, props) : null,
+        area !== 'extensions' && !(area === 'system' && section === 'appearance') && ownerFields(props.navigation).length ? h(OwnerSettings, { ...props, key: area + ':' + section }) : null)
+    }
 
     function Tabs(props) {
       const motion = useMotion()
@@ -3520,6 +4024,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
       const setField = (path, value) => props.updateDraft((previous) => setByPath(previous || {}, path, value))
       const renderField = (path) => {
+        if (props.operationsOnly) return null
         const spec = fieldSpecByPath(groups, path)
         if (!spec) return null
         return h(FieldRow, { key: path, spec, value: getByPath(draft, path), onChange: (value) => setField(path, value), disabled: props.saving })
@@ -3624,7 +4129,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           ),
         ),
 
-        h(
+        !props.operationsOnly && h(
           Reveal,
           { as: 'section', className: 'ob-panel' },
           h(
@@ -4477,7 +4982,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     function SettingFieldBlock(props) {
       return h(
         'div',
-        { className: 'ob-field' },
+        { className: 'ob-field', id: props.path ? 'ob-field-' + props.path.replace(/[^a-zA-Z0-9_-]/g, '-') : undefined, 'data-field': props.path },
         h('div', { className: 'ob-field-label' }, props.label),
         props.hint ? h('p', { className: 'ob-field-help' }, props.hint) : null,
         h('div', { className: 'ob-field-control' }, props.children),
@@ -4586,7 +5091,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (!field) return null
       const options = safeArray(field.options)
       if (field.path === 'ui.accent') {
-        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(
+        return h(SettingFieldBlock, { path: field.path, label: field.label, hint: field.help }, h(
           'div',
           { className: 'ob-accent-grid' },
           options.map((option) =>
@@ -4607,7 +5112,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ))
       }
       if (field.path === 'ui.density') {
-        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(SettingOptionGrid, {
+        return h(SettingFieldBlock, { path: field.path, label: field.label, hint: field.help }, h(SettingOptionGrid, {
           options,
           value,
           onChange,
@@ -4615,7 +5120,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         }))
       }
       if (field.path === 'ui.fontScale') {
-        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(SettingOptionGrid, {
+        return h(SettingFieldBlock, { path: field.path, label: field.label, hint: field.help }, h(SettingOptionGrid, {
           options,
           value,
           onChange,
@@ -4623,7 +5128,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         }))
       }
       if (field.path === 'ui.contentWidth') {
-        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(SettingOptionGrid, {
+        return h(SettingFieldBlock, { path: field.path, label: field.label, hint: field.help }, h(SettingOptionGrid, {
           options,
           value,
           onChange,
@@ -4633,7 +5138,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (field.path === 'ui.pageTransition') {
         return h(
           SettingFieldBlock,
-          { label: field.label, hint: field.help },
+          { path: field.path, label: field.label, hint: field.help },
           h(
             'div',
             { className: 'ob-stack', style: { width: '100%', gap: '6px' } },
@@ -4651,7 +5156,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
       return h(
         SettingFieldBlock,
-        { label: field.label, hint: field.help },
+        { path: field.path, label: field.label, hint: field.help },
         h(Seg, {
           value,
           label: field.label,
@@ -4708,7 +5213,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         )
       }
 
-      const activeSection = sections.find((section) => section.id === active) || sections[0]
+      const requestedSection = props.ownerIntegration && sections.find(section => props.navigation?.fieldPath ? section.fields.some(field => field.path === props.navigation.fieldPath) : section.id === props.navigation?.anchor)
+      const activeSection = requestedSection || sections.find((section) => section.id === active) || sections[0]
       const allFields = sections.flatMap((section) => section.fields)
       const saveStatus = props.prefStatus || {}
       const updateField = (path, value) => props.saveUiPatch({ [path]: value })
@@ -4751,12 +5257,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         return h(
           Panel,
           {
-            title: activeSection.id === 'appearance' ? '主题与强调色' : activeSection.id === 'layout' ? '空间与阅读' : '动效与转场',
+            title: activeSection.id === 'appearance' ? '主题与强调色' : activeSection.id === 'layout' ? '空间与阅读' : activeSection.id === 'data' ? '数据与刷新' : '动效与转场',
             description: activeSection.id === 'appearance'
               ? '主题是 DSH 全局设置；强调色与对比度只影响本面板。'
               : activeSection.id === 'layout'
                 ? '调整面板的密度、字号和内容宽度；保存后立即生效。'
-                : '动效模式与页面转场；配置/系统设置内部切换始终只做淡入。',
+                : activeSection.id === 'data' ? '状态轮询与事件、日志分页；保存后按下一次读取生效。' : '动效模式与页面转场；配置/系统设置内部切换始终只做淡入。',
           },
           activeSection.id === 'appearance'
             ? h(
@@ -4813,7 +5319,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                   type: 'button',
                   className: cx('ob-settings-nav-btn', activeSection.id === section.id && 'on'),
                   'aria-current': activeSection.id === section.id ? 'page' : undefined,
-                  onClick: () => setActive(section.id),
+                  onClick: () => { if (props.ownerIntegration) props.goTo?.({ area: 'system', section: 'appearance', anchor: section.id }); else setActive(section.id) },
                 },
                 h(Icon, { name: section.icon || 'config', size: 15 }),
                 h('span', { className: 'ob-truncate' }, section.title),
@@ -5154,13 +5660,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h(
             'div',
             { className: 'ob-grid two' },
-            h(ModelField, { label: '路由模式', hint: 'auto 保持 DSH 优先；direct 只走本页直连；chain 先直连链再回退 DSH。' },
+            !props.ownerIntegration && h(ModelField, { label: '路由模式', hint: 'auto 保持 DSH 优先；direct 只走本页直连；chain 先直连链再回退 DSH。' },
               h('select', { className: 'ob-select', value: mode, onChange: (event) => props.saveUiPatch({ 'cognition.llm.mode': event.target.value }), 'aria-label': '模型路由模式' }, modeOptions.map((option) => h('option', { key: option.value, value: option.value }, option.label))),
             ),
             h(ModelField, { label: '直连状态', hint: selected.resolved ? '当前直连路由' : '尚未选择直连模型' },
               h('div', { className: 'ob-stack', style: { gap: '6px' } },
                 selected.resolved ? h('div', { className: 'ob-row' }, h(ModelTag, { tone: 'ok' }, selected.provider + ' / ' + selected.model), h(ModelTag, { tone: 'muted' }, selected.protocolLabel || selected.protocol || '') ) : h('span', { className: 'ob-small ob-muted' }, '在右侧选择 provider 后点「设为直连」'),
-                h('label', { className: 'ob-row ob-small' }, h('input', { type: 'checkbox', checked: getByPath(draft, 'cognition.llm.fallbackToDsh') !== false, onChange: (event) => props.saveUiPatch({ 'cognition.llm.fallbackToDsh': event.target.checked }) }), '直连失败回退 DSH'),
+                !props.ownerIntegration && h('label', { className: 'ob-row ob-small' }, h('input', { type: 'checkbox', checked: getByPath(draft, 'cognition.llm.fallbackToDsh') !== false, onChange: (event) => props.saveUiPatch({ 'cognition.llm.fallbackToDsh': event.target.checked }) }), '直连失败回退 DSH'),
               ),
             ),
           ),
@@ -5397,16 +5903,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
     // Navigation destinations and actions are host-owned, never read from external manifests.
     /** @typedef {{tab:string, section?:string, moduleId?:string, anchor?:string, decisionId?:string, taskId?:string}} NavigationTarget */
-    function navigationTarget(value) {
-      if (!isPlainObject(value) || !TABS.some(tab => tab.id === value.tab)) throw new TypeError('无效导航目标')
-      const target = { tab: value.tab }
-      for (const key of ['section', 'moduleId', 'anchor', 'decisionId', 'taskId']) {
-        if (value[key] == null || value[key] === '') continue
-        if (typeof value[key] !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,95}$/.test(value[key])) throw new TypeError('无效导航字段')
-        target[key] = value[key]
-      }
-      return target
-    }
+    const navigationTarget = goTo
     const MODULE_DESTINATIONS = Object.freeze({
       'builtin-media-features': [{ label: 'B站公共内容', target: { tab: 'modules', moduleId: 'builtin-media-features', anchor: 'panel' } }, { label: '表情包库', target: { tab: 'media', anchor: 'stickers' } }],
       'builtin-proactivity': [{ label: '主动行为', target: { tab: 'cognition', section: 'proactivity' } }],
@@ -5427,7 +5924,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       useEffect(() => {
         if (!ready || !props.navigation?.anchor) return
         // Run after the destination has committed, including same-tab requests.
-        const timer = setTimeout(() => document.getElementById(prefix + props.navigation.anchor)?.scrollIntoView?.({ block: 'start' }), 0)
+        const timer = setTimeout(() => document.getElementById(props.navigation.anchor.startsWith('ob-') ? props.navigation.anchor : prefix + props.navigation.anchor)?.scrollIntoView?.({ block: 'start' }), 0)
         return () => clearTimeout(timer)
       }, [props.navigation, prefix, ready])
     }
@@ -6967,7 +7464,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h(Btn, { small: true, kind: 'secondary', busy: dataBusy, onClick: copyPersonaCognitiveData, disabled: !dataSource }, '复制到当前人格'),
           ) : h('p', { className: 'ob-field-help' }, '先新建或复制一份其他人格，才能做认知数据复制。'),
         ),
-        h(Panel, {
+        (!props.ownerIntegration || props.runtimeEditor) && h(Panel, {
           title: '人格',
           description: '这些是长期、稳定的设定；保存后进入每次分析与回复的 prompt。群聊消息仍是不可信外部数据。',
           actions: h('div', { className: 'ob-row' },
@@ -7009,7 +7506,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h(CogTag, { tone: 'muted' }, '边界会作为硬性表达约束，不覆盖安全与隐私规则'),
           ),
         ),
-        h(Panel, {
+        (!props.ownerIntegration || props.runtimeEditor) && h(Panel, {
           title: 'Prompt 预览',
           description: '实际注入 compose system 的人设块（截断到 2000 字符）；空字段不会出现。',
         },
@@ -7017,7 +7514,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             ? h('pre', { className: 'ob-persona-prompt' }, preview)
             : h(CogEmpty, { compact: true, title: '还没有填写人设', description: '填名字、性格或说话风格后，这里会显示将注入的内容。' }),
         ),
-        h(Panel, {
+        !props.ownerIntegration && h(Panel, {
           title: '群聊参与',
           description: '默认仅 @/回复/唤醒词。想让 bot 在群里更像普通聊天机器人，可切到“所有消息”或“按概率”。',
           actions: behaviorStatus ? h('span', { className: 'ob-muted ob-small' }, behaviorStatus) : null,
@@ -7052,7 +7549,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h('p', { className: 'ob-field-help' }, '提示：当前状态会在「认知 → 状态」的运行诊断里显示；如果仍然不回复，先看最近一条消息是否被群聊 gate 跳过。'),
           ) : h(CogLoading),
         ),
-        h(Panel, {
+        (!props.ownerIntegration || props.runtimeEditor) && h(Panel, {
           title: '高级认知参数',
           description: '数值会参与策略和表达；普通使用只需要上面的文本人设。',
           actions: h(Btn, { small: true, kind: 'ghost', icon: 'chevron', onClick: () => setAdvanced(!advanced) }, advanced ? '收起' : '展开'),
@@ -7076,7 +7573,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             ))),
           ) : h('p', { className: 'ob-muted ob-small' }, '展开后可微调 12 维人格和 6 维表达风格；保存仍使用上方按钮。'),
         ),
-        h(Panel, { title: '演化历史', description: '记录人工编辑与长期慢演化；可追溯原因。' },
+        (!props.ownerIntegration || props.runtimeEditor) && h(Panel, { title: '演化历史', description: '记录人工编辑与长期慢演化；可追溯原因。' },
           safeArray(persona.history).slice(-10).reverse().map((item, index) => h('div', { key: index, className: 'ob-cog-history' },
             h(CogTag, { tone: 'muted' }, String(new Date(item.at || Date.now()).toLocaleString())),
             h('span', { className: 'ob-small' }, String(item.reason || 'evolution') + (safeArray(item.changes).length ? ' · ' + item.changes.map((change) => change.key).join(', ') : '')),
@@ -7518,7 +8015,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       ]
       const goButton = (tab, label) => h(Btn, { small: true, kind: 'secondary', onClick: () => props.go?.(tab) }, label)
       return h('div', { className: 'ob-stack' },
-        h(Banner, { tone: 'muted', message: '安全页依赖 DSH 本机信任边界；这里只读展示设置与审计，升级按钮只查询版本。' }),
+        h(Banner, { tone: 'muted', message: props.ownerIntegration ? '安全状态与审计依赖 DSH 本机信任边界；安全字段在下方所有者设置保存，升级按钮只查询版本。' : '安全页依赖 DSH 本机信任边界；这里只读展示设置与审计，升级按钮只查询版本。' }),
         error ? h(Banner, { tone: 'err', message: error }) : null,
         h('div', { className: 'ob-row' }, h(Btn, { kind: 'secondary', icon: 'refresh', disabled: loading || busy, onClick: refresh }, '刷新安全状态')),
         loading ? h(PanelSkeleton, { rows: 4 }) : h('div', { className: 'ob-grid two' },
@@ -7825,6 +8322,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       useEffect(() => { actionGuard.current.active = true; return () => { actionGuard.current.active = false } }, [])
       useNavigationAnchor(props, 'ob-module-', !loading && Boolean(detailId))
 
+      useEffect(() => {
+        if (!props.navigation?.fieldPath || loading || typeof document === 'undefined') return
+        const timer = setTimeout(() => document.getElementById(navigationFieldId(props.navigation))?.scrollIntoView?.({ block: 'center' }), 0)
+        return () => clearTimeout(timer)
+      }, [props.navigation, editor, loading, detailId])
+
       const uiFor = (item) => {
         const ui = safeArray(uiCatalog?.items).find((row) => row?.moduleId === item.id)
         if (uiCatalog?.version !== 1 || !ui || ui.uiWarning || typeof item.uiRevision !== 'string' || typeof item.generation !== 'string' || ui.generation !== item.generation || ui.uiRevision !== item.uiRevision || ui.status !== item.status) return null
@@ -7885,6 +8388,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
       const openDetail = async (item) => {
         if (busy) return
+        if (props.ownerIntegration && props.navigation?.moduleId !== item.id) { props.goTo?.({ area: 'extensions', section: 'module', moduleId: item.id }); return }
         setDetailId(item.id)
         setEditor(null)
         setConfigError('')
@@ -8075,9 +8579,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (detailId) {
         const item = items.find((item) => item.id === detailId)
         const ui = item ? uiFor(item) : null
-        return h('section', { className: 'ob-stack', 'aria-label': '模块详情' },
+        return h('section', { id: 'ob-module-detail', className: 'ob-stack', 'aria-label': '模块详情' },
           h('div', { className: 'ob-row' },
-            h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { setDetailId(''); setEditor(null); setConfigError('') } }, '返回模块列表'),
+            h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { if (props.ownerIntegration) props.goTo?.({ area: 'extensions', section: 'modules' }); else { setDetailId(''); setEditor(null); setConfigError('') } } }, '返回模块列表'),
             h(Btn, { kind: 'secondary', disabled: Boolean(busy) || loading, onClick: refresh }, '刷新详情'),
           ),
           error ? h(Banner, { tone: 'err', message: error }) : null,
@@ -8092,7 +8596,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
             item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
             !ui || !ui.surfaces.length ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
-              : ui.surfaces.map((surface) => item.builtin ? h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : surface.id) }, renderSurface(item, ui, surface)) : renderSurface(item, ui, surface)),
+              : ui.surfaces.map((surface) => h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : 'surface-' + surface.id) }, renderSurface(item, ui, surface))),
           ) : h(Banner, { tone: 'muted', message: '模块已不在目录中，请返回列表。' }),
         )
       }
@@ -8153,6 +8657,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     function configInfoFromPayload(payload) {
       const data = safeObject(payload)
       return {
+        ...data,
         config: safeObject(data.config),
         defaults: safeObject(data.defaults),
         groups: safeArray(data.groups),
@@ -8260,7 +8765,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
     function OneBotPage() {
       usePanelStyle()
-      const [tab, setTab] = useState('overview')
+      const [tab, setTab] = useState(() => readNavigationUrl(window.location?.href || '').area)
       const [status, setStatus] = useState(null)
       const [configInfo, setConfigInfo] = useState(null)
       const [draft, setDraft] = useState(null)
@@ -8273,7 +8778,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [busyCount, setBusyCount] = useState(0)
       const [prefStatus, setPrefStatus] = useState({ saving: false, error: '', savedAt: 0 })
       const [configTarget, setConfigTarget] = useState('')
-      const [navigation, setNavigation] = useState({ tab: 'overview' })
+      const [navigation, setNavigation] = useState(() => readNavigationUrl(window.location?.href || ''))
+      const historyRef = useRef(null)
 
       const draftRef = useRef(null)
       const configInfoRef = useRef(null)
@@ -8366,10 +8872,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         errorDismissedRef.current = false
         lastErrorRef.current = ''
         setError('')
-        if (!dirtyRef.current && isPlainObject(data.config)) {
-          setDraft((previous) => (previous == null ? previous : deepEqual(previous, data.config) ? previous : clone(data.config)))
-          setConfigInfo((previous) => (previous == null ? previous : deepEqual(previous.config, data.config) ? previous : Object.assign({}, previous, { config: data.config })))
-        }
         return true
       }, [showError])
 
@@ -8443,135 +8945,35 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         })
       }, [])
 
-      const save = useCallback(async () => {
-        if (saving) return false
-        const body = draftRef.current
-        if (!body) return false
-        setSaving(true)
-        const merged = mergeConfigSave(await post('/config/save', { config: body }))
-        setSaving(false)
-        if (!merged.ok) {
-          setIssues([])
-          toast('保存失败：' + merged.message, 'err')
-          return false
-        }
-        if (merged.config) {
-          setConfigInfo((previous) => (previous ? Object.assign({}, previous, { config: merged.config }) : previous))
-          setDraft(clone(merged.config))
-          draftRef.current = clone(merged.config)
-          dirtyRef.current = false
-        }
-        setIssues(merged.issues)
-        toast(merged.issues.length ? '已保存，有 ' + merged.issues.length + ' 条提示' : '配置已保存', 'ok')
-        refreshStatus()
-        return true
-      }, [saving, toast, refreshStatus])
-
-      saveRef.current = save
-
-      const reset = useCallback(async () => {
-        if (saving) return
-        const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function' ? window.confirm('恢复默认配置？当前所有改动都会被默认值覆盖，并立即写入配置文件。') : true
-        if (!confirmed) return
-        setSaving(true)
-        const merged = mergeConfigSave(await post('/config/reset'))
-        setSaving(false)
-        if (!merged.ok) {
-          toast('恢复默认失败：' + merged.message, 'err')
-          return
-        }
-        if (merged.config) {
-          setConfigInfo((previous) => (previous ? Object.assign({}, previous, { config: merged.config }) : previous))
-          setDraft(clone(merged.config))
-          draftRef.current = clone(merged.config)
-          dirtyRef.current = false
-        }
-        setIssues(merged.issues)
-        toast('已恢复默认配置', 'ok')
-        refreshStatus()
-      }, [saving, toast, refreshStatus])
-
       const undo = useCallback(() => {
         const info = configInfoRef.current
-        if (!info) return
-        setDraft(clone(info.config))
-        draftRef.current = clone(info.config)
-        setIssues([])
-        toast('已撤销未保存的改动', 'info')
-      }, [toast])
-
-      // ---- 系统设置即时保存：设置页每次修改直接写盘，串行队列避免竞争 ----
-
-      const queuePrefSave = useCallback((nextConfig) => {
-        prefPendingRef.current += 1
-        setPrefStatus((previous) => ({ saving: true, error: '', savedAt: previous.savedAt || 0 }))
-        const run = async () => {
-          const merged = mergeConfigSave(await post('/config/save', { config: nextConfig }))
-          if (!merged.ok) {
-            setPrefStatus({ saving: prefPendingRef.current > 1, error: merged.message, savedAt: 0 })
-            setIssues([])
-            toast('界面偏好保存失败：' + merged.message, 'err')
-            return false
-          }
-          if (merged.config) {
-            const info = configInfoRef.current
-            const nextInfo = info ? Object.assign({}, info, { config: merged.config }) : info
-            setConfigInfo(nextInfo)
-            configInfoRef.current = nextInfo
-            // 只有在没有更新改动时才回写 draft，避免覆盖用户刚点的下一个选项。
-            if (deepEqual(draftRef.current, nextConfig)) {
-              setDraft(clone(merged.config))
-              draftRef.current = clone(merged.config)
-              dirtyRef.current = false
-            }
-          }
-          setIssues(merged.issues)
-          return true
-        }
-        const chained = prefQueueRef.current.then(run, run)
-        prefQueueRef.current = chained.catch(() => {})
-        chained.finally(() => {
-          prefPendingRef.current = Math.max(0, prefPendingRef.current - 1)
-          if (prefPendingRef.current === 0) {
-            setPrefStatus((previous) => ({
-              saving: false,
-              error: previous.error,
-              savedAt: previous.error ? previous.savedAt : Date.now(),
-            }))
-          }
-        })
-        return chained
-      }, [toast])
-
-      const saveUiPatch = useCallback((patch) => {
-        const base = draftRef.current || (configInfoRef.current && configInfoRef.current.config)
-        if (!base) return Promise.resolve(false)
-        const next = applyConfigPatch(base, patch)
-        draftRef.current = next
-        dirtyRef.current = true
-        setDraft(next)
-        return queuePrefSave(next)
-      }, [queuePrefSave])
-
-      const retryPrefSave = useCallback(() => {
-        const base = draftRef.current || (configInfoRef.current && configInfoRef.current.config)
-        if (!base) return
-        queuePrefSave(base)
-      }, [queuePrefSave])
-
-      useEffect(() => {
-        if (typeof window === 'undefined') return undefined
-        const onKey = (event) => {
-          if ((event.ctrlKey || event.metaKey) && !event.altKey && String(event.key || '').toLowerCase() === 's') {
-            if (!dirtyRef.current) return
-            event.preventDefault()
-            if (saveRef.current) saveRef.current()
-          }
-        }
-        window.addEventListener('keydown', onKey)
-        return () => window.removeEventListener('keydown', onKey)
+        if (info) { setDraft(clone(info.config)); draftRef.current = clone(info.config); dirtyRef.current = false }
       }, [])
+      const lastPatchRef = useRef(null)
+      const saveUiPatch = useCallback((patch) => {
+        lastPatchRef.current = patch
+        const run = async () => {
+          const entries = Object.entries(patch)
+          const fields = entries.map(([path]) => SETTINGS_FIELDS.find(field => field.path === path))
+          const scopes = new Set(fields.map(field => field?.ownerClass === 'module' ? 'module:' + field.canonical.moduleId : field?.ownerClass))
+          if (scopes.size !== 1 || fields.some(field => !field || field.ownerClass === 'profile')) { toast('SETTINGS_MULTI_OWNER', 'err'); return false }
+          const scope = [...scopes][0]
+          setPrefStatus({ saving: true, error: '', savedAt: 0 })
+          try {
+            const view = await get('/settings/view?scope=' + encodeURIComponent(scope))
+            if (!view.ok) throw Error(view.code || 'SETTINGS_READ_UNAVAILABLE')
+            const result = await post('/settings/patch', { scope, revision: view.revision, patch })
+            if (!result.ok) throw Error(result.code || 'SETTINGS_WRITE_UNAVAILABLE')
+            await loadConfig()
+            setPrefStatus({ saving: false, error: '', savedAt: Date.now() }); return true
+          } catch (error) { setPrefStatus({ saving: false, error: error.message, savedAt: 0 }); toast(error.message, 'err'); return false }
+        }
+        const pending = prefQueueRef.current.then(run, run)
+        prefQueueRef.current = pending.catch(() => {})
+        return pending
+      }, [loadConfig, toast])
 
+      const retryPrefSave = useCallback(() => { if (lastPatchRef.current) return saveUiPatch(lastPatchRef.current) }, [saveUiPatch])
       const applyGateway = useCallback((gateway) => {
         if (!isPlainObject(gateway)) return
         setStatus((previous) => (previous ? Object.assign({}, previous, { gateway }) : previous))
@@ -8595,19 +8997,26 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         [applyGateway, refreshStatus, toast, runWithProgress],
       )
 
-      /** @param {NavigationTarget} target */
-      const goTo = useCallback((target) => {
-        const next = navigationTarget(target)
-        setConfigTarget(next.tab === 'cognition' && next.section === 'settings' ? next.anchor || '' : '')
-        setNavigation(next); setTab(next.tab)
-      }, [])
-      const go = useCallback((id, group = '') => goTo({ tab: id, ...(group ? id === 'cognition' ? { section: 'settings', anchor: group } : { section: group } : {}) }), [goTo])
+      const acceptNavigation = useCallback(next => { setNavigation(next); setTab(next.area); setConfigTarget('') }, [])
+      useEffect(() => {
+        if (!window.location || !window.history) return
+        historyRef.current = createNavigationHistory(window, acceptNavigation)
+        return () => { historyRef.current?.dispose(); historyRef.current = null }
+      }, [acceptNavigation])
+      const goTo = useCallback(target => {
+        if (historyRef.current) historyRef.current.navigate(target)
+        else acceptNavigation(navigationTarget(target))
+      }, [acceptNavigation])
+      const go = useCallback((id, group = '') => {
+        const target = resolveLegacyGo(id, group)
+        goTo(target)
+      }, [goTo])
 
       const gateway = safeObject(status && status.gateway)
       const state = stateLabel(gateway.state)
       const login = isPlainObject(gateway.login) ? gateway.login : null
       const version = (configInfo && configInfo.version) || (status && status.version) || ''
-      const headerInfo = pageHeaderFor(tab, status)
+      const headerInfo = { eyebrow: NAVIGATION_REGISTRY.find(area => area.id === navigation.area)?.label || 'Overview', title: SECTION_LABELS[navigation.section] || '模块详情', description: navigation.moduleId || '' }
 
       const tabProps = {
         configTarget,
@@ -8626,8 +9035,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         saving,
         dirty,
         issues,
-        save,
-        reset,
         undo,
         saveUiPatch,
         saveConfigPatch: saveUiPatch,
@@ -8636,22 +9043,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         now,
       }
 
-      let body = null
-      if (tab === 'overview') body = h(Overview, tabProps)
-      else if (tab === 'connect') body = h(Connect, tabProps)
-      else if (tab === 'messages') body = h(Messages, tabProps)
-      else if (tab === 'media') body = h(MediaPage, tabProps)
-      else if (tab === 'content') body = h(ContentPage, tabProps)
-      else if (tab === 'modules') body = h(ModulesPage, tabProps)
-      else if (tab === 'backup') body = h(BackupPage, tabProps)
-      else if (tab === 'security') body = h(SecurityPage, tabProps)
-      else if (tab === 'config') body = h(ConfigTab, tabProps)
-      else if (tab === 'persona') body = h(PersonaTab, tabProps)
-      else if (tab === 'models') body = h(ModelTab, tabProps)
-      else if (tab === 'settings') body = h(SettingsTab, tabProps)
-      else if (tab === 'cognition') body = h(CognitionTab, tabProps)
-      else if (tab === 'logs') body = h(Logs, tabProps)
-      else body = h(About, tabProps)
+      const body = h(AreaContent, tabProps)
 
       const loadingShell =
         loading && !status && !configInfo
@@ -8682,7 +9074,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           Object.assign({ className: 'ob-root' }, rootData),
           h(
             'div',
-            { className: 'ob-shell' },
+            { className: 'ob-shell ob-area-shell' },
+            h(NavigationMenu, { navigation, goTo, configInfo }),
             loadingShell
               ? loadingShell
               : h(
@@ -8709,23 +9102,20 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                       dirty && tab !== 'settings' ? h(Badge, { key: 'dirty', tone: 'warn' }, '有未保存的改动') : null,
                     ],
                     actions: [
-                      tab === 'config' && dirty ? h(Btn, { key: 'save', small: true, kind: 'primary', icon: 'check', onClick: () => save(), busy: saving, disabled: saving }, '保存') : null,
                       h(IconBtn, { key: 'refresh', title: '刷新状态', icon: 'refresh', onClick: () => refreshAll(), disabled: refreshing }),
                     ],
                   }),
-                  h(Tabs, { tabs: TABS, current: tab, onChange: go, dirty }),
                   h(TopProgress, { phase: progress }),
                   h(
                     'div',
                     {
                       className: 'ob-content',
-                      id: 'ob-panel-' + tab,
-                      role: 'tabpanel',
-                      'aria-labelledby': 'ob-tab-' + tab,
+                      id: 'ob-panel-' + navigation.area + '-' + navigation.section,
+                      role: 'region',
+                      'aria-label': headerInfo.title,
                     },
-                    h('div', { key: tab, className: pageTransitionClass(contentTransitionFor(tab, uiPrefs.pageTransition)) }, body),
+                    h('div', { key: navigation.area + ':' + navigation.section, className: pageTransitionClass(contentTransitionFor(tab, uiPrefs.pageTransition)) }, body),
                   ),
-                  h(Savebar, { visible: dirty && tab === 'config', saving, onSave: () => save(), onUndo: undo }),
                 ),
           ),
           h(Toast, { message: toastMessage }),
@@ -8775,6 +9165,20 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.TOKEN_CSS = TOKEN_CSS
     exports.MOTION_CSS = MOTION_CSS
     exports.PANEL_CSS = PANEL_CSS
+    exports.NAVIGATION_REGISTRY = NAVIGATION_REGISTRY
+    exports.SETTINGS_FIELDS = SETTINGS_FIELDS
+    exports.resolveLegacyGo = resolveLegacyGo
+    exports.resolveAlias = resolveAlias
+    exports.readNavigationUrl = readNavigationUrl
+    exports.navigationUrl = navigationUrl
+    exports.createNavigationHistory = createNavigationHistory
+    exports.searchNavigation = searchNavigation
+    exports.navigationSearchIndex = navigationSearchIndex
+    exports.ownerFields = ownerFields
+    exports.OwnerSettings = OwnerSettings
+    exports.NavigationMenu = NavigationMenu
+    exports.SandboxChat = SandboxChat
+    exports.AreaContent = AreaContent
     exports.TABS = TABS
     exports.OneBotPage = OneBotPage
     exports.OneBotIcon = OneBotIcon

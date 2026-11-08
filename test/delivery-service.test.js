@@ -105,7 +105,8 @@ test('delivery service: production wiring injects the shared service into every 
   }
   assert.doesNotMatch(cognition, /createProactivityService|services\.proactivity\.start/)
   assert.match(read('../src/modules/kernel.js'), /createProactivityPort\(\{[\s\S]*?delivery, outbound/)
-  assert.match(read('../src/host.js'), /delivery: cognition\.services\.delivery/)
+  assert.match(read('../src/host.js'), /assembleServices\(/)
+  assert.match(read('../src/services/assembly.js'), /delivery: cognition\.services\.delivery/)
   assert.match(read('../src/runtime/agent.js'), /createQqTools\(\{[^\n]*\bdelivery\b/)
   const service = read('../src/delivery/service.js')
   assert.match(service, /executeDeliveryPlan\(/)

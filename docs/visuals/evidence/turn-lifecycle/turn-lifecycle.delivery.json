@@ -4,8 +4,8 @@
   "status": "current",
   "command": "deliver",
   "type": "lifecycle",
-  "input": "/workspace/dsh-bot/docs/visuals/src/turn-lifecycle.json",
-  "output": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+  "input": "./docs/visuals/src/turn-lifecycle.json",
+  "output": "./docs/visuals/turn-lifecycle.html",
   "specification": {
     "sha256": "7644d31ff865ac32c9eca5e52e5262b96abd0bdfafea99741574744c6ddc5e2d",
     "bytes": 4343

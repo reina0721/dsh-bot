@@ -8,7 +8,7 @@
   "provenance": "current",
   "deliveryReceiptId": "b6898677-5af8-463a-8b5d-6c65094cfeb7",
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+    "path": "./docs/visuals/turn-lifecycle.html",
     "sha256": "dbc9f45d3007447e3c2fb58f2567fe91b300b2c5b514ed7a4d9c119608ea1be8",
     "bytes": 765058
   },
@@ -18,7 +18,7 @@
   },
   "chrome": {
     "status": "available",
-    "executable": "/home/node/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
+    "executable": "<tool-home>/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
   },
   "diagnostics": [],
   "containment": {
@@ -691,7 +691,7 @@
     "contactSheet": null
   },
   "sidecars": {
-    "directory": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle",
+    "directory": "./docs/visuals/evidence/turn-lifecycle",
     "receipt": "turn-lifecycle.browser-check.json",
     "files": []
   }

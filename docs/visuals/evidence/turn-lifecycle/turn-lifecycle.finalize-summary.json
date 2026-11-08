@@ -6,12 +6,12 @@
   "type": "lifecycle",
   "quality": "showcase",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/turn-lifecycle.json",
+    "path": "./docs/visuals/src/turn-lifecycle.json",
     "sha256": "7644d31ff865ac32c9eca5e52e5262b96abd0bdfafea99741574744c6ddc5e2d",
     "bytes": 4343
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+    "path": "./docs/visuals/turn-lifecycle.html",
     "sha256": "dbc9f45d3007447e3c2fb58f2567fe91b300b2c5b514ed7a4d9c119608ea1be8",
     "bytes": 765058
   },
@@ -28,9 +28,9 @@
     "truncated": false
   },
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/turn-lifecycle/turn-lifecycle.browser-check.json"
+    "receipt": "./docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/turn-lifecycle/turn-lifecycle.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/turn-lifecycle/turn-lifecycle.browser-check.json"
   },
   "update": {
     "status": "update_available",

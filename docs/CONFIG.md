@@ -1,13 +1,23 @@
 # 配置说明（CONFIG）
 
+C09 当前状态见 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)：311 个字段按唯一 owner 编辑，profile 迁移/API/UI 已实现但保存仍 staged、运行仍 legacy；System/module 保持原生效规则。broker 默认关闭，本机 bwrap 缺失且 cgroup 委派只读，execute fail closed；macOS 仅 probe，无 egress、真实模型 preview 或 Windows 执行。C09 无配置/迁移/版本变更。
+
 本文列出 `dsh-bot` 的**全部配置项**：路径、类型、默认值、取值范围、作用，以及配置文件位置、
 保存/热应用规则和环境变量。配置项来源是 `src/core/config.js` 的 `DEFAULTS`（默认值）与
 `CONFIG_GROUPS`（面板字段表）；面板表单完全按 `CONFIG_GROUPS` 数据驱动渲染。
 
+**C02 后端设置契约已实现，运行仍为 legacy，C03 六区 UI 已适配。** profile 设置保存在现有认知 records store，保存只产生 staged override；System/模块继续使用原存储与运行行为。`GET /config` 展示 active profile 的 staged 值，`GET /status` 的 config 展示 legacy 运行配置。不要把两者混为同一个运行快照。未修改的旧 UI 不携带 revision/personaId，保存会明确拒绝；当前六区表单按 owner/revision 保存。完整门控、迁移/失败及接口契约见 [ADR-020 C02](architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
+
+后端接口统一前缀 `/onebot-qq/api`：`/settings/schema`、`/settings/view?scope=system|profile|module:<id>`（profile 另传 `id`）、`/settings/patch`，以及 `/profiles`、`/profiles/config?id=…`、`/profiles/config/save`。保存格式是 `{scope,id?,revision,patch:{完整字段路径:值}}`（profiles save 固定 profile），一个请求只允许一个 owner；过期 revision、跨 owner 和未知/只读字段拒绝。profile revision 为持久递增整数，System/legacy module 为内容摘要，module-file 沿用模块 revision。
+
+迁移为每个既有人格保存有效 profile 行为与不可变原始来源 snapshot/hash，显式值优先，不复制系统凭据、宿主路径或全局模型额度。失败事务回滚，profile editingAvailable:false，原运行继续。重启幂等，新人格独立初始化，复制继承 staged 设置，检查 inactive 人格不激活，删除清理 profile/snapshot，普通认知数据复制不复制设置。
+
+secret/secret-reference patch 使用 `{op:'keep'}` / `{op:'set',value:'…'}` / `{op:'clear'}`；新 view 只返回 masked/present，不返回凭据或环境变量内容。旧 config 中 token 为 `***`，回传 mask 保留值。旧 `/config/save` 必须提交 GET 返回的 `{config,personaId,revision}`，只路由发生变化的字段至唯一 owner；多个模块也不能合并保存。`/config/reset` 返回 SETTINGS_MULTI_OWNER，需逐 owner 保存。规范化 issues 只返回稳定 code，不回显输入。以下全量保存/热应用说明描述 legacy 内部存储机制，受此处的 C02 API 限制。
+
 模块 WebUI Phase 1 只增加配置归属元数据（[ADR-014](architecture/ADR-014-module-webui.md)），不新增配置值或迁移编辑器。reply-delivery、typing、reminders 的 UI binding 为 `legacy-core`、available:false，继续使用原 cognition.reply/typing/reminders 存储 key 与配置页；sample 为 `module-file`、available:true，仍用原模块行内编辑与独立配置文件。UI schemaVersion:1 是描述契约元数据，不改变全局配置版本或配置值 revision。`GET /onebot-qq/api/modules/ui` 不读取或返回配置值、字段表、默认值或路径；外部声明无法开启配置编辑。未来配置 UI 归属模块页时仍须保留现有存储 key。
 
 > 结论先行：**没有任何写死的算法参数**。重连退避、超时、重试、核验缓冲、事件过滤、缓冲容量、
-> 日志级别、面板刷新间隔……都可以在 `config.json` 或面板「配置」页修改；保存即热应用。
+> 日志级别、面板刷新间隔……都可以在 `config.json` 修改；System/模块保存仍按原规则热应用，profile API 保存为 staged，六区面板按 owner/revision 保存。
 
 ### 手动身份登记（M7-v，无新增配置字段）
 
@@ -702,3 +712,34 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 无新增配置字段，沿用现有目的服务与认知 LLM 路由/预算；默认行为不变。主人显式 `/purpose plan ID` 才调用 `llm.completeJson`，要求活跃 goal 有标题和描述，生成并替换 1–8 条未完成步骤（每条最多 200 UTF-16 单元、去控制字符、非空且唯一）。无效结果/缺少服务/目标变化时不写入；命令经 owner、`deniedCommands` 与当前聊天访问闸门。`/purpose step ID N [done|undo]` 仅手动更新步骤标记，N 为 1–20；`/purpose steps ID` 查看进度。步骤更新沿用服务既有进度/完成规则，undo 不自动恢复已完成目标，恢复用 `/purpose resume ID`。用法见[用户手册](USER-MANUAL.md#36-目的与记忆整理)。
 
 仅当前聊天命令回复，无步骤执行、动作绑定、审批集成或后台 LLM/自主执行器；离线 fake LLM 测试，真实模型/QQ 未验证。GAP #38 仍 partial；矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。
+
+
+## Agent 执行 broker（C06 / C07 / C08）
+
+System → Security 的 `sandbox` 设置与离线 Chat sandbox 独立；默认关闭。C07 只在 broker ready 且会话授权时挂载 Agent 工具，要求宿主另行提供安全 preset；C08 仅增加 P1 能力边界。完整安全边界、API、审计和恢复见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。
+
+| 配置路径 | 默认值 | 范围 / 含义 |
+| --- | --- | --- |
+| `sandbox.enabled` | false | 显式启用；disabled 拒绝所有作业 |
+| `sandbox.driver` | auto | auto / local-linux / local-macos / unavailable；auto 在 Linux 选择 bwrap，在 macOS 选择 Seatbelt discovery，其它平台 unavailable；显式驱动不跨平台回退 |
+| `sandbox.network` | false | 仅接受 false；true 或其它值在配置规范化/保存时抛出 NETWORK_POLICY_UNSUPPORTED，原先使用 true 的配置须改为 false；受控 egress 不支持 |
+| `sandbox.limits.concurrency` | 2 | 1–4；含文件作业，单作用域另加 workspace lock |
+| `sandbox.limits.jobs` | 128 | 1–128；活动作业不可淘汰 |
+| `sandbox.limits.timeoutMs` | 10000 | 100–30000 ms；执行墙钟超时 |
+| `sandbox.limits.outputBytes` | 65536 | 1024–65536 bytes；合并 stdout/stderr 及 artifact 上限 |
+| `sandbox.limits.memoryMiB` | 128 | 32–256 MiB；cgroup v2，swap=0 |
+| `sandbox.limits.processes` | 32 | 4–64；包含 launcher/bwrap/init/shell 子进程 |
+| `sandbox.policy.ownerPrivate` | [workspace, execute] | 能力数组，只接受 workspace / execute |
+| `sandbox.policy.operatorPrivate` | [] | 操作员默认无工作区/执行能力 |
+| `sandbox.policy.otherPrivate` | [] | 其它 principal 默认无能力 |
+| `sandbox.policy.group` | [] | 所有群聊默认无能力 |
+
+workspace 硬上限 64 MiB / 1024 entries，路径由 persona/principal/chat/session 服务端摘要派生，不接受宿主目录配置。启用后先读 GET `/sandbox/status` 的 `policyGeneration`，再 POST `/sandbox/probe`；Linux 缺 bwrap 或可写且支持 memory/pids/cpu/kill 的 cgroup v2 委派时 unavailable，execute 拒绝。独立安全的 file 操作仍可用。
+
+macOS 仅探测固定 `/usr/bin/sandbox-exec`：缺失/不安全分别返回 SEATBELT_MISSING / SEATBELT_UNSAFE；可用仍返回 unavailable / RESOURCE_LIMITS_UNPROVEN。`driverCapabilities.seatbeltAvailable` 只代表二进制存在且通过文件检查；`enforcement` 的 filesystem/network/memory/processes/cpu/processTree 全为 false，不启动 Seatbelt profile 或用户代码。内存/进程/CPU 限额及完整进程树清理没有证明，执行始终不可用。未报告该能力字段的驱动、尚未探测或策略变化时 `driverCapabilities` 为 null；不是 Linux enforcement 的新声明。
+
+有效策略与 status 的 `networkPolicy` 为 `{supported:false,enabled:false,reason:"NETWORK_POLICY_UNSUPPORTED"}`，顶层 `network` 仍为 false。作业输入的任何 `network` 字段（包括 false、host 或 allowlist 对象）均以 NETWORK_POLICY_UNSUPPORTED 拒绝，管理 jobs/create 返回 HTTP 400；没有受控 egress 实现或共享宿主网络的回退。普通用户默认无授权，C08 不改既有角色/群聊矩阵，也不新增普通用户 grant 能力。
+
+离线 Chat API envelope 的 `realModelPreview` 为 `{available:false,reason:"REAL_MODEL_PREVIEW_UNAVAILABLE",implementation:"contract-only"}`。目前没有 preview 启用配置、live model adapter、调用端点或独立计费实现；提交 preview/approved/model 等未知字段仍被拒绝，create/event/advance/reset 不调用真实模型。[P1 契约](architecture/ADR-022-agent-execution-broker.md#c08-p1-能力状态与契约)要求未来逐请求管理员许可、独立 preview 用量/预算、捕获 transport 与取消/迟到响应记账，不能复用 live 会话或通过 sandbox.network 放行。
+
+POST `/sandbox/jobs/create` 示例：`{"kind":"file.write","requestId":"demo-1","policyGeneration":"<status 中的摘要>","path":"notes.txt","content":"hello"}`；执行 kind 为 execute 且仅增 `code`，read/delete 用 path，list 无附加字段。请求不能传身份、环境、挂载或路径根。job detail/artifact/cancel 只接受服务返回的不透明 ID；artifact 是有界 base64 JSON。策略变更后使用新代次，不能重放旧策略绕过授权。管理 HTTP 身份来自 DSH 管理认证边界；固定 management/private principal，当前人格分区。

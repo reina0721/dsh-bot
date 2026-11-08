@@ -259,7 +259,7 @@ export function personaPublicItem(persona, activeId = '') {
   }
 }
 
-export function createPersonaService({ store, getConfig, clock }) {
+export function createPersonaService({ store, getConfig, clock, settingsHooks = {} }) {
   const cfg = () => getConfig()?.cognition || {}
   const activeSettingKey = 'persona.activeId'
   let scopeGeneration = 0
@@ -377,6 +377,7 @@ export function createPersonaService({ store, getConfig, clock }) {
     const writeReason = reason || historyReason
     store.tx(() => {
       store.put('persona', id, { ...persona, reason: writeReason, at: now })
+      settingsHooks.created?.(id, fromPersona?.id || '')
       if (activate !== false) writeActiveId(id)
     })
     return {

@@ -8,7 +8,7 @@
   "provenance": "current",
   "deliveryReceiptId": "3695b724-70ff-44ee-acfb-2be877c8a4e3",
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+    "path": "./docs/visuals/message-lifecycle.html",
     "sha256": "7dfb4ec5eb1acc8ecd530752c472d8636a5d4d977ca6c156f0c4d5d6c576672c",
     "bytes": 761887
   },
@@ -18,7 +18,7 @@
   },
   "chrome": {
     "status": "available",
-    "executable": "/home/node/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
+    "executable": "<tool-home>/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
   },
   "diagnostics": [],
   "containment": {
@@ -1195,7 +1195,7 @@
     "contactSheet": null
   },
   "sidecars": {
-    "directory": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle",
+    "directory": "./docs/visuals/evidence/message-lifecycle",
     "receipt": "message-lifecycle.browser-check.json",
     "files": []
   }

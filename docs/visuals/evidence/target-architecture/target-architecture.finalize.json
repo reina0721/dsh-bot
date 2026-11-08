@@ -7,12 +7,12 @@
   "quality": "showcase",
   "startedAt": "2026-11-06T05:55:34.004Z",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/target-architecture.json",
+    "path": "./docs/visuals/src/target-architecture.json",
     "sha256": "837ddc01179f48714c3b7951265e8cd4963c753adb0224d33420c693d74e54f0",
     "bytes": 6113
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+    "path": "./docs/visuals/target-architecture.html",
     "sha256": "54ab12385be797c7ae01028df55a2d13227360ea8e42d00ad39c62366ccd71f1",
     "bytes": 769801
   },
@@ -24,11 +24,11 @@
       "execution": "embedded-in-deliver",
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "deliver",
         "architecture",
-        "/workspace/dsh-bot/docs/visuals/src/target-architecture.json",
-        "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+        "./docs/visuals/src/target-architecture.json",
+        "./docs/visuals/target-architecture.html",
         "--quality",
         "showcase",
         "--json"
@@ -57,11 +57,11 @@
       "durationMs": 423,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "deliver",
         "architecture",
-        "/workspace/dsh-bot/docs/visuals/src/target-architecture.json",
-        "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+        "./docs/visuals/src/target-architecture.json",
+        "./docs/visuals/target-architecture.html",
         "--quality",
         "showcase",
         "--json"
@@ -72,8 +72,8 @@
         "ok": true,
         "command": "deliver",
         "type": "architecture",
-        "input": "/workspace/dsh-bot/docs/visuals/src/target-architecture.json",
-        "output": "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+        "input": "./docs/visuals/src/target-architecture.json",
+        "output": "./docs/visuals/target-architecture.html",
         "specification": {
           "sha256": "837ddc01179f48714c3b7951265e8cd4963c753adb0224d33420c693d74e54f0",
           "bytes": 6113
@@ -109,14 +109,14 @@
       "durationMs": 150,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "check",
-        "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+        "./docs/visuals/target-architecture.html",
         "--require-provenance"
       ],
       "receipt": {
         "ok": true,
-        "file": "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+        "file": "./docs/visuals/target-architecture.html",
         "artifact": {
           "sha256": "54ab12385be797c7ae01028df55a2d13227360ea8e42d00ad39c62366ccd71f1",
           "bytes": 769801
@@ -281,13 +281,13 @@
       "durationMs": 2386,
       "command": [
         "/usr/local/bin/node",
-        "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
+        "<tool-home>/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
         "browser-check",
-        "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+        "./docs/visuals/target-architecture.html",
         "--json",
         "--require-provenance",
         "--out-dir",
-        "/workspace/dsh-bot/docs/visuals/evidence/target-architecture"
+        "./docs/visuals/evidence/target-architecture"
       ],
       "execution": "in-process",
       "receipt": {
@@ -300,7 +300,7 @@
         "provenance": "current",
         "deliveryReceiptId": "a649c19d-59c5-4ffc-8d32-8f85e92484d6",
         "artifact": {
-          "path": "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+          "path": "./docs/visuals/target-architecture.html",
           "sha256": "54ab12385be797c7ae01028df55a2d13227360ea8e42d00ad39c62366ccd71f1",
           "bytes": 769801
         },
@@ -310,7 +310,7 @@
         },
         "chrome": {
           "status": "available",
-          "executable": "/home/node/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
+          "executable": "<tool-home>/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
         },
         "diagnostics": [],
         "containment": {
@@ -1007,7 +1007,7 @@
           "contactSheet": null
         },
         "sidecars": {
-          "directory": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture",
+          "directory": "./docs/visuals/evidence/target-architecture",
           "receipt": "target-architecture.browser-check.json",
           "files": []
         }
@@ -1016,9 +1016,9 @@
   },
   "diagnostics": [],
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.browser-check.json"
+    "receipt": "./docs/visuals/evidence/target-architecture/target-architecture.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/target-architecture/target-architecture.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/target-architecture/target-architecture.browser-check.json"
   },
   "visualReview": "not-requested",
   "finishedAt": "2026-11-06T05:55:38.243Z",

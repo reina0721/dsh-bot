@@ -20,6 +20,28 @@ try {
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
     for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/modules/action-audit.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
     assert.equal(pkg.dsh.client.platform, 'web');
+    const alignmentFiles = [
+      'src/services/assembly.js', 'src/http/sandbox-chat.js',
+      'src/simulation/service.js', 'src/simulation/adapters.js', 'src/simulation/preview-contract.js',
+      'src/core/settings-schema.js', 'src/core/profile-settings.js', 'src/core/navigation.js',
+      'src/runtime/sandbox-tools.js', 'src/sandbox/service.js', 'src/sandbox/policy.js',
+      'src/sandbox/workspace.js', 'src/sandbox/drivers/local-linux.js', 'src/sandbox/drivers/local-macos.js',
+      'src/sandbox/drivers/unavailable.js', 'src/sandbox/bootstrap.js', 'src/sandbox/file-worker.js',
+      'src/sandbox/driver-contract.js', 'src/sandbox/audit.js', 'src/sandbox/api.js',
+      'docs/architecture/ADR-020-settings-ownership-navigation.md',
+      'docs/architecture/ADR-021-simulation-service.md',
+      'docs/architecture/ADR-022-agent-execution-broker.md',
+      'docs/architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md',
+    ];
+    for (const file of alignmentFiles) assert.deepEqual(readFileSync(join(base, file)), readFileSync(file), `Packaged alignment file differs: ${file}`);
+    const settings = await import(pathToFileURL(join(base, 'src/core/settings-schema.js')).href);
+    const profiles = await import(pathToFileURL(join(base, 'src/core/profile-settings.js')).href);
+    assert.equal(typeof profiles.createProfileSettings, 'function');
+    assert.equal(profiles.PROFILE_RUNTIME_MODE, 'legacy');
+    const navigation = await import(pathToFileURL(join(base, 'src/core/navigation.js')).href);
+    assert.deepEqual(settings.validateSettingsSchema(), { fields: 311, groups: 32, aliases: 620 });
+    assert.deepEqual(navigation.go('config'), { area: 'system', section: 'general' });
+    assert.deepEqual(navigation.go('cognition'), { area: 'profiles', section: 'overview' });
     // Execute the shipped client entry with a Node shim; this is not a browser check.
     let entry;
     runInNewContext(readFileSync(join(base, 'client.js'), 'utf8'), {
@@ -29,21 +51,33 @@ try {
       assert.equal(name, 'react');
       return { createElement() {}, createContext: () => ({}), Component: class {}, Fragment: 'fragment' };
     });
-    for (const name of ['CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    for (const name of ['SandboxChat', 'OwnerSettings', 'AreaContent', 'NavigationMenu', 'searchNavigation', 'readNavigationUrl', 'navigationUrl', 'CoreModuleHealth', 'CoreModuleActions', 'CogLoop', 'LoopDetail', 'invokeModuleAction', 'pollModuleOperation', 'navigationTarget']) assert.equal(typeof client[name], 'function', `Packaged client missing ${name}`);
+    assert.deepEqual(Array.from(client.TABS, tab => tab.id), ['overview', 'chat', 'profiles', 'extensions', 'data', 'system']);
+    for (const [alias] of Object.entries(settings.LEGACY_ALIASES)) assert.equal(JSON.stringify(client.resolveLegacyGo(alias)), JSON.stringify(navigation.go(alias)), alias);
+    for (const field of settings.SETTINGS_FIELDS) {
+      for (const alias of field.aliases) assert.equal(JSON.stringify(client.resolveLegacyGo(alias)), JSON.stringify(navigation.go(alias)), alias);
+      assert.ok(client.searchNavigation(field.path).some(row => row.target.fieldPath === field.path), field.path);
+    }
     const registrations = [];
-    const slots = { inject(name, register) { register(); }, register(def) { registrations.push(def.name); } };
+    const slots = { inject(name, register) { register(); }, register(def) { registrations.push({ name: def.name, id: def.key || def.id }); } };
     client.apply({ get: name => name === 'slots' ? slots : undefined, effect() {} });
-    assert.deepEqual(registrations, ['main', 'sidebar.panellist']);
+    assert.deepEqual(registrations, [{ name: 'main', id: 'onebot-qq' }, { name: 'sidebar.panellist', id: 'onebot-qq' }]);
     for(const file of ['docs/architecture/ADR-017-builtin-learning.md','src/cognition/research.js','src/modules/learning-port.js','src/modules/builtin/learning/index.js','src/modules/builtin/learning/engine.js','docs/architecture/ADR-016-builtin-proactivity.md','src/modules/proactivity-port.js','src/modules/builtin/proactivity/index.js','src/modules/builtin/proactivity/engine.js','src/modules/webui.js','docs/architecture/ADR-014-module-webui.md','docs/architecture/ADR-015-builtin-media-features.md','src/modules/media-features-port.js','src/modules/builtin/media-features/index.js','src/modules/builtin/media-features/bilibili.js','src/modules/builtin/media-features/commands.js']) readFileSync(join(base,file));
     for(const file of ['docs/ARCHITECTURE.md','docs/MODULES.md','docs/cognitive/IMPLEMENTATION-STATUS.md','docs/architecture/ADR-013-media-boundary.md','docs/architecture/MODULE-ACCEPTANCE.md']) readFileSync(join(base,file));
     for(const file of ['src/host.js','src/cognition/turn-hooks.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/reminders.js','src/reminders/service.js','src/reminders/commands.js','src/modules/builtin/typing.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
       const file = join(dir,entry.name);
       assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist|\.archify|\.builtin|plugins-data)$/.test(entry.name),file);
-      assert.ok(!/^(state|config|data|operations)\.json$/.test(entry.name), `Private module state: ${file}`);
-      assert.ok(!/\.(png|sqlite(?:-wal|-shm)?|db|log|tmp|jsonl)$/.test(entry.name),file);
+      assert.ok(!/^(state|config|data|operations|sessions)\.json$/.test(entry.name), `Private module state: ${file}`);
+      assert.ok(!/\.(png|sqlite(?:-wal|-shm)?|db|log|tmp|jsonl|pem|key)$/.test(entry.name),file);
+      assert.ok(!/^\.env(?:\.|$)/.test(entry.name), `Environment file: ${file}`);
       if(entry.isDirectory())scan(file);
-      else if(/\.(js|json|md|yml|ps1|sh)$/.test(entry.name)) assert.ok(!/C:[\\/]Users[\\/]Run|C:[\\/]rin[\\/]coder/.test(readFileSync(file,'utf8')),`Personal path: ${file}`);
+      else if(/\.(js|json|md|yml|ps1|sh|html|svg)$/.test(entry.name)) {
+        const content = readFileSync(file, 'utf8');
+        assert.ok(!/[A-Za-z]:[\\/]Users[\\/][^\\/\s<>]+|C:[\\/]rin[\\/]coder|\/Users\/[^/\s]+|\/home\/(?!plugins-data(?:\/|$))[^/\s]+/.test(content), `Personal path: ${file}`);
+        assert.ok(!content.includes(process.cwd()), `Build workspace path: ${file}`);
+        assert.ok(!/-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----\s+[A-Za-z0-9+/=]{32,}|\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{60,}|sk-proj-[A-Za-z0-9_-]{40,})\b/.test(content), `Credential material: ${file}`);
+      }
       if(entry.name.endsWith('.md')) for(const match of readFileSync(file,'utf8').matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) {
         const url=match[1];
         if(!/^(https?:|mailto:|#)/.test(url))assert.ok(existsSync(resolve(dirname(file),decodeURIComponent(url.split('#')[0]))),`Broken packaged link: ${file}: ${url}`);
@@ -124,5 +158,5 @@ try {
     `],{stdio:'pipe'});
     execFileSync(process.execPath,['--check',join(base,'client.js')]);
   }
-  console.log('Both archives verified: checksums, closed-loop files/client, exactly two DSH registrations, no private module state/paths, links and standalone module loading (Node shim; no browser).');
+  console.log('Both archives verified: checksums, AstrBot alignment files/ADR-020/021/022/acceptance match source, exhaustive aliases, exactly two DSH registrations, credential/private state/path scan, links and standalone module loading (Node shim; no browser).');
 } finally { rmSync(work,{recursive:true,force:true}); }

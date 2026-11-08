@@ -2,6 +2,34 @@
 
 ## 未发布
 
+- C09（仅 AstrBot 对齐验收，基线 C08 `81304d2`）：补齐 C01–C08 提交链、六区/全量旧别名、staged 设置迁移、Chat 零真实发送、broker fail-closed 与 P1 不可用清单；增加客户端旧对象导航和非 ready/过期 broker 工具白名单集成测试，双格式包逐字节检查全部新文件/ADR/验收文档并扫描凭据/私有路径，规范化既有图表证据中的机器路径，保留历史状态/hash、不重跑浏览器。证据见 [AstrBot 对齐验收](docs/architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。无新生产功能；真实 Linux containment 未认证，macOS 仅探测，无 egress/真实模型 preview/Windows 执行，保留真实浏览器与安全 preset 联调缺口。版本保持 0.11.15，仅本地检查与提交。
+
+- C08（仅 P1 能力边界，基线 C07 `a6740fd`）：新增 macOS Seatbelt discovery driver，auto 在 macOS 选择 local-macos；只检查固定 `/usr/bin/sandbox-exec` 的安全属性/可执行性，公开未证明的 enforcement 能力。即使二进制可用，仍因 RESOURCE_LIMITS_UNPROVEN 拒绝全部脚本执行，不启动 host shell，不声称 Seatbelt containment 已验证。
+- 受控 egress 明确不支持：策略/status 返回 NETWORK_POLICY_UNSUPPORTED；配置只接受 network=false，作业任何 network 字段均拒绝（管理作业 API 为 HTTP 400），无 host-network fallback。角色矩阵不变，普通用户默认授权仍关闭。
+- 真实模型 Chat preview 仅增加 JSDoc 类型契约与 REAL_MODEL_PREVIEW_UNAVAILABLE 状态；规定逐请求管理员许可、独立 preview 用量/预算和 capture-only transport，尚未接入 live adapter/凭据或自动调用。原因、后续接口与证据见 [ADR-022 P1 状态](docs/architecture/ADR-022-agent-execution-broker.md#c08-p1-能力状态与契约)。新增能力感知、macOS fake probe、拒绝执行/网络/preview 和打包回归；fake probe 不证明 OS enforcement。无新依赖、OS 包、版本变更、推送、部署、tag 或发布。
+
+- C07：新增六个 Agent sandbox 工具，严格 job/相对路径输入，每次调用检查 broker ready、服务端角色/群策略及人格/策略代次；有界输出与固定错误码。Python 保持不可用，action 仅 C06 file.delete，无新 P1 能力。
+- live broker 经 host/assembly/cognition 注入 runtime；会话绑定环境、人格/发送者/聊天/preset/策略代次和 runtime/session 实例。超时/撤权/卸载先撤销工具、取消作业、尝试 abort 并退休会话；迟到 admission、输出、事件与 QQ 动作不再接纳，oneshot 文本不转执行。原三个 QQ 工具行为保留。
+- 沙盒模式独立安全 preset，缺失时安全失败/oneshot 回退，无 generic fs/web/exec fallback。当前 host driver unavailable，实际不挂 sandbox 工具；preset 配置缺口记录于 [ADR-022](docs/architecture/ADR-022-agent-execution-broker.md#c07-preset-缺口不改-live-patch)，`cordis.patch.yml` / `.archify/` 未修改。新增工具/runtime/装配回归；fake ready 证据不代表真实 containment。版本不变，仅本地校验、打包及提交。
+
+- C06：新增默认关闭的 Agent execution broker、服务端 scope/策略代次、接纳/并发/取消/幂等、64 MiB/1024 项工作区与只读快照、artifact、metadata-only 持久审计及八个管理 API。System/security 新增 sandbox 配置；网络固定关闭，主人私聊默认可用，群/操作员默认无执行能力。
+- Linux 驱动要求真实 bwrap + cgroup v2 委派，通过 namespace/最小 rootfs/env allowlist/进程树与资源限制探针后才 ready；缺失/不安全 fail closed，Windows/其它平台 unavailable。独立文件操作不依赖执行隔离。fake service 测试与真实 containment 测试分开，本环境 bwrap 缺失、cgroup 只读，真实隔离七项 skip，执行拒绝。
+- 安全边界与已知限制见 [ADR-022](docs/architecture/ADR-022-agent-execution-broker.md)。仅 C06；不接 Agent 工具/preset，不改 Chat sandbox；版本不变，仅本地验证、打包及提交。
+
+- C05：六区内新增离线 Chat/event Sandbox，支持私群文本/命令、通知请求、虚拟计时、reset/delete、transcript/捕获动作/receipt/loop/stages 与只读模拟人格/配置快照；明确 SIMULATION / zero real sends，无新 DSH slot。
+- 新增 `/sandbox/chat/create|event|advance|detail|reset|delete|list` 独立路径，替换 C04 未绑定 HTTP 入口；opaque UUID 绑定当前激活人格，未知/跨人格统一 not found，严格字段/身份拒绝、requestId、请求体/速率/排队/会话操作额度。fixture 模型、捕获 transport 和独立 store 沿用 C04，无 live gateway/store/loop 引用或真实模型/网络/媒体/执行沙箱。
+- 新增 sandbox API/UI 与 panel/nav/package 回归，live 共存测试通过新 HTTP 入口检测真实发送/网络为 0，env/fetch/live store/persona/bus 不变；Node shim 验证控件与异步状态，未使用真实浏览器。契约与限制见 [ADR-021](docs/architecture/ADR-021-simulation-service.md)。版本不变，仅本地验证和提交，无推送/部署/tag/release。
+
+- C04：抽出 host/service 共享装配，注入目录/store/config/clock/scheduler/model/transport/event bus/runtime，修复 runtime 与事件持久化的全局目录边界；新增独立人格、SQLite、配置、approval/request/reminder/module 状态与会话命名空间的离线模拟服务。OneBot 动作全部捕获，raw/unknown fail closed；fixture 模型/知识源与虚拟聚合/提醒/交付等待不访问 QQ 或外部网络。
+- 新增后端 simulations create/events/advance/state/reset/delete 独立 API、requestId 幂等和 opaque/身份注入拒绝；新增双图/live 共存、命令、私群/访问、通知请求、动作捕获、timer、reset/delete 回归，契约与限制见 [ADR-021](docs/architecture/ADR-021-simulation-service.md)。仅 C04，无 Chat UI/C06 执行沙箱、版本变更、推送、部署、标签或发布。
+
+- C03：WebUI 改为 Overview / Chat & Sandbox / Profiles / Extensions / Data & Logs / System 六区，宽 rail、窄 drawer 和元数据搜索；内部 URL 状态保留 DSH 外层路由，支持同区定位、刷新与前进/后退。沿用 C01 全部旧标签、认知分区、配置组、字段路径、模块及锚点别名；未知安全回落 Overview。
+- 设置按唯一 owner 归属：System/数据治理单 owner revisioned patch、profile API 的指定人格 staged 编辑（不激活、不改变运行）、模块详情唯一配置。保留当前运行人格旧编辑模式，其余 legacy 运行参数仍由原配置文件维护；移除根页面全量保存/reset，外观与内置模块保存适配 C02。补 Node shim 的别名穷举、所有者分区、搜索、URL 历史、窄屏 markup、secret 操作与 CAS 冲突测试。
+- Chat & Sandbox 仅 planned 占位，无新增沙盒后端或 profile runtime cutover；DSH 仍恰好两项注册。仅本地构建/验证，版本不变，无推送、部署、tag 或 release。
+
+- C02：新增人格 profile_settings、逐人格有效行为 snapshot/hash 与事务幂等迁移；保留显式值，失败保留 legacy 运行并关闭 profile 编辑。新增 settings schema/view/patch、profiles/config API、revision 冲突检查、单 owner 保存、secret keep/set/clear 和脱敏读取；legacy config adapter 路由 active profile 与原 System/module owner，拒绝缺版本、跨 owner 和全量 reset 绕过。
+- C02 运行门控为 legacy：profile 保存 staged，管线只做脱敏影子 capture，不改变认知输出；未适配的旧 UI 保存会因缺 revision/personaId 拒绝。无 UI/沙盒/版本变更，未推送、部署、打标签或发布；实现与限制见 [ADR-020](docs/architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
+
 - 缺口收敛验证：1107 项测试，1103 通过、4 项既有跳过、0 失败；文档、parity、本地双格式打包及包检查通过。版本保持 0.11.14，无推送、部署、标签或发布。
 
 - 模块动作增加有界原子审计（128 条 / 一小时终态 / 256 KiB），接纳与执行前写盘；重启未完成项标 interrupted、不续跑/补发，终态 ID/代次/时间与 requestId 去重保留。审计错误 fail closed，终态写盘失败只报告未知窗口；面板将 interrupted 视为终态。仍无强制 drain 恢复、多进程锁或跨平台 exactly-once。

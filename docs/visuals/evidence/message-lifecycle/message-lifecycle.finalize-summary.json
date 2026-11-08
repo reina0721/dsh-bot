@@ -6,12 +6,12 @@
   "type": "workflow",
   "quality": "showcase",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/message-lifecycle.json",
+    "path": "./docs/visuals/src/message-lifecycle.json",
     "sha256": "5250814deb6c21f3ef16ba7f6ccffee1eeb9b85ff1fd6a1fff27fb7a7def4880",
     "bytes": 4293
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+    "path": "./docs/visuals/message-lifecycle.html",
     "sha256": "7dfb4ec5eb1acc8ecd530752c472d8636a5d4d977ca6c156f0c4d5d6c576672c",
     "bytes": 761887
   },
@@ -28,9 +28,9 @@
     "truncated": false
   },
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/message-lifecycle/message-lifecycle.browser-check.json"
+    "receipt": "./docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/message-lifecycle/message-lifecycle.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/message-lifecycle/message-lifecycle.browser-check.json"
   },
   "update": {
     "status": "update_available",

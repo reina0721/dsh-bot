@@ -8,7 +8,7 @@
   "provenance": "current",
   "deliveryReceiptId": "8e19e48e-bdb2-4e5c-b068-56899b6032a8",
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
+    "path": "./docs/visuals/parity-roadmap.html",
     "sha256": "f436b2d07be174ca8cdf62ab10f6b8d84bd027d32249edbce545efde75a917a5",
     "bytes": 763414
   },
@@ -18,7 +18,7 @@
   },
   "chrome": {
     "status": "available",
-    "executable": "/home/node/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
+    "executable": "<tool-home>/.cache/archify-chrome/chrome/linux-157.0.8103.38/chrome-linux64/chrome"
   },
   "diagnostics": [],
   "containment": {
@@ -1099,7 +1099,7 @@
     "contactSheet": null
   },
   "sidecars": {
-    "directory": "/workspace/dsh-bot/docs/visuals/evidence/parity-roadmap",
+    "directory": "./docs/visuals/evidence/parity-roadmap",
     "receipt": "parity-roadmap.browser-check.json",
     "files": []
   }

@@ -6,7 +6,8 @@
 // 3. 配置写在数据目录 config.json，原子写；损坏时回退默认值并记录问题。
 
 import { dataDir, readJson, writeJson, existsSync } from './store.js'
-import { registerSecret, clearSecrets } from './redact.js'
+import { registerSecret, clearSecrets, redact } from './redact.js'
+import { SANDBOX_DEFAULTS, normalizeSandbox } from '../sandbox/policy.js'
 import { normalizeAccess } from './access.js'
 
 export const CONFIG_VERSION = 2
@@ -151,6 +152,8 @@ export const DEFAULTS = {
     groups: [],
     auditSize: 100,
   },
+  // Agent 执行 broker（与离线 Chat 和 DSH runtime 分离）。
+  sandbox: structuredClone(SANDBOX_DEFAULTS),
   // DSH Session 运行时：oneshot = 现有一次性 LLM；agent = 每聊天 DSH Session（默认先不切换）。
   runtime: {
     engine: 'oneshot',
@@ -650,6 +653,16 @@ export const CONFIG_GROUPS = [
       { path: 'access.private', label: '私聊白名单', type: 'string-list', default: [], placeholder: '输入 QQ 号后回车' },
       { path: 'access.groups', label: '群白名单', type: 'string-list', default: [], placeholder: '输入群号后回车' },
       { path: 'access.auditSize', label: '审计条数', type: 'number', default: 100, min: 0, max: 1000, step: 1, help: '内存环形缓冲；只存会话/发送者/原因/时间，不存消息正文，重启清空。' },
+    ],
+  },
+  {
+    id: 'sandbox', title: 'Agent 执行沙盒', description: '默认关闭；Agent 工具需 broker ready 与安全 preset；网络不支持，macOS 仅探测。',
+    fields: [
+      { path: 'sandbox.enabled', label: '启用 broker', type: 'switch', default: false },
+      { path: 'sandbox.driver', label: '隔离驱动', type: 'select', default: 'auto', options: ['auto', 'local-linux', 'local-macos', 'unavailable'].map(value => ({ value, label: value })) },
+      { path: 'sandbox.network', label: '网络（不支持）', type: 'switch', default: false, help: 'NETWORK_POLICY_UNSUPPORTED：仅接受 false，无 host network 回退。' },
+      ...Object.entries(SANDBOX_DEFAULTS.limits).map(([key, value]) => ({ path: `sandbox.limits.${key}`, label: key, type: 'number', default: value })),
+      ...Object.entries(SANDBOX_DEFAULTS.policy).map(([key, value]) => ({ path: `sandbox.policy.${key}`, label: key, type: 'string-list', default: value, help: '允许 workspace / execute；operator/group 默认无能力。' })),
     ],
   },
   {
@@ -1243,6 +1256,7 @@ export function normalizeConfig(raw) {
       },
     },
     access: normalizeAccess(merged.access, issues),
+    sandbox: normalizeSandbox(merged.sandbox),
     runtime: {
       engine: pickEnum(merged.runtime?.engine, DEFAULTS.runtime.engine, ['oneshot', 'agent']),
       workspaceDir: pickString(merged.runtime?.workspaceDir, DEFAULTS.runtime.workspaceDir, { max: 1024 }),
@@ -1570,7 +1584,25 @@ export function resetConfig() {
 
 /** 面板/接口展示用：不含任何运行时状态。 */
 export function publicConfig(config) {
-  return clone(config)
+  const walk = (value, key = '') => {
+    if (['wsToken', 'httpToken'].includes(key)) return value ? '***' : ''
+    if (Array.isArray(value)) return value.map(item => walk(item))
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, walk(child, name)]))
+    if (typeof value !== 'string') return value
+    if (/url$/i.test(key) && value) {
+      try {
+        const url = new URL(value)
+        let changed = false
+        if (url.username || url.password) { url.username = ''; url.password = ''; changed = true }
+        for (const name of [...url.searchParams.keys()]) {
+          if (/token|key|secret|password|auth/i.test(name)) { url.searchParams.set(name, '***'); changed = true }
+        }
+        return redact(changed ? url.href : value)
+      } catch { return '' }
+    }
+    return redact(value)
+  }
+  return walk(config)
 }
 
 /** 把当前配置里的 token 登记进脱敏器。 */

@@ -4,8 +4,8 @@
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
-  "output": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
+  "input": "./docs/visuals/src/current-architecture.json",
+  "output": "./docs/visuals/current-architecture.html",
   "specification": {
     "sha256": "91ec58eea04a16a8774ae5938a916e755c434ad6a6b3987ba963499380b8ac25",
     "bytes": 7101

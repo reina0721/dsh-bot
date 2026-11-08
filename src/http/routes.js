@@ -4,7 +4,10 @@
 import { createModuleUiHandler, MODULE_UI_PREFIX } from '../modules/sandbox.js'
 import { redact } from '../core/redact.js'
 import { publicConfig, defaultConfig, CONFIG_GROUPS } from '../core/config.js'
+import { SETTINGS_FIELDS } from '../core/settings-schema.js'
 import { readFile } from 'node:fs/promises'
+import { createSandboxApi, SANDBOX_BODY_BYTES } from '../sandbox/api.js'
+import { createSandboxChatApi, sandboxChatEnvelope, SANDBOX_CHAT_LIMITS } from './sandbox-chat.js'
 
 export const API_PREFIX = '/onebot-qq/api'
 export const API_VERSION = 1
@@ -45,12 +48,12 @@ async function readBody(req, maxBytes = MAX_BODY_BYTES) {
 }
 
 // Opaque UI frames must never use the host REST API, including after self-navigation.
-function rejectSandboxApi(req, res) {
+function rejectSandboxApi(req, res, extra = {}) {
   const origin = req.headers?.origin
   const destination = req.headers?.['sec-fetch-dest']
   const coreImage = destination === 'image' && req.headers?.['sec-fetch-site'] === 'same-origin'
   if (origin !== 'null' && (!destination || ['empty', 'document'].includes(destination) || coreImage)) return false
-  send(res, 403, { ok: false, message: '不允许隔离页面访问宿主 API' })
+  send(res, 403, { ...extra, ok: false, message: '不允许隔离页面访问宿主 API' })
   return true
 }
 
@@ -87,7 +90,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, ingress = null, simulations = null, executionSandbox = null, cognition, models, media = null, stickers = null, providerRegistry = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -107,14 +110,14 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     }
   }
 
-  const route = (method, path, handler) => {
+  const route = (method, path, handler, failure = () => ({})) => {
     const register = () => ctx.webServer.register({
       kind: 'exact',
       path: API_PREFIX + path,
       handler: (req, res) => {
-        if (rejectSandboxApi(req, res)) return
+        if (rejectSandboxApi(req, res, failure())) return
         if (method && String(req.method || '').toUpperCase() !== method) {
-          send(res, 405, { ok: false, message: `只支持 ${method}` })
+          send(res, 405, { ...failure(), ok: false, message: `只支持 ${method}` })
           return
         }
         answer(res, () => handler(req, res))
@@ -180,8 +183,100 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       providers: (providerRegistry?.health?.().items || []).map(row => ({ name: row.name, owner: row.owner, state: row.state, ownerModuleId: row.ownerModuleId, ownerRuntimeGeneration: row.ownerRuntimeGeneration, reasonCode: row.reasonCode, fallback: row.fallback })) }
   }))
 
+  if (executionSandbox) {
+    const api = createSandboxApi({ service: executionSandbox, currentPersonaId: () => cognition?.activePersonaId?.() })
+    for (const [method, path, action] of [
+      ['GET', '/sandbox/status', 'status'], ['POST', '/sandbox/probe', 'probe'],
+      ['GET', '/sandbox/audit', 'audit'], ['GET', '/sandbox/jobs', 'jobs'], ['POST', '/sandbox/jobs/create', 'create'],
+      ['GET', '/sandbox/jobs/detail', 'detail'], ['POST', '/sandbox/jobs/cancel', 'cancel'],
+      ['GET', '/sandbox/artifact', 'artifact'],
+    ]) route(method, path, async (req, res) => {
+      let input
+      try {
+        const query = loopQueryOf(req)
+        if (method === 'GET') input = query
+        else {
+          if (Object.keys(query).length) throw Error()
+          input = await readBody(req, SANDBOX_BODY_BYTES)
+        }
+      } catch { return send(res, 400, { ok: false, code: 'INVALID_SANDBOX_INPUT' }) }
+      const result = await api.handle(action, input)
+      send(res, result.status, result.body)
+    })
+  }
+
   // ---- 状态与配置 ----
+  // Dedicated offline paths replace the unscoped C04 /simulations endpoints.
+  if (simulations) {
+    const sandbox = createSandboxChatApi({ simulations, currentPersonaId: () => cognition?.activePersonaId?.() })
+    for (const action of ['create', 'event', 'advance', 'detail', 'reset', 'delete', 'list']) {
+      const method = ['detail', 'list'].includes(action) ? 'GET' : 'POST'
+      route(method, '/sandbox/chat/' + action, async (req, res) => {
+        let input
+        try {
+          const query = loopQueryOf(req)
+          if (method === 'GET') input = query
+          else {
+            if (Object.keys(query).length) throw new Error('INVALID_SIMULATION_INPUT')
+            input = await readBody(req, SANDBOX_CHAT_LIMITS.bodyBytes)
+          }
+        } catch {
+          send(res, 400, sandboxChatEnvelope({ ok: false, code: 'INVALID_SIMULATION_INPUT', message: 'INVALID_SIMULATION_INPUT' }))
+          return
+        }
+        const result = await sandbox.handle(action, input)
+        send(res, result.status, result.body)
+      }, sandboxChatEnvelope)
+    }
+  }
+
   route('GET', '/status', async () => statusPayload())
+
+  const settings = () => {
+    const service = cognition?.services?.settings
+    if (!service) throw Object.assign(new Error('SETTINGS_UNAVAILABLE'), { code: 'SETTINGS_UNAVAILABLE' })
+    return service
+  }
+  const settingsAnswer = async work => {
+    try { return await work() }
+    catch (error) {
+      const code = /^(SETTINGS_|PERSONA_NOT_FOUND$|MODULE_CONFIG_)/.test(error?.code || '') ? error.code : 'SETTINGS_WRITE_UNAVAILABLE'
+      return { ok: false, code, message: code }
+    }
+  }
+  const fileFields = scope => SETTINGS_FIELDS.filter(field => field.storage === 'module-file' && scope === `module:${field.canonical.moduleId}`)
+  const moduleSettingsView = (scope, selected, result) => ({ ok: true, scope, revision: result.revision,
+    values: publicConfig(Object.fromEntries(selected.map(field => [field.path, result.values[field.path.split('.').at(-1)]]))), ...settings().status() })
+  const settingsView = async query => {
+    const selected = fileFields(query.scope)
+    if (!selected.length) return settings().view(query)
+    const result = await modules.getModuleConfig(selected[0].canonical.moduleId)
+    return moduleSettingsView(query.scope, selected, result)
+  }
+  const settingsPatch = async body => {
+    const selected = fileFields(body?.scope)
+    if (!selected.length) return settings().patch(body)
+    if (!body.patch || typeof body.patch !== 'object' || Array.isArray(body.patch) || !Object.keys(body.patch).length
+      || Object.keys(body.patch).some(path => !selected.some(field => field.path === path))) {
+      return { ok: false, code: 'SETTINGS_MULTI_OWNER' }
+    }
+    const moduleId = selected[0].canonical.moduleId
+    const current = await modules.getModuleConfig(moduleId)
+    const values = { ...current.values }
+    for (const [path, value] of Object.entries(body.patch)) values[path.split('.').at(-1)] = value
+    const result = await modules.setModuleConfig(moduleId, values, body.revision)
+    return moduleSettingsView(body.scope, selected, result)
+  }
+  route('GET', '/settings/schema', () => settingsAnswer(() => settings().schema()))
+  route('GET', '/settings/view', req => settingsAnswer(() => settingsView(queryOf(req))))
+  route('POST', '/settings/patch', req => settingsAnswer(async () => settingsPatch(await readBody(req))))
+  route('GET', '/profiles', () => settingsAnswer(() => ({ ok: true, items: publicConfig(cognition.personaList()), activeId: cognition.activePersonaId(), ...settings().status() })))
+  route('GET', '/profiles/config', req => settingsAnswer(() => settings().view({ scope: 'profile', id: queryOf(req).id })))
+  route('POST', '/profiles/config/save', req => settingsAnswer(async () => {
+    const body = await readBody(req)
+    if (body?.scope && body.scope !== 'profile') return { ok: false, code: 'SETTINGS_SCOPE_INVALID' }
+    return settings().patch({ ...body, scope: 'profile' })
+  }))
 
   const mediaFeatures = () => {
     const provider = providerRegistry?.get('mediaFeatures')
@@ -687,30 +782,20 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     })
   }
 
-  route('GET', '/config', async () => ({
-    ok: true,
+  route('GET', '/config', async () => settingsAnswer(() => ({
+    ...settings().legacyView(),
     version,
     apiVersion: API_VERSION,
     dataDir,
-    config: publicConfig(getConfig()),
-    defaults: defaultConfig(),
+    defaults: publicConfig(defaultConfig()),
     groups: CONFIG_GROUPS,
-  }))
+  })))
 
   // 注意：DSH webserver 的 exact 路由按 path 去重（不区分 method），同 path 的 GET/POST
   // 不能分别注册，因此保存动作用独立子路径。
-  route('POST', '/config/save', async (req) => {
-    const body = await readBody(req)
-    const next = body && body.config !== undefined ? body.config : body
-    if (!next || typeof next !== 'object' || Array.isArray(next)) throw new Error('缺少 config 对象')
-    const result = setConfig(next)
-    return { ok: true, config: publicConfig(result.config), issues: result.issues || [] }
-  })
+  route('POST', '/config/save', req => settingsAnswer(async () => settings().legacySave(await readBody(req))))
 
-  route('POST', '/config/reset', async () => {
-    const result = resetConfig()
-    return { ok: true, config: publicConfig(result.config), issues: result.issues || [] }
-  })
+  route('POST', '/config/reset', () => ({ ok: false, code: 'SETTINGS_MULTI_OWNER', message: 'Use revisioned patches for each owner' }))
 
   // ---- 连接控制 ----
   route('POST', '/connect', async () => {

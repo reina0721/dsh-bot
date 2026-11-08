@@ -1,6 +1,14 @@
 # dsh-bot · 架构与实现契约
 
+AstrBot alignment C09 已完成 C01–C08 的离线验收，生产基线为 C08 `81304d2`。六区导航/唯一设置所有者、staged profile、capture-only Chat sandbox、独立执行 broker 与 Agent 工具边界见 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。profile 运行仍为 legacy；真实 Linux containment 未认证，macOS 仅 discovery，无 egress/真实模型 preview/Windows 执行；真实浏览器与宿主安全 preset 联调仍有缺口。C09 只改测试、包断言和文档，版本保持 0.11.15。
+
 > 本文件描述当前模块边界与接口契约。接口变更需同步更新本文、测试及用户文档。
+
+## AstrBot alignment C04：离线模拟服务图
+
+[ADR-021](architecture/ADR-021-simulation-service.md) 定义共享 `src/services/assembly.js` 装配和 `src/simulation/` 离线会话服务。host 保留 apply 注册、真实 QQ/model/media 与动态提醒所有权；模拟复用真实 normalization/access/ingress/aggregation/command/cognition/delivery，注入独立根目录/store/config/persona/bus/runtime namespace、fixture 模型/知识源、虚拟 scheduler 和捕获 OneBot transport。raw/unknown 动作 fail closed，captures 与业务 receipts 分开且标记 `environment: simulation`；没有 process.env/global fetch/live persona 切换或 QQ 发送。
+
+后端 `/onebot-qq/api/simulations/{create,events,advance,state,reset,delete}` 使用独立 mutation 路径，拒绝 opaque frame、任意 raw/身份/权限/路径/凭据输入。事件只描述 private/group 消息、有限通知和请求，由服务生成合成身份；requestId 幂等，advance 后读取 transcript/captures/receipts。typing/reply-delivery/reminders 使用真实内置模块与私有状态，外部模块发现关闭；媒体、learning、proactivity 和 DSH Agent 工具不加载。C05 已在六区中接入 Chat/event UI；C06–C08 执行 broker 单独在 live host 装配，不进入 simulation graph。完整字段、关闭顺序和限制见 ADR-021/022。
 
 ## 闭环 v2（C01–C07 已实现，C08 离线验收）
 
@@ -84,6 +92,8 @@ Phase 14 完成模块边界验收，生产目录保持 reply delivery、typing�
 内部交付 seam（Phase 1 + Phase 4 + Phase 5）：`src/delivery/registry.js` 是宿主在 cognition/modules 之前创建的共享 registry，模块在宿主 ready 前完成启动。默认启用的 `builtin-reply-delivery` 通过仅内置可用的 `delivery:plan` API 注册唯一 format 规划器，布局纯函数位于 `src/delivery/reply-plan.js`，模块入口仅注册它；`src/delivery/plan.js` 保留兼容导出、校验和单条纯文本回退，`src/delivery/executor.js` 顺序执行。outbound 继续持有访问/限频/leak guard，pipeline 保留统计、pending、归因与轮次记录。内部 engine 默认 auto：有 planner 用模块，无 planner 用 core 兼容布局；core 始终绕过注册表，显式 planner 缺失或规划抛错/无效时单条纯文本回退。core 与模块复用纯布局函数和执行器，pipeline 不再构建消息段或计算分条/等待；所有 `cognition.reply.*` 保留。无配置迁移或模块配置 UI，详见 [ADR-001](architecture/ADR-001-delivery-seam.md) 与 [ADR-003](architecture/ADR-003-reply-delivery-module.md)。Phase 2 的入站编排保持不变，详见 [ADR-002](architecture/ADR-002-ingress-coordinator.md)。
 
 ### 3.1 配置（src/core/config.js）
+
+AstrBot alignment C01 的权威编辑所有权与导航契约位于 `src/core/settings-schema.js`、`src/core/navigation.js`，详见 [ADR-020：settings ownership and navigation contract](architecture/ADR-020-settings-ownership-navigation.md)。静态库存覆盖 30 个旧组、297 个核心配置叶子及 1 个模块文件字段，按 system/profile/module 唯一分区；operation 单独描述人工动作。六区导航仅为登记模型，旧 tab/section/group/DOM 锚点通过纯函数解析。profile scope 不改变当前全局配置存储；本阶段不接入 UI、不迁移 profile、不增加沙盒或 DSH slot。
 
 - 配置文件：`$DSH_HOME/plugins-data/dsh-bot/config.json`（可用 `DSH_BOT_DATA_DIR` 覆盖，测试用）。
 - `DEFAULTS` 必须包含**所有**可调参数（重连退避、超时、重试、事件过滤、缓冲容量、日志级别等）。
@@ -331,7 +341,7 @@ outbound 在限频检查后调用 guard；block 返回 `{ok:false,error:'LEAK_BL
 ### 3.12 DSH Session 运行时（`src/runtime/agent.js`）
 
 ```js
-createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger, dataRoot }) -> {
+createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger, dataRoot, executionSandbox, getPersona }) -> {
   available(), active(), engine(),
   levelFor(turn), presetFor(level),
   compose({ turn, system, user }),  // -> { ok, text, sessionId } | { ok:false, error }
@@ -342,15 +352,16 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger
 
 - 服务探测：`ctx.get('sessionController')`、`workspaceRegistry`、`agents`、`systemPrompt`；缺一个则 `available=false`。
 - `runtime.engine` 默认 `oneshot`；只有 `agent` 且服务齐全时 `active=true`，否则 `compose` 返回 `RUNTIME_INACTIVE`，调用方回退一次性 LLM。
-- 会话映射：`<dataDir>/runtime/sessions.json`，key 为 `chatType:chatId`；preset/level 变化或恢复失败时新建。
-- preset：主人私聊 `dsh-bot-private`（fs/fs-search/web 工具），群聊/他人私聊 `dsh-bot-social`（无本机工具）。
-- QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本经 DeliveryService/executor 走 outbound 的访问控制与限频。social/group session 注册 0 个；注册失败只记安全日志，dispose 逐项移除。
+- 会话映射：`<dataDir>/runtime/sessions.json`，key 为 `chatType:chatId`；当前实例绑定 environment/runtime instance/persona ID 与代次/principal/chat/preset/policy generation/session instance。变化或就绪状态变化时退休旧会话；重启不复用没有当前实例绑定的旧 Session。
+- preset：从未启用 sandbox 时保留主人私聊 `dsh-bot-private`（legacy fs/fs-search/web）与 `dsh-bot-social`。启用后使用独立 `dsh-bot-sandbox-private` / `dsh-bot-sandbox-social`，不可含通用 fs/web/exec；缺失则安全失败、允许 oneshot 文本回退，不降级到 legacy preset。所需配置见 ADR-022，受保护 patch 未修改。
+- C07 sandbox 工具：host 独立 broker 经 assembly/cognition 注入。仅 enabled + ready + session 策略许可时挂载 `sandbox_file_list/read/write`、`sandbox_shell/python/action`；仅 job 输入与相对路径。Python 固定不可用，action 仅 file.delete，无新 P1 能力。每次调用/等待核对就绪、人格与策略代次；artifact ≤64 KiB，输出 ≤16 KiB，固定错误码。无通用文件/网络 fallback，oneshot 文本不转执行。
+- QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本经 DeliveryService/executor 走 outbound 的访问控制与限频。social/group session 注册 0 个 QQ 工具；注册失败只记安全日志，dispose 逐项移除。QQ 工具执行前也检查会话绑定，旧引用拒绝迟到动作。
 - 上下文：`agent.ctx.systemPrompt.context({ name, order, text })` 挂认知 system 文本；没有该 API 时退回把 system 前置到 user 消息。
-- 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT` 不强杀。
+- 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT`，同步撤销工具接纳、取消 broker 作业并退休 Session；尝试宿主 agent.abort，不能停止时隔离旧 Session，迟到事件不结算。策略/人格变更与 dispose 同样撤销，100ms monitor 清理，create 迟到返回也取消。
 - 显式插话（M7-o）：主人 `/steer 文本` 经命令身份/禁用列表/访问闸门调用 `runtime.steer(turn,text)`；要求 active、private/group 正整数安全数字 ID、非空 1–1000 Unicode 字符。通过 `sessionFor(turn)` 复用或创建 Session，调用 `agent.steer({content:[{type:'text',text}],source:{kind:'user'}})`，不写配置或直接调用模型。Session 解析单独串行以避免与 compose 并发创建；steer 不等待 compose 的 turn/end。
 - 插话结果：缺方法返回 `STEER_UNAVAILABLE`，异常只返回/记录固定 `STEER_FAILED`，不回显原始异常/文本；成功累加 `summary().stats.steers` 并更新 lastAt。普通回合仍只用 followup，不自动 steer，无非主人插话、typing/`set_input_status` 或插话面板/API；fake agent 离线测试，真实 DSH/QQ 未验证，#9 partial。
 - 人格/规则：插件在 `host.apply` 注册 `dshbot_persona` / `dshbot_rules_private` / `dshbot_rules_social` 提示词变量，preset 只引用变量。
-- 边界：analysis/policy/记忆仍由认知内核负责；没有通用 action bus，也不提供资料编辑、群管理、精华、撤回或文件 Agent 工具；真实 QQ 工具调用仍待真机验证。
+- 边界：analysis/policy/记忆仍由认知内核负责；没有通用 action bus，也不提供资料编辑、群管理、精华或撤回；文件能力仅经 C07 sandbox broker。真实 QQ 工具调用仍待真机验证。
 
 ### 3.13 QQ 命令与按聊天模型
 
@@ -584,3 +595,6 @@ commands 注入 requests 服务，三个内置命令不能被模块覆盖；命�
 成功把一次提醒标 sent、重复提醒设 `nextAt=完成时刻+everySeconds`、计数加一并清空错误；错过的次数不回补。失败保持 active，仅允许固定公共错误码，其余归为 SEND_FAILED，`nextAt=now+max(60,minIntervalSeconds)`，避免紧循环。dryRun 视作成功。dispose 后不再写 store；await 前固定原人格 kind，完成时重读记录，已取消/删除不覆盖；切换人格后停止旧批次余项。不是分布式 exactly-once，网关超时或进程在发送/记账之间崩溃可能重复。
 
 主人 `/remind`、`/reminders`、`/forgetreminder` 先检查 owner/access/开关；服务对创建和取消再校验 owner 与 scope。命令与提醒都走 outbound。没有提醒 REST API/管理面板、新 Agent 工具、自动审批、DSH jobs/长任务/LLM 任务执行；仅 fake clock/scheduler/gateway 与本地持久化测试，真实 timer/QQ 未验证，#8/#40 为 partial。
+
+
+Agent 执行 broker（C06）与 Agent 工具/会话隔离（C07）的工作区、Linux bwrap/cgroup fail-closed 边界、管理 API、持久审计、工具契约、preset 缺口与验证限制见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。与离线 simulation/Chat 服务分离，默认关闭。当前驱动 unavailable 时不挂 sandbox 工具；独立安全 preset 尚未配置，live patch 保持原样。

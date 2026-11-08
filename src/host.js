@@ -12,26 +12,19 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { assembleServices } from './services/assembly.js'
+import { bootstrapSandbox } from './sandbox/bootstrap.js'
+import { createSimulationService } from './simulation/service.js'
 import { createLogger } from './core/logger.js'
-import { createAccess } from './core/access.js'
-import { createEventStore } from './core/events.js'
 import { loadConfig, saveConfig, defaultConfig, refreshSecrets } from './core/config.js'
 import { dataDir } from './core/store.js'
 import { createGatewayManager } from './gateway/manager.js'
-import { normalizeEvent } from './gateway/normalize.js'
-import { createIngressCoordinator } from './ingress/coordinator.js'
 import { createRoutes } from './http/routes.js'
-import { createCognition } from './cognition/index.js'
-import { createTurnHooks } from './cognition/turn-hooks.js'
 import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
 import { createBackupService } from './ops/backup.js'
 import { createUpgradeService } from './ops/upgrade.js'
-import { createModuleKernel } from './modules/kernel.js'
-import { createProviderRegistry } from './extensions/providers.js'
-import { createDeliveryRegistry } from './delivery/registry.js'
-import { builtinRegistry } from './modules/registry.js'
 import { personaProfileText } from './cognition/persona.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -58,15 +51,11 @@ export function apply(ctx, rowConfig) {
 
   const logger = createLogger({ getConfig: () => configState.current, dsh: ctx })
   const log = logger.child('plugin')
-  const eventLog = logger.child('events')
-  const access = createAccess({ getConfig: () => configState.current, logger: logger.child('access') })
 
   const getConfig = () => configState.current
 
   const backup = createBackupService({ dataDir: dataDir(), getConfig, logger })
   const upgrade = createUpgradeService({ getConfig, logger, currentVersion: VERSION })
-
-  const events = createEventStore({ getConfig, log: eventLog })
 
   // 模型网关独立于 QQ/认知：协议适配与 provider 注册表不感知平台。
   const models = createModelGateway({ dataRoot: dataDir(), logger, env: process.env })
@@ -83,47 +72,18 @@ export function apply(ctx, rowConfig) {
   }
   const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
-  const deliveryRegistry = createDeliveryRegistry()
-  const providerRegistry = createProviderRegistry({ logger: logger.child('providers') })
-  const turnHooks = createTurnHooks({ logger: logger.child('turn-hooks') })
-  const cognition = createCognition({
-    providerRegistry,
-    turnHooks,
-    deliveryRegistry,
-    ctx,
-    getConfig,
-    models,
-    gateway: { get actions() { return gatewayRef?.actions || null } },
-    logger,
-    dataRoot: dataDir('cognition'),
-    access,
-    setConfig,
-    media,
-  })
+  const executionSandbox = bootstrapSandbox({ root: dataDir('sandbox'), getConfig })
   const reminderControl = {}
-  const modules = createModuleKernel({
-    reminderControl,
-    media, stickers,
-    providerRegistry,
-    access,
-    turnHooks,
-    gateway: { get actions() { return gatewayRef?.actions || null } },
-    deliveryRegistry,
-    dataDir: dataDir('modules'),
-    registry: builtinRegistry,
-    getConfig,
-    ctx,
-    logger,
-    cognition,
-    outbound: cognition.services.outbound,
-    delivery: cognition.services.delivery,
-    commands: cognition.services.commands,
-    personaStore: cognition.services.personaStore,
+  const { access, events, providerRegistry, cognition, modules, ingress, modulesReady: startingModules } = assembleServices({
+    dataRoot: dataDir(), getConfig, setConfig, eventBus: ctx, runtimeContext: ctx,
+    actionTransport: { get actions() { return gatewayRef?.actions || null } },
+    modelAdapter: models, logger, media, stickers, reminderControl, eventDataRoot: null, executionSandbox,
   })
-  const modulesReady = modules.start().catch((error) => {
+  const modulesReady = startingModules.catch((error) => {
     log.warn('本地模块初始化失败：', error.message)
     return []
   })
+  const simulations = createSimulationService({ dataRoot: dataDir('simulations') })
 
   /** 把人格/规则注册成 DSH 提示词变量，供 preset 的 {{dshbot_*}} 使用。 */
   function registerPromptVariables() {
@@ -172,8 +132,6 @@ export function apply(ctx, rowConfig) {
   }
 
   registerPromptVariables()
-
-  const ingress = createIngressCoordinator({ access, cognition, events, modules, ctx, normalizeEvent, getConfig, logger: log })
 
   /** WS 原始事件 → raw 日志/认知 → 规范化 → 缓冲 → 广播给 DSH 插件事件总线。 */
   function onEvent(raw) {
@@ -272,6 +230,8 @@ export function apply(ctx, rowConfig) {
 
   const routes = createRoutes({
     ingress,
+    simulations,
+    executionSandbox,
     providerRegistry,
     ctx,
     getConfig,
@@ -438,6 +398,8 @@ export function apply(ctx, rowConfig) {
     try {
       routes.dispose()
     } catch (error) {}
+    simulations.dispose().catch(() => {})
+    executionSandbox.dispose().catch(() => {})
     backup.dispose()
     upgrade.dispose()
     modules.dispose().catch(() => {})
@@ -483,6 +445,8 @@ export function apply(ctx, rowConfig) {
     modules,
     providerRegistry,
     modulesReady,
+    simulations,
+    executionSandbox,
     syncReminderOwnership,
     backup,
     upgrade,

@@ -4,8 +4,8 @@
   "status": "current",
   "command": "deliver",
   "type": "workflow",
-  "input": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
-  "output": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
+  "input": "./docs/visuals/src/parity-roadmap.json",
+  "output": "./docs/visuals/parity-roadmap.html",
   "specification": {
     "sha256": "443ab931f0d574a841656a8031057a4f267ac60176457058b82a19b68f7b781b",
     "bytes": 5297

@@ -12,15 +12,16 @@ import { executeDeliveryPlan } from '../delivery/executor.js'
 import { flattenForward, forwardIdsOf } from '../gateway/forward.js'
 
 export function createPipeline({
-  store, getConfig, clock, logger,
+  store, getConfig, clock, logger, deliverySleep = null,
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
   beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null, purpose = null,
-  media = null, deliveryRegistry = null, turnHooks = null, observer = outbound?.loopObserver,
+  media = null, deliveryRegistry = null, turnHooks = null, observer = outbound?.loopObserver, settings = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
   const pending = new Map() // chatKey -> { decisionId, sentAt, action }
+  const settingsContexts = new WeakMap()
   const pendingOwners = new Map()
   const scope = () => ({ personaId: store?.currentPersonaId?.() || 'self', generation: persona?.scopeGeneration?.() ?? null })
   const sameScope = owner => owner && owner.personaId === scope().personaId && owner.generation === scope().generation
@@ -349,7 +350,7 @@ export function createPipeline({
       text, turn, decisionId: decision.id, source: 'pipeline', dryRun: () => isDry() ? true : null,
       deliver: outbound && typeof outbound.deliver === 'function' ? (payload) => outbound.deliver(payload) : null,
       fallbackDeliver: (payload) => sendDirect(decision, payload.segments, turn, { mark: directPart++ === 0 }),
-      sleep,
+      sleep: deliverySleep || sleep,
       onPartSent: ({ messageId, index, parts }) => {
         turnAggregatorRef?.noteBotMessage?.(messageId)
         try {
@@ -560,6 +561,10 @@ export function createPipeline({
   }
 
   async function handleTurn(turn) {
+    // Shadow capture only: legacy services keep their existing runtime reads.
+    if (turn && settings) {
+      try { settingsContexts.set(turn, settings.capture()) } catch { /* Legacy runtime remains available. */ }
+    }
     const c = cfg()
     const admitted = turn && c.enabled && !c.paused && !(turn.senderId && (turn.senderId === turn.selfId || turn.senderId === String(getConfig()?.botQQ || '')))
     const loop = admitted ? observeLoop(observer, 'begin', { kind: 'social', turnId: turn.id }) : null
@@ -811,6 +816,7 @@ export function createPipeline({
   }
 
   return {
+    settingsContext: turn => settingsContexts.get(turn) || null,
     handleTurn, handleRecall, handlePoke, handleReaction, observeIncoming, stats: statsSnapshot, trace, setTurnAggregator,
     groupMode: effectiveGroupMode, _pending: pending,
   }

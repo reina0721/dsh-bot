@@ -47,3 +47,5 @@ node "$ARCHIFY_SKILL/bin/archify.mjs" finalize architecture \
 - 2026-11-06 的审计快照：61 项中 8 项用户豁免、47 项非 has/exempt；M7 发布门未关闭。
 - 图必须与 `docs/research/GAP-AURABOT.md` 的状态一致；不一致时以代码/测试为准，并修图。
 - 不把图当成实现证据；图只说明设计/结构。
+
+C09 包隐私核验将既有证据 JSON 中的仓库绝对路径改为相对路径，工具安装/cache 根目录改为 `<tool-home>` 占位；只规范化机器路径，不改历史状态、时间、图表内容/hash 或重新运行浏览器。这些图表的历史 browser-check 不能作为 AstrBot 六区/Chat UI 的本轮真实浏览器证据，当前缺口见 [C09 验收](../architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。

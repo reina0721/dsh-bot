@@ -10,7 +10,7 @@
 // 边界：
 //   - 只做「回复生成」；工具结果由 DSH 自己记录，认知侧不重复执行工具；
 //   - 每个 Session 串行执行 compose，避免同一会话并发 turn 互相抢 pending；
-//   - 超时只放弃等待，不强杀 agent；下一条消息仍可复用该 Session。
+//   - 超时/撤销先关闭工具接纳、取消作业，再退休 Session；迟到事件不再结算。
 
 import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
@@ -19,9 +19,14 @@ import { join } from 'node:path'
 import { readJson, writeJson } from '../core/store.js'
 import { isOwner } from '../core/access.js'
 import { createQqTools } from './qq-tools.js'
+import { createSandboxTools, sandboxAdmission, sandboxContext } from './sandbox-tools.js'
+import { digest, normalizeSandbox, policyGeneration } from '../sandbox/policy.js'
 
 export const PRIVATE_PRESET = 'dsh-bot-private'
 export const SOCIAL_PRESET = 'dsh-bot-social'
+// Separate presets must contain no generic fs/web/exec plugins. See ADR-022 preset gap.
+export const SANDBOX_PRIVATE_PRESET = 'dsh-bot-sandbox-private'
+export const SANDBOX_SOCIAL_PRESET = 'dsh-bot-sandbox-social'
 const SESSION_FILE = 'sessions.json'
 const MAX_CONTEXT_CHARS = 12000
 
@@ -62,7 +67,8 @@ function clampText(text, max = MAX_CONTEXT_CHARS) {
  * @param {object} [o.logger]
  * @param {string} [o.dataRoot] 运行时数据目录（sessions.json/workspace）
  */
-export function createAgentRuntime({ ctx, getConfig, access = null, gateway = null, outbound = null, delivery = null, logger = null, dataRoot } = {}) {
+export function createAgentRuntime({ ctx, getConfig, access = null, gateway = null, outbound = null, delivery = null, logger = null, dataRoot, executionSandbox = null,
+  getPersona = () => ({ id: 'self', generation: 0 }), environment = 'live' } = {}) {
   const log = logger?.child?.('runtime') || logger || { info() {}, warn() {}, debug() {} }
   const baseDir = dataRoot || join(process.cwd(), '.dsh-bot-runtime')
   const sessionFile = join(baseDir, SESSION_FILE)
@@ -75,7 +81,12 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
   }
   const runtimeCfg = () => cfg().runtime || {}
 
+  const runtimeInstance = randomUUID()
   const state = {
+    disposed: false,
+    sandboxMode: false,
+    bindings: new Map(),
+    retired: new Set(),
     mapLoaded: false,
     chats: {},
     pending: new Map(), // sessionId → { text, resolve, timer, ... }
@@ -116,7 +127,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
   }
 
   function active() {
-    return engine() === 'agent' && available()
+    return !state.disposed && engine() === 'agent' && available()
   }
 
   function levelFor(turn = {}) {
@@ -217,7 +228,65 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     throw new Error('SESSION_RESOLVE_FAILED')
   }
 
-  function mount(agent, sessionId, info = {}) {
+  function bindingCurrent(binding) {
+    if (state.disposed || !binding?.admitted || !active()) return false
+    try {
+      const persona = getPersona()
+      return persona.id === binding.personaId && persona.generation === binding.personaGeneration
+        && policyGeneration(cfg()) === binding.policyGeneration
+    } catch { return false }
+  }
+
+  function retire(sessionId, error = 'SESSION_REVOKED') {
+    const binding = state.bindings.get(sessionId)
+    if (!binding || !binding.admitted) return
+    // Revoke before invoking any asynchronous cancellation or host method.
+    binding.admitted = false
+    state.retired.add(sessionId)
+    binding.abort.abort()
+    const pending = state.pending.get(sessionId)
+    if (pending) {
+      clearTimeout(pending.timer)
+      state.pending.delete(sessionId)
+      pending.resolve({ ok: false, error, sessionId })
+    }
+    try { Promise.resolve(binding.agent?.abort?.()).catch(() => {}) } catch {}
+    for (const off of state.toolDisposers.get(sessionId) || []) { try { off() } catch {} }
+    state.toolDisposers.delete(sessionId)
+    try { state.contextDisposers.get(sessionId)?.() } catch {}
+    state.contextDisposers.delete(sessionId)
+    state.contexts.delete(sessionId)
+    state.bindings.delete(sessionId)
+    for (const [key, entry] of Object.entries(state.chats)) {
+      if (entry.sessionId === sessionId) delete state.chats[key]
+    }
+    state.stats.sessions = Object.keys(state.chats).length
+    saveMap()
+  }
+
+  function assertBinding(binding) {
+    if (!bindingCurrent(binding)) {
+      retire(binding?.sessionId)
+      throw Object.assign(new Error('SESSION_REVOKED'), { code: 'SESSION_REVOKED' })
+    }
+  }
+
+  function sandboxOptions(binding) {
+    return { broker: executionSandbox, binding, getConfig: cfg, getPersona,
+      isAdmitted: () => bindingCurrent(binding), signal: binding.abort.signal,
+      onRevoke: code => retire(binding.sessionId, code) }
+  }
+
+  async function sandboxReady(binding) {
+    if (!normalizeSandbox(cfg().sandbox).enabled || !executionSandbox) return false
+    try {
+      // A ready broker is necessary for mounting; permissions are checked separately.
+      const status = await executionSandbox.status(sandboxContext(binding))
+      return status?.state === 'ready' && status.policyGeneration === binding.policyGeneration
+    } catch { return false }
+  }
+
+  async function mount(agent, sessionId, info = {}, binding) {
     if (!agent) return
     const systemPrompt = agent?.ctx?.systemPrompt || services().systemPrompt
     if (!state.contextDisposers.has(sessionId) && systemPrompt && typeof systemPrompt.context === 'function') {
@@ -232,22 +301,32 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
         log.debug?.('挂载认知上下文失败：', error.message)
       }
     }
-    if (info.level === 'full' && !state.toolDisposers.has(sessionId)) {
-      const disposers = []
-      state.toolDisposers.set(sessionId, disposers)
+    if (state.toolDisposers.has(sessionId)) return
+    const disposers = []
+    state.toolDisposers.set(sessionId, disposers)
+    let sandboxTools = []
+    if (binding.sandboxReady) {
       try {
-        const registry = agent?.ctx?.tools
+        const policy = await sandboxAdmission(sandboxOptions(binding))
+        if (policy.capabilities.length) sandboxTools = createSandboxTools(sandboxOptions(binding))
+      } catch { retire(sessionId); throw new Error('SESSION_REVOKED') }
+    }
+    assertBinding(binding)
+    const qqTools = info.level === 'full'
+      ? createQqTools({ chat: info, gateway, outbound, delivery, getConfig, logger: log }) : []
+    const registry = agent?.ctx?.tools
+    for (const tool of [...qqTools, ...sandboxTools]) {
+      try {
         if (typeof registry?.register !== 'function') throw new Error('TOOLS_REGISTER_UNAVAILABLE')
-        for (const tool of createQqTools({ chat: info, gateway, outbound, delivery, getConfig, logger: log })) {
-          try {
-            const off = registry.register(tool)
-            if (typeof off === 'function') disposers.push(off)
-          } catch (error) {
-            log.warn?.(`注册 QQ Agent 工具 ${tool.name} 失败：${error.message}`)
-          }
-        }
-      } catch (error) {
-        log.warn?.('注册 QQ Agent 工具失败：', error.message)
+        const execute = tool.execute
+        const off = registry.register({ ...tool, async execute(...args) {
+          assertBinding(binding)
+          return execute(...args)
+        } })
+        if (typeof off === 'function') disposers.push(off)
+      } catch {
+        log.warn?.('注册 Agent 工具失败')
+        if (sandboxTools.includes(tool)) { retire(sessionId); throw new Error('SESSION_REVOKED') }
       }
     }
   }
@@ -260,31 +339,54 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
   async function resolveSessionFor(turn) {
     const key = `${turn.chatType}:${turn.chatId}`
     const level = levelFor(turn)
-    const preset = presetFor(level)
+    const persona = getPersona()
+    const candidate = {
+      environment, runtimeInstance, personaId: persona.id, personaGeneration: persona.generation,
+      principalId: String(turn.senderId || turn.chatId), chatType: turn.chatType, chatId: String(turn.chatId),
+      policyGeneration: policyGeneration(cfg()), scopeId: digest([environment, runtimeInstance, randomUUID()]),
+      admitted: true, abort: new AbortController(),
+    }
+    state.sandboxMode ||= normalizeSandbox(cfg().sandbox).enabled
+    candidate.sandboxReady = await sandboxReady(candidate)
+    if (state.disposed) throw new Error('RUNTIME_DISPOSED')
+    const preset = state.sandboxMode
+      ? (level === 'full' ? SANDBOX_PRIVATE_PRESET : SANDBOX_SOCIAL_PRESET) : presetFor(level)
+    candidate.preset = preset
+    // Session identity includes every trusted dimension; a new session gets a new scopeId.
+    candidate.identity = digest([environment, runtimeInstance, persona.id, persona.generation,
+      candidate.principalId, turn.chatType, String(turn.chatId), preset, candidate.policyGeneration, candidate.sandboxReady])
     loadMap()
     const entry = state.chats[key]
-    let sessionId = entry && entry.preset === preset && entry.level === level ? entry.sessionId : ''
+    const old = state.bindings.get(entry?.sessionId)
+    let sessionId = old && old.identity === candidate.identity && bindingCurrent(old) ? entry.sessionId : ''
+    if (entry && !sessionId) retire(entry.sessionId)
     let agent = null
     if (sessionId) {
-      try {
-        agent = await resolveAgent(sessionId)
-      } catch (error) {
-        log.warn?.(`会话 ${sessionId} 恢复失败，将新建`)
+      try { agent = await resolveAgent(sessionId) } catch {
+        retire(sessionId)
         sessionId = ''
-        agent = null
       }
     }
     if (!sessionId) {
       sessionId = await createSession(turn, preset, level)
-      agent = await resolveAgent(sessionId)
-      state.chats[key] = { sessionId, preset, level, createdAt: entry?.createdAt || Date.now(), updatedAt: Date.now() }
+      if (state.retired.has(sessionId)) throw new Error('SESSION_REVOKED')
+      candidate.sessionId = sessionId
+      state.bindings.set(sessionId, candidate)
+      try {
+        assertBinding(candidate)
+        agent = await resolveAgent(sessionId)
+        candidate.agent = agent
+        assertBinding(candidate)
+      } catch { retire(sessionId); throw new Error('SESSION_REVOKED') }
+      state.chats[key] = { sessionId, preset, level, createdAt: Date.now(), updatedAt: Date.now() }
       state.stats.sessions = Object.keys(state.chats).length
-      saveMap()
     } else {
       state.chats[key].updatedAt = Date.now()
-      saveMap()
     }
-    mount(agent, sessionId, { level, chatType: turn.chatType, chatId: turn.chatId, senderId: turn.senderId })
+    saveMap()
+    const binding = state.bindings.get(sessionId)
+    await mount(agent, sessionId, { level, chatType: turn.chatType, chatId: turn.chatId, senderId: turn.senderId }, binding)
+    assertBinding(binding)
     return { agent, sessionId, preset, level, key }
   }
 
@@ -310,22 +412,23 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
       state.pending.set(sessionId, pending)
       pending.timer = setTimeout(() => {
         if (state.pending.get(sessionId) !== pending) return
-        state.pending.delete(sessionId)
         state.stats.timeouts += 1
         state.stats.failed += 1
         state.stats.lastError = 'TIMEOUT'
         state.stats.lastAt = Date.now()
-        resolve({ ok: false, error: 'TIMEOUT', sessionId })
+        retire(sessionId, 'TIMEOUT')
       }, timeoutMs)
       try {
-        agent.followup(message)
+        assertBinding(state.bindings.get(sessionId))
+        Promise.resolve(agent.followup(message)).catch(() => retire(sessionId, 'PROMPT_FAILED'))
       } catch (error) {
         clearTimeout(pending.timer)
         state.pending.delete(sessionId)
         state.stats.failed += 1
-        state.stats.lastError = String(error?.message || error)
+        state.stats.lastError = 'PROMPT_FAILED'
         state.stats.lastAt = Date.now()
-        resolve({ ok: false, error: 'PROMPT_FAILED', message: String(error?.message || error), sessionId })
+        retire(sessionId, 'PROMPT_FAILED')
+        resolve({ ok: false, error: 'PROMPT_FAILED', sessionId })
       }
     })
   }
@@ -333,7 +436,9 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
   function onSessionEvent(session, event) {
     const sessionId = String(session?.id || '')
     const pending = state.pending.get(sessionId)
-    if (!pending || !event) return
+    if (!pending || !event || pending.ending) return
+    const binding = state.bindings.get(sessionId)
+    if (!bindingCurrent(binding)) { retire(sessionId); return }
     if (event.type === 'turn/start') {
       pending.started = true
       return
@@ -346,18 +451,27 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
       return
     }
     if (event.type === 'turn/end') {
-      clearTimeout(pending.timer)
-      state.pending.delete(sessionId)
-      state.stats.lastAt = Date.now()
-      if (pending.text) {
-        state.stats.ok += 1
-        state.stats.lastError = ''
-        pending.resolve({ ok: true, text: pending.text, sessionId })
-      } else {
-        state.stats.failed += 1
-        state.stats.lastError = 'EMPTY_REPLY'
-        pending.resolve({ ok: false, error: 'EMPTY_REPLY', sessionId, sawTool: pending.sawTool })
+      pending.ending = true
+      const finish = () => {
+        if (state.pending.get(sessionId) !== pending) return
+        if (!bindingCurrent(binding)) { retire(sessionId); return }
+        clearTimeout(pending.timer)
+        state.pending.delete(sessionId)
+        state.stats.lastAt = Date.now()
+        if (pending.text) {
+          state.stats.ok += 1
+          state.stats.lastError = ''
+          pending.resolve({ ok: true, text: pending.text, sessionId })
+        } else {
+          state.stats.failed += 1
+          state.stats.lastError = 'EMPTY_REPLY'
+          pending.resolve({ ok: false, error: 'EMPTY_REPLY', sessionId, sawTool: pending.sawTool })
+        }
       }
+      if (binding.sandboxReady) {
+        // Do not deliver a result after readiness was lost between monitor ticks.
+        sandboxReady(binding).then(ready => ready ? finish() : retire(sessionId)).catch(() => retire(sessionId))
+      } else finish()
     }
   }
 
@@ -383,6 +497,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     try {
       return await withLock(lockKey, async () => {
         const { agent, sessionId } = await sessionFor(turn)
+        assertBinding(state.bindings.get(sessionId))
         const hasContext = state.contextDisposers.has(sessionId)
         state.contexts.set(sessionId, clampText(system))
         const promptText = hasContext
@@ -401,10 +516,10 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
       })
     } catch (error) {
       state.stats.failed += 1
-      state.stats.lastError = String(error?.message || error)
+      state.stats.lastError = 'RUNTIME_FAILED'
       state.stats.lastAt = Date.now()
-      log.warn?.('Agent 生成失败：', error.message)
-      return { ok: false, error: 'RUNTIME_FAILED', message: String(error?.message || error) }
+      log.warn?.('Agent 生成失败')
+      return { ok: false, error: 'RUNTIME_FAILED' }
     }
   }
 
@@ -419,8 +534,10 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     }
     try {
       const { agent, sessionId } = await sessionFor(turn)
+      assertBinding(state.bindings.get(sessionId))
       if (typeof agent.steer !== 'function') return { ok: false, error: 'STEER_UNAVAILABLE' }
       await agent.steer({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+      assertBinding(state.bindings.get(sessionId))
       state.stats.steers += 1
       state.stats.lastAt = Date.now()
       return { ok: true, sessionId }
@@ -462,6 +579,10 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
   }
 
   function dispose() {
+    if (state.disposed) return
+    state.disposed = true
+    clearInterval(monitor)
+    for (const id of [...state.bindings.keys()]) retire(id, 'RUNTIME_DISPOSED')
     try {
       if (typeof state.listenerOff === 'function') state.listenerOff()
     } catch (error) {}
@@ -484,6 +605,18 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     state.contexts.clear()
     state.locks.clear()
   }
+
+  const monitor = setInterval(() => {
+    for (const [id, binding] of state.bindings) {
+      if (!bindingCurrent(binding)) { retire(id); continue }
+      if (binding.sandboxReady && !binding.checking) {
+        binding.checking = true
+        sandboxReady(binding).then(ready => { if (!ready) retire(id) })
+          .catch(() => retire(id)).finally(() => { binding.checking = false })
+      }
+    }
+  }, 100)
+  monitor.unref()
 
   // 监听可以早挂：没有服务时 compose 不会走到这里，但事件先收到也无害。
   attach()

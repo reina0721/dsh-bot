@@ -6,12 +6,12 @@
   "type": "architecture",
   "quality": "showcase",
   "specification": {
-    "path": "/workspace/dsh-bot/docs/visuals/src/target-architecture.json",
+    "path": "./docs/visuals/src/target-architecture.json",
     "sha256": "837ddc01179f48714c3b7951265e8cd4963c753adb0224d33420c693d74e54f0",
     "bytes": 6113
   },
   "artifact": {
-    "path": "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+    "path": "./docs/visuals/target-architecture.html",
     "sha256": "54ab12385be797c7ae01028df55a2d13227360ea8e42d00ad39c62366ccd71f1",
     "bytes": 769801
   },
@@ -28,9 +28,9 @@
     "truncated": false
   },
   "evidence": {
-    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.finalize.json",
-    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.finalize-summary.json",
-    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.browser-check.json"
+    "receipt": "./docs/visuals/evidence/target-architecture/target-architecture.finalize.json",
+    "summaryReceipt": "./docs/visuals/evidence/target-architecture/target-architecture.finalize-summary.json",
+    "browserCheckReceipt": "./docs/visuals/evidence/target-architecture/target-architecture.browser-check.json"
   },
   "update": {
     "status": "update_available",

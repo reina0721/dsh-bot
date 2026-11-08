@@ -96,9 +96,9 @@ function deepMerge(base, patch) {
 
 /** 用当前配置 + patch 保存（模拟面板改几项后点保存）。 */
 async function patchConfig(fake, patch) {
-  const { config } = await getJson(fake, '/config')
+  const { config, revision, personaId } = await getJson(fake, '/config')
   const next = deepMerge(config, patch)
-  const result = await postJson(fake, '/config/save', { config: next })
+  const result = await postJson(fake, '/config/save', { config: next, revision, personaId })
   return result
 }
 
@@ -490,22 +490,20 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
 // 2. 配置保存热应用 / 恢复默认 / 非法值回退
 // ---------------------------------------------------------------------------
 
-test('POST /config/save 热应用端点并自动连接；/config/reset 恢复默认；非法值回退且 issues 非空', { timeout: 30000 }, async (t) => {
-  const { dir, fake, mock } = await boot(t, { rowConfig: {} })
+test('POST /config/save revisioned system adapter hot applies; HTTP reset rejects multiple owners; invalid URLs normalize', { timeout: 30000 }, async (t) => {
+  const { dir, fake, mock, handle } = await boot(t, { rowConfig: {} })
 
   // 初始：未配置端点
   const initial = await getJson(fake, '/status')
   assert.equal(initial.gateway.configured, false)
 
   // 保存端点 + 账号 → 热应用后自动连上 mock（gateway.ready 时 enabled=true 已 start）
-  const saved = await postJson(fake, '/config/save', {
-    config: {
+  const saved = await patchConfig(fake, {
       enabled: true,
       botQQ: mock.selfId,
       accountCheck: 'warn',
-      onebot: { wsUrl: mock.wsUrl, httpUrl: mock.httpUrl, wsToken: mock.token, httpToken: mock.token },
+      onebot: { wsUrl: mock.wsUrl, httpUrl: mock.httpUrl, wsToken: { op: 'set', value: mock.token }, httpToken: { op: 'set', value: mock.token } },
       ui: { refreshMs: 3000 },
-    },
   })
   assert.deepEqual(saved.issues, [])
   assert.equal(saved.config.onebot.wsUrl, mock.wsUrl)
@@ -532,7 +530,8 @@ test('POST /config/save 热应用端点并自动连接；/config/reset 恢复默
   assert.equal(onDisk.onebot.wsToken, mock.token)
 
   // 恢复默认：端点/账号清空，连接关闭，磁盘恢复 DEFAULTS
-  const reset = await postJson(fake, '/config/reset', {})
+  assert.equal((await fake.call(API + '/config/reset', {}, { method: 'POST' })).json.code, 'SETTINGS_MULTI_OWNER')
+  const reset = handle.resetConfig()
   assert.equal(reset.config.onebot.wsUrl, '')
   assert.equal(reset.config.onebot.httpUrl, '')
   assert.equal(reset.config.botQQ, '')
@@ -544,15 +543,15 @@ test('POST /config/save 热应用端点并自动连接；/config/reset 恢复默
   assert.deepEqual(JSON.parse(await readFile(configFileOf(dir), 'utf8')), DEFAULTS)
 
   // 非法 wsUrl：回退为空 + issues 非空
-  const invalidWs = await postJson(fake, '/config/save', { config: { onebot: { wsUrl: 'ftp://x' } } })
+  const invalidWs = await patchConfig(fake, { onebot: { wsUrl: 'ftp://x' } })
   assert.equal(invalidWs.config.onebot.wsUrl, '')
   assert.ok(invalidWs.issues.length > 0, '非法 wsUrl 应给出 issues（至少提示未配置地址）')
 
   // 非法 httpUrl：回退为空 + issues 里说明协议不受支持
-  const invalidHttp = await postJson(fake, '/config/save', { config: { onebot: { httpUrl: 'ftp://x' } } })
+  const invalidHttp = await patchConfig(fake, { onebot: { httpUrl: 'ftp://x' } })
   assert.equal(invalidHttp.config.onebot.httpUrl, '')
   assert.ok(
-    invalidHttp.issues.some((issue) => /ftp:|不受支持/.test(issue)),
+    invalidHttp.issues.includes('SETTINGS_VALUES_NORMALIZED'),
     `非法 httpUrl 的 issues 应说明协议问题，实际：${JSON.stringify(invalidHttp.issues)}`,
   )
   const finalStatus = await getJson(fake, '/status')
@@ -922,7 +921,7 @@ test('media image routes: disabled zero provider calls, local generate/edit resu
     assert.ok(result.json.message.includes('未启用'))
   }
   assert.equal(calls.length, 0)
-  await patchConfig(fake, { media: { enabled: true, images: { generateEnabled: true, editEnabled: true, generateBaseUrl: 'https://image-provider.test/v1', generateApiKeyEnv: 'DSH_E2E_IMAGE_KEY' } } })
+  await patchConfig(fake, { media: { enabled: true, images: { generateEnabled: true, editEnabled: true, generateBaseUrl: 'https://image-provider.test/v1', generateApiKeyEnv: { op: 'set', value: 'DSH_E2E_IMAGE_KEY' } } } })
   const generated = await postJson(fake, '/media/image/generate', { prompt: 'cat', size: '512x512' })
   assert.equal(generated.size, '512x512')
   const status = await getJson(fake, '/media/status')
@@ -1395,7 +1394,8 @@ test('e2e: default reply module plans splits, disable changes planner fallback, 
   await send(2, true)
   assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: false })).item.status, 'disabled')
   await send(2, true) // auto retains core behavior when disabled
-  await patchConfig(fake, { cognition: { delivery: { engine: 'planner' } } })
+  // Internal rollback switch is intentionally read-only in public settings APIs.
+  handle.setConfig(deepMerge(handle.getConfig(), { cognition: { delivery: { engine: 'planner' } } }))
   await send(1, false)
   assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: true })).item.status, 'loaded')
   await send(2, true)
@@ -1411,13 +1411,14 @@ test('e2e: default reply module plans splits, disable changes planner fallback, 
 })
 
 test('builtin reminders catalog, command ownership and disable fallback share reminder data', { timeout: 20000 }, async t => {
-  const { fake, handle } = await boot(t)
+  const { fake, handle } = await boot(t, { rowConfig: { cognition: { dryRun: true } } })
   await handle.ready
   const modules = await getJson(fake, '/modules')
   assert.deepEqual(modules.summary, { builtin: 7, external: 0 })
   const item = modules.items.find(row => row.id === 'builtin-reminders')
   assert.equal(item.status, 'loaded'); assert.equal(item.enabled, true); assert.equal(item.hasConfig, false)
-  await patchConfig(fake, { access: { ownerQQ: '10001' }, cognition: { dryRun: true, reminders: { enabled: true } } })
+  await patchConfig(fake, { access: { ownerQQ: '10001' } })
+  await patchConfig(fake, { cognition: { reminders: { enabled: true } } })
   const command = text => handle.cognition.services.commands.handle({ text, senderId: '10001', chatType: 'private', chatId: '10001' })
   const coreAdd = t.mock.method(handle.cognition.services.reminders, 'add')
   assert.match((await command('/remind 60 e2e-reminder')).reply, /已创建提醒/)
@@ -1593,4 +1594,96 @@ test('e2e: C07 client -> real health/actions/operation/loop APIs, current person
   await postJson(fake, '/cognition/persona/switch', { personaId: persona.id })
   assert.equal((await getJson(fake, '/system/loop/summary')).retained.loops, 0)
   assert.equal((await fake.call(API + '/system/loop/detail?decisionId=' + result.decision.id, undefined, { method: 'GET' })).json.code, 'LOOP_NOT_FOUND')
+})
+
+test('e2e: C02 revisioned settings/profiles, staging gate, legacy ownership, secrets and restart', async t => {
+  const secret = 'C02_PRIVATE_GATEWAY_TOKEN'
+  const { fake, handle } = await boot(t, { rowConfig: { onebot: { wsToken: secret } } })
+  const schema = await getJson(fake, '/settings/schema')
+  assert.equal(schema.fields.length, 311)
+  assert.equal(schema.editingAvailable, true)
+  assert.equal(schema.runtimeMode, 'legacy')
+  assert.equal(schema.profileEditsApply, 'staged')
+  const profiles = await getJson(fake, '/profiles')
+  assert.equal(profiles.items.length, 1)
+  const other = await postJson(fake, '/cognition/persona/create', { name: 'C02 other', activate: false })
+  const id = other.persona.id
+  const initial = await getJson(fake, '/profiles/config?id=' + id)
+  assert.equal((await getJson(fake, '/profiles')).activeId, profiles.activeId)
+  assert.equal((await getJson(fake, '/settings/view?scope=profile&id=' + id)).revision, initial.revision)
+  const body = { id, revision: initial.revision, patch: { 'cognition.enabled': false, 'cognition.timezone': 'Asia/Tokyo' } }
+  const saved = await postJson(fake, '/profiles/config/save', body)
+  assert.equal(saved.revision, initial.revision + 1)
+  assert.equal(saved.values['cognition.enabled'], false)
+  const rejected = async (path, body, code) => assert.equal((await fake.call(API + path, body, { method: 'POST' })).json.code, code)
+  await rejected('/profiles/config/save', body, 'SETTINGS_CONFLICT')
+  await rejected('/profiles/config/save', { ...body, revision: saved.revision, patch: { 'ui.motion': 'reduced' } }, 'SETTINGS_MULTI_OWNER')
+  await rejected('/settings/patch', { scope: 'profile', id, revision: saved.revision, patch: { 'cognition.enabled': true, 'cognition.typing.enabled': true } }, 'SETTINGS_MULTI_OWNER')
+  await postJson(fake, '/cognition/persona/switch', { id })
+  const turn = { id: 'c02-captured', chatType: 'private', chatId: '10001', senderId: '10001', text: '/status', messages: [], messageIds: [] }
+  const pipeline = handle.cognition.services.pipeline
+  assert.equal((await pipeline.handleTurn(turn)).command, true, 'staged disable does not affect legacy runtime')
+  const captured = pipeline.settingsContext(turn)
+  assert.equal(captured.personaId, id)
+  assert.equal(captured.profileRevision, saved.revision)
+  assert.equal(captured.effective.cognition.enabled, true)
+  assert.equal(captured.candidate.cognition.enabled, false)
+  assert.equal((await getJson(fake, '/status')).config.cognition.enabled, true)
+  const legacy = await getJson(fake, '/config')
+  assert.equal(legacy.config.cognition.enabled, false)
+  assert.equal(legacy.config.onebot.wsToken, '***')
+  const legacySave = { config: { cognition: { timezone: 'UTC' } }, revision: legacy.revision, personaId: id }
+  const adapted = await postJson(fake, '/config/save', legacySave)
+  assert.equal(adapted.config.cognition.timezone, 'UTC')
+  assert.equal(handle.getConfig().cognition.timezone, '')
+  await rejected('/config/save', legacySave, 'SETTINGS_CONFLICT')
+  await rejected('/config/save', { ...adapted, config: { cognition: { timezone: 'other' }, ui: { motion: 'reduced' } } }, 'SETTINGS_MULTI_OWNER')
+  await postJson(fake, '/cognition/persona/switch', { id: profiles.activeId })
+  await rejected('/config/save', { ...adapted, config: { cognition: { timezone: 'other' } } }, 'SETTINGS_CONFLICT')
+  const system = await getJson(fake, '/settings/view?scope=system')
+  assert.deepEqual(system.values['onebot.wsToken'], { masked: true, present: true })
+  const kept = await postJson(fake, '/settings/patch', { scope: 'system', revision: system.revision, patch: { 'onebot.wsToken': { op: 'keep' }, 'ui.motion': 'reduced' } })
+  assert.equal(handle.getConfig().onebot.wsToken, secret)
+  await rejected('/settings/patch', { scope: 'system', revision: system.revision, patch: { 'ui.motion': 'full' } }, 'SETTINGS_CONFLICT')
+  await rejected('/settings/patch', { scope: 'system', revision: kept.revision, patch: { 'onebot.wsToken': '***' } }, 'SETTINGS_SECRET_INVALID')
+  const cleared = await postJson(fake, '/settings/patch', { scope: 'system', revision: kept.revision, patch: { 'onebot.wsToken': { op: 'clear' } } })
+  assert.equal(handle.getConfig().onebot.wsToken, '')
+  await postJson(fake, '/settings/patch', { scope: 'system', revision: cleared.revision, patch: { 'onebot.wsToken': { op: 'set', value: secret } } })
+  const binding = await getJson(fake, '/settings/view?scope=module:builtin-typing')
+  await postJson(fake, '/settings/patch', { scope: binding.scope, revision: binding.revision, patch: { 'cognition.typing.enabled': true } })
+  assert.equal(handle.getConfig().cognition.typing.enabled, true)
+  const sample = await getJson(fake, '/settings/view?scope=module:builtin-sample')
+  const moduleSaved = await postJson(fake, '/settings/patch', { scope: sample.scope, revision: sample.revision, patch: { 'modules.builtin-sample.message': 'C02 sample' } })
+  assert.equal(moduleSaved.values['modules.builtin-sample.message'], 'C02 sample')
+  assert.equal((await getJson(fake, '/modules/config?id=builtin-sample')).values.message, 'C02 sample')
+  await rejected('/settings/patch', { scope: sample.scope, revision: sample.revision, patch: { 'modules.builtin-sample.message': 'stale' } }, 'MODULE_CONFIG_CONFLICT')
+  for (const response of [schema, profiles, initial, saved, captured, legacy, adapted, system, kept, await getJson(fake, '/status'), await getJson(fake, '/logs')]) assert.ok(!JSON.stringify(response).includes(secret))
+  for (const path of ['/settings/schema', '/settings/view?scope=system', '/profiles', '/profiles/config?id=' + id]) {
+    const result = await fake.call(API + path, undefined, { method: 'GET', headers: { origin: 'null', 'sec-fetch-dest': 'iframe' } })
+    assert.equal(result.status, 403)
+  }
+  assert.equal(captured.candidate.cognition.timezone, 'Asia/Tokyo', 'capture is detached from later saves')
+  fake.dispose()
+  const restarted = createFakeDsh(); t.after(() => restarted.dispose())
+  const next = (await import(HOST_URL)).apply(restarted.ctx, {})
+  await next.ready
+  const persisted = await getJson(restarted, '/profiles/config?id=' + id)
+  assert.equal(persisted.values['cognition.timezone'], 'UTC')
+  assert.equal(persisted.revision, saved.revision + 1)
+  assert.equal(next.getConfig().cognition.timezone, '')
+  await postJson(restarted, '/cognition/persona/delete', { id })
+  assert.equal((await restarted.call(API + '/profiles/config?id=' + id, undefined, { method: 'GET' })).json.code, 'PERSONA_NOT_FOUND')
+})
+
+test('e2e: C02 unsafe migration source disables editing while legacy cognition remains available', async t => {
+  const { fake, handle } = await boot(t, { rowConfig: { cognition: { memory: { embedding: { baseUrl: 'https://user:SOURCE_PASSWORD@example.invalid/v1' } } } } })
+  const schema = await getJson(fake, '/settings/schema')
+  assert.equal(schema.editingAvailable, false)
+  assert.equal(schema.migration.code, 'SETTINGS_MIGRATION_UNAVAILABLE')
+  const response = await fake.call(API + '/profiles/config?id=self', undefined, { method: 'GET' })
+  assert.equal(response.json.code, 'SETTINGS_MIGRATION_UNAVAILABLE')
+  assert.equal((await getJson(fake, '/config')).editingAvailable, false)
+  assert.equal((await getJson(fake, '/cognition/overview')).ok, true)
+  assert.equal(handle.getConfig().cognition.memory.embedding.baseUrl, 'https://user:SOURCE_PASSWORD@example.invalid/v1')
+  for (const dto of [schema, response.json, await getJson(fake, '/config'), await getJson(fake, '/status'), await getJson(fake, '/logs')]) assert.doesNotMatch(JSON.stringify(dto), /SOURCE_PASSWORD/)
 })
