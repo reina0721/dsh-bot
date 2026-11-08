@@ -40,3 +40,20 @@ AstrBot alignment 的当前证据见 [C09 最终验收](architecture/ASTRBOT-ALI
 3. 再刷新页面。
 
 2026-11-06 本次真实故障即通过 bundle 停用/启用恢复；不影响 dsh-bot 配置、QQ 网关或数据。
+
+## QQ 侧栏 tab 消失 / `onebot-qq` disabled
+
+**症状**：DSH 左侧 `onebot-qq` tab 消失，但 `/onebot-qq/api/health` 仍正常。
+
+**根因**：对 `onebot-qq` 使用 `dsh_hot_reload` 时，DSH 会把该 Loader entry 置为 `enabled:false`、`fiberPhase:null`。旧 fiber 仍可能继续服务 API，因此“接口正常但 tab 消失”。安装包本身不会禁用该 entry；单独 `dsh plugin add` 后仍为 enabled。
+
+**修复**：在 DSH 插件管理器中把 `dsh-bot` bundle 关闭再启用（bundle toggle），不要只改 `onebot-qq` 行，也不要对 `onebot-qq` 执行 hot reload。
+
+验证：
+
+```text
+plugin_manager list_plugins -> include:onebot-qq enabled:true fiberPhase:active
+client Slots -> sidebar.panellist / onebot-qq active
+```
+
+**部署顺序**：安装新包后使用 bundle toggle（或完整重启 DSH），不要再对 `onebot-qq` 调用 `dsh_hot_reload`。
