@@ -3588,6 +3588,10 @@ test('UI phase 3 module cards: dedicated container/grid, title-only header, foot
     const component = card.children[0]
     assert.equal(component.props.actions, undefined)
     assert.equal(component.props.footer.props.className, 'ob-module-actions')
+    const controls = savebarNodes(component).filter(node => node.type?.name === 'Btn')
+    const labels = controls.map(node => node.children[0])
+    assert.equal(new Set(labels).size, labels.length, 'card controls occur once across body, actions and footer')
+    assert.deepEqual(controls, treeNodes(component.props.footer).filter(node => node.type?.name === 'Btn'))
     const rendered = component.type({ ...component.props, children: component.children })
     const header = rendered.children[0], footer = rendered.children[2]
     assert.equal(header.props.className, 'ob-panel-head with-line')
@@ -3665,6 +3669,12 @@ test('UI phase 3 metadata/actions: long health values and reasons wrap without t
   const metadata = treeNodes(tree).filter(node => node.type === 'dl')
   assert.ok(metadata.length > 1)
   assert.ok(metadata.every(node => node.props.className === 'ob-module-metadata ob-small'))
+  for (const list of metadata) {
+    const terms = treeNodes(list).filter(node => node.type === 'dt' || node.type === 'dd')
+    assert.ok(terms.length > 0)
+    assert.equal(terms.length % 2, 0)
+    assert.ok(terms.every((node, index) => node.type === (index % 2 ? 'dd' : 'dt')), 'metadata keeps label/value pairs')
+  }
   for (const suffix of ['generation', 'reason', 'reasons', 'error', 'provider', 'fallback', 'dependency']) assert.ok(JSON.stringify(tree).includes(long + suffix), suffix)
   stateOverrides = [{ items: [{ actionId: 'module.reload', available: false, reasonCode: long }] }, '', false]
   try { tree = panel.CoreModuleActions({ moduleId: health.moduleId }) } finally { stateOverrides = null }
@@ -3799,7 +3809,7 @@ test('UI phase 4 profile toolbar preserves unavailable editing and conflict disa
 
 test('UI phase 4 CSS: only local explicit toolbars stick on mobile with opaque surface, safe area and scroll clearance', () => {
   const css = panel.PANEL_CSS
-  const mobile = css.match(/@media \(max-width:900px\)\{\n  \/\* Reserve[\s\S]*?\n\}/)?.[0]
+  const mobile = styleBlocks(css, '@media (max-width:900px)').find(block => block.includes('.ob-mobile-topbar{'))
   assert.ok(mobile, 'mobile-only rules at the shared navigation breakpoint')
   const rules = source => [...source.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
   const rule = (source, selector) => { const row = rules(source).find(row => row[1].trim() === selector); assert.ok(row, selector); return row[2] }
@@ -3816,4 +3826,93 @@ test('UI phase 4 CSS: only local explicit toolbars stick on mobile with opaque s
   assert.match(rule(mobile, '.ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner)'), /scroll-margin-block:12px/)
   assert.match(rule(css, '.ob-root'), /overflow:auto;overflow-x:clip/)
   assert.ok(rules(css).some(row => row[1].trim() === '.ob-content' && /overflow-x:clip/.test(row[2])), 'content does not create a second vertical scroller')
+})
+
+// Balanced blocks keep breakpoint assertions scoped, including nested container queries.
+function styleBlocks(source, header) {
+  const css = source.replace(/\/\*[\s\S]*?\*\//g, ''), blocks = []
+  let offset = 0
+  while ((offset = css.indexOf(header + '{', offset)) !== -1) {
+    const start = offset + header.length
+    let end = start + 1, depth = 1
+    while (end < css.length && depth) {
+      if (css[end] === '{') depth++
+      if (css[end] === '}') depth--
+      end++
+    }
+    assert.equal(depth, 0, `Unclosed CSS block: ${header}`)
+    blocks.push(css.slice(start + 1, end - 1))
+    offset = end
+  }
+  return blocks
+}
+
+test('UI phase 5 CSS: mobile topbar/dialog, all safe areas and 44px targets stay inside the shared breakpoint', () => {
+  const mobile = styleBlocks(panel.PANEL_CSS, '@media (max-width:900px)').find(block => block.includes('.ob-mobile-topbar{'))
+  assert.ok(mobile)
+  const rules = [...mobile.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  const rule = selector => { const row = rules.find(row => row[1].trim() === selector); assert.ok(row, selector); return row[2] }
+  assert.match(rule('.ob-area-shell'), /display:block/)
+  assert.match(rule('.ob-navigation-host'), /top:0;z-index:30;background:var\(--ob-canvas\)/)
+  assert.match(rule('.ob-mobile-topbar'), /position:sticky;top:0;display:flex/)
+  assert.match(rule('.ob-mobile-topbar'), /padding:calc\(8px \+ env\(safe-area-inset-top,0px\)\)/)
+  assert.match(rule('.ob-mobile-sections'), /display:flex/)
+  assert.match(rule('.ob-nav-dialog'), /position:fixed;inset:0 auto 0 0/)
+  assert.match(rule('.ob-nav-dialog'), /width:min\(320px,85vw\);max-width:85vw/)
+  assert.match(rule('.ob-nav-dialog'), /height:100vh;height:100dvh;max-height:100vh;max-height:100dvh/)
+  assert.match(rule('.ob-nav-dialog'), /overscroll-behavior:contain;overflow:hidden/)
+  assert.match(rule('.ob-nav-dialog::backdrop'), /background:var\(--ob-scrim\)/)
+  const navigation = rule('.ob-nav-dialog .ob-navigation')
+  assert.match(navigation, /overflow-y:auto;overscroll-behavior:contain/)
+  for (const edge of ['top', 'right', 'bottom', 'left']) assert.ok(navigation.includes(`env(safe-area-inset-${edge},0px)`), edge)
+  const shell = rule('.ob-root .ob-shell')
+  for (const edge of ['left', 'right']) assert.ok(shell.includes(`padding-${edge}:max(12px,env(safe-area-inset-${edge},0px))`), edge)
+  assert.match(rule('.ob-root'), /padding-bottom:calc\(48px \+ env\(safe-area-inset-bottom,0px\)\)/)
+  assert.match(rule('.ob-root button,.ob-root input:not([type=checkbox]):not([type=radio]),.ob-root select'), /min-height:44px/)
+  assert.match(rule('.ob-root button'), /min-width:44px;max-width:100%;white-space:normal/)
+  assert.match(rule('.ob-root input,.ob-root select,.ob-root textarea'), /font-size:16px/)
+
+  const desktop = styleBlocks(panel.PANEL_CSS, '@media (width > 900px)')
+  assert.equal(desktop.length, 1)
+  const container = styleBlocks(desktop[0], '@container ob-module-list (min-width:760px)')
+  assert.equal(container.length, 1)
+  assert.match(container[0], /\.ob-module-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/)
+})
+
+test('UI phase 5 navigation: repeated desktop/mobile transitions keep one nav, unique controls/IDs and desktop-only storage writes', () => {
+  const h = navigationHarness({ stored: 'collapsed' })
+  const assertUnique = mobile => {
+    const nodes = treeNodes(h.tree)
+    assert.equal(nodes.filter(node => node.type === 'nav').length, 1)
+    assert.equal(nodes.filter(node => node.type === 'dialog').length, mobile ? 1 : 0)
+    const ids = nodes.flatMap(node => node.props?.id ? [node.props.id] : [])
+    assert.equal(new Set(ids).size, ids.length, 'no duplicate DOM IDs')
+    const areas = nodes.filter(node => node.props?.['data-area']).map(node => node.props['data-area'])
+    assert.deepEqual(areas, NAVIGATION_REGISTRY.map(area => area.id), 'one control per area')
+    const sections = nodes.filter(node => node.props?.['data-section']).map(node => node.props['data-section'])
+    assert.equal(new Set(sections).size, sections.length, 'one control per destination')
+    assert.equal(nodes.filter(node => node.type === 'input' && node.props.type === 'search').length, mobile ? 1 : 0)
+  }
+  try {
+    h.render(); assertUnique(false)
+    assert.deepEqual(h.writes, [], 'initial preference read does not write storage')
+    for (let cycle = 0; cycle < 3; cycle++) {
+      h.resize(true); h.render(); assertUnique(true)
+      h.click('导航与搜索'); assertUnique(true)
+      assert.equal(h.byLabel('导航与搜索').props['aria-controls'], h.get('.ob-nav-dialog').props.id)
+      assert.equal(h.get('.ob-nav-dialog').children[0], h.get('#ob-navigation'))
+      h.click('关闭导航'); assertUnique(true)
+      h.resize(false); h.render(); assertUnique(false)
+      assert.equal(h.get('.ob-navigation-host').props['data-desktop'], 'collapsed')
+      assert.equal(h.root.style.overflow, 'auto')
+      assert.equal(h.body.style.position, 'relative')
+    }
+    assert.deepEqual(h.writes, [], 'mobile open/close and resize never persist desktop state')
+    assert.deepEqual(h.targets, [], 'responsive transitions never navigate')
+    h.click('展开导航')
+    assert.deepEqual(h.writes, [['dsh-bot:navigation:desktop:v1', 'expanded']])
+    assert.equal(h.root.querySelectorAll('nav').length, 1)
+    assert.equal(h.root.querySelectorAll('input').length, 1)
+  } finally { h.restore() }
+  assert.equal(h.listeners.size, 0, 'media listener is cleaned up')
 })

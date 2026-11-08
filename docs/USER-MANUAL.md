@@ -442,6 +442,8 @@ QQ空间明确未实现：它需要 QQ 登录授权，并涉及平台授权与�
 
 UI phase 1+2 的导航、phase 3 的模块布局和 phase 4 的移动显式保存栏已实施。交互、焦点、清理、模块布局及保存栏契约已有 Node shim 回归；真实浏览器中的原生 dialog 顶层、移动软键盘、安全区、底部吸附与焦点滚动、模块尺寸及屏幕阅读器体验仍待验收。
 
+UI phase 5 的[响应式验收契约与浏览器矩阵](design/responsive-navigation-modules.md)汇总上述行为及回归证据。1440/1024/768/390px、DSH 外层侧栏展开/收起、dark/light、缩放与键盘检查全部为 pending：当前 Chromium 缺少 libnspr4.so，尚不能完成真实浏览器验收。
+
 | area | 内容与设置归属 |
 | --- | --- |
 | Overview | 连接、事件、人格与运行诊断概览 |
