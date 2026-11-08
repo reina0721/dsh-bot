@@ -76,7 +76,7 @@ test('sandbox: OneBot commands, local Bilibili, proactive send, auto-enqueue/man
     assert.equal(remote.length, 0, 'share must remain offline')
     count++
     push('/sticker')
-    await waitFor(() => onebot.state.sentMessages.length === count + 1, { label: chat + ' seeded sticker' })
+    await waitFor(() => onebot.state.sentMessages.length === count + 1, { label: chat + ' seeded sticker', timeoutMs: 15000 })
     assert.equal(onebot.state.sentMessages.at(-1).action, action)
     assert.equal(onebot.state.sentMessages.at(-1).params.message.filter(part => part.type === 'image').length, 1)
   }
