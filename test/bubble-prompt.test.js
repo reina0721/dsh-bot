@@ -7,7 +7,7 @@ const promptFor = turn => buildComposePrompt({ turn,
 
 test('bubble compose prompt: scenario pacing, protocol, anti-filler and persona boundaries', () => {
   const { system } = promptFor({ chatType: 'group', text: '你好' })
-  for (const pattern of [/<bubble>文本<\/bubble>/, /即使只有一泡也必须加标签/, /默认一泡/, /调侃、惊讶、连续反应适合 2–3 泡/, /解释、严肃交流、表达边界、提供完整信息时一泡说完/, /不要拆开完整句子/, /孤立单词/, /群聊简短、1–3 泡、只回应一个目标/, /私聊可以更完整/, /参考最近聊天节奏/, /不要每泡复用同一口癖或起手句/, /不连续反问/, /不复述用户/, /一个主要情绪或动作/, /一句能答完就不要扩写/, /小鱼/, /不泄露私聊\/他人隐私/, /不编造事实/]) assert.match(system, pattern)
+  for (const pattern of [/<bubble>文本<\/bubble>/, /一次说完时直接输出正文，不加标签/, /分成 2–3 泡时/, /默认一泡/, /调侃、惊讶、连续反应适合 2–3 泡/, /解释、严肃交流、表达边界、提供完整信息时一泡说完/, /不要拆开完整句子/, /孤立单词/, /群聊简短、1–3 泡、只回应一个目标/, /私聊可以更完整/, /参考最近聊天节奏/, /不要每泡复用同一口癖或起手句/, /不连续反问/, /不复述用户/, /一个主要情绪或动作/, /一句能答完就不要扩写/, /一条回复最多一个语气词/, /发送前自检/, /小鱼/, /不泄露私聊\/他人隐私/, /不编造事实/]) assert.match(system, pattern)
   assert.doesNotMatch(system, /只输出一条|回复长度约|130 字|60\s*\+|verbosity\s*\*\s*140/)
 })
 
