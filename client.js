@@ -1764,6 +1764,7 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-module-scope .ob-badge{height:auto;min-height:22px;white-space:normal;overflow-wrap:anywhere}
 .ob-module-scope .ob-btn{height:auto;min-height:44px;min-width:44px;white-space:normal;overflow-wrap:anywhere}
 .ob-module-toolbar,.ob-module-actions{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}
+.ob-module-savebar,.ob-owner-savebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .ob-module-card .ob-module-actions{flex:1;justify-content:flex-end}
 .ob-module-action{display:flex;flex:0 1 16rem;flex-direction:column;align-items:flex-start;gap:6px}
 .ob-module-action-reason{margin:0;overflow-wrap:anywhere}
@@ -2171,6 +2172,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-mobile-topbar,.ob-mobile-sections{display:none}
 .ob-page,.ob-content,.ob-area-shell > *{min-width:0}
 @media (max-width:900px){
+  /* Reserve space for up to three wrapped 44px controls, padding and the safe area. */
+  .ob-root:has(.ob-module-savebar,.ob-owner-savebar){scroll-padding-bottom:calc(12rem + env(safe-area-inset-bottom,0px))}
+  .ob-module-savebar,.ob-owner-savebar{position:sticky;bottom:0;z-index:20;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--ob-border);background:var(--ob-surface)}
+  .ob-module-savebar > .ob-btn,.ob-owner-savebar > .ob-btn{flex:1 1 8rem;height:auto;min-height:44px;white-space:normal;overflow-wrap:anywhere}
+  .ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner){scroll-margin-block:12px}
   .ob-area-shell{display:block}
   .ob-navigation-host{top:0;z-index:30;background:var(--ob-canvas)}
   .ob-mobile-topbar{position:sticky;top:0;display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top,0px)) 0 8px;background:var(--ob-canvas)}
@@ -3621,13 +3627,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         finally { savingGuard.current = false; setBusy(false) }
       }
       if (!fields.length) return null
-      return h('section', { className: 'ob-stack', 'aria-label': '所有者设置' },
+      return h('section', { className: 'ob-stack ob-owner-settings', 'aria-label': '所有者设置' },
         profile ? h(Banner, { tone: view?.runtimeMode === 'legacy' || error === 'SETTINGS_MIGRATION_UNAVAILABLE' ? 'warn' : view ? 'ok' : undefined, message: view?.runtimeMode === 'legacy' || error === 'SETTINGS_MIGRATION_UNAVAILABLE' ? 'Profile 不可用：运行已回退旧配置，请重新读取或检查迁移错误。' : !view ? (error ? 'Profile 设置读取失败，请重新读取。' : '正在读取 Profile 设置与运行状态…') : 'Profile 运行已启用：保存当前激活人格会应用于后续轮次；编辑其他人格不会激活它。业务数据与操作属于当前激活人格。' }) : null,
         profile ? h('label', null, '设置人格 ', h('select', { className: 'ob-select', 'aria-label': '设置人格', value: id, disabled: busy,
           onChange: event => { request.current++; setView(null); setChanges({}); setId(event.target.value) } }, catalog.map(item => h('option', { key: item.id, value: item.id }, item.displayName || item.name || item.id)))) : null,
-        error ? h(Banner, { tone: 'err', message: error + '；重新读取会丢弃草稿。', actions: h(Btn, { onClick: load, disabled: busy }, '重新读取') }) : null,
-        !view ? h(PanelSkeleton, { rows: 3 }) : h(Panel, { title: SECTION_LABELS[props.navigation.section] || '设置', description: profile ? (id === activeId ? '已应用 · ' : '激活后应用 · ') + 'revision ' + view.revision : '按所有者保存',
-            actions: h('div', { className: 'ob-row' }, h(Btn, { onClick: save, disabled: busy || !Object.keys(changes).length || view.editingAvailable === false && profile }, '保存设置'), h(Btn, { onClick: load, disabled: busy }, '重新读取')) },
+        error ? h(Banner, { tone: 'err', message: error + '；重新读取会丢弃草稿。' }) : null,
+        !view ? h(PanelSkeleton, { rows: 3 }) : h(Panel, { title: SECTION_LABELS[props.navigation.section] || '设置', description: profile ? (id === activeId ? '已应用 · ' : '激活后应用 · ') + 'revision ' + view.revision : '按所有者保存' },
             fields.map(field => {
               const spec = fieldSpecByPath(props.configInfo?.groups, field.path) || { path: field.path, label: field.path, type: Array.isArray(view.values[field.path]) ? 'string-list' : typeof view.values[field.path] === 'number' ? 'number' : typeof view.values[field.path] === 'boolean' ? 'switch' : 'text' }
               const secret = ['secret', 'secret-reference'].includes(field.sensitivity)
@@ -3639,7 +3644,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                   h(Btn, { disabled: busy, onClick: () => setChanges(previous => ({ ...previous, [field.path]: { op: 'clear' } })) }, '清除 ' + field.path), value?.op === 'clear' ? h('span', null, '保存后清除') : null)
                   : h(FieldRow, { spec, value, disabled: busy, onChange: next => setChanges(previous => ({ ...previous, [field.path]: next })) }),
                 h('small', { className: 'ob-muted' }, field.path + ' · ' + field.apply))
-            })))
+            })),
+        h('div', { className: 'ob-owner-savebar', role: 'group', 'aria-label': '所有者设置保存工具栏' },
+          h(Btn, { onClick: save, disabled: !view || busy || !Object.keys(changes).length || view.editingAvailable === false && profile }, '保存设置'),
+          h(Btn, { onClick: load, disabled: busy }, '重新读取')))
     }
 
     function ProfileOverview(props) {
@@ -8721,11 +8729,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             key: item.id + ':' + spec.path, spec, value: editor.values[spec.path], disabled: Boolean(busy) || configReadOnly(item),
             onChange: (value) => { if (!busy && !configReadOnly(item)) setEditor((current) => ({ ...current, values: { ...current.values, [spec.path]: value } })) },
           })),
-          h('div', { className: 'ob-row' },
-            h(Btn, { small: true, busy: busy === item.id + ':save', disabled: Boolean(busy) || !editor.schema || configReadOnly(item), onClick: saveModuleConfig }, '保存配置'),
-            h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '重新加载配置'),
-            h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => { setEditor(null); setConfigError('') } }, '取消'),
-          ),
         ) : h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '加载配置'),
       )
       const legacyConfigSurface = (item, surface) => h('section', { key: surface.id, className: 'ob-stack', 'aria-label': '模块配置' },
@@ -8814,6 +8817,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                   const ownsPanel = content.type === MediaFeaturesPanel
                   return h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : 'surface-' + surface.id) }, ownsPanel ? content : h(Panel, null, content))
                 }),
+            hasConfigUi(item, ui) && editor?.id === item.id ? h('div', { className: 'ob-module-savebar', role: 'group', 'aria-label': '模块配置保存工具栏' },
+              h(Btn, { small: true, busy: busy === item.id + ':save', disabled: Boolean(busy) || !editor.schema || configReadOnly(item), onClick: saveModuleConfig }, '保存配置'),
+              h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '重新加载配置'),
+              h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => { setEditor(null); setConfigError('') } }, '取消'),
+            ) : null,
           ) : h(Banner, { tone: 'muted', message: '模块已不在目录中，请返回列表。' }),
         )
       }

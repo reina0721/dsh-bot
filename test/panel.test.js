@@ -1864,6 +1864,28 @@ function moduleUi(item, patch = {}) {
 const moduleCatalog = (...items) => ({ ok: true, version: 1, items })
 const moduleControl = (tree, text) => control([tree, ...treeNodes(tree).flatMap((node) => [node.props?.actions, node.props?.footer])], text)
 
+// Include component action/footer slots so a second set hidden in a Panel/Banner prop fails too.
+function savebarNodes(tree) {
+  return treeNodes(tree).flatMap(node => [node, ...savebarNodes(node.props?.actions), ...savebarNodes(node.props?.footer)])
+}
+function assertExplicitSavebar(tree, className, labels) {
+  const nodes = savebarNodes(tree)
+  const bars = nodes.filter(node => node.props?.className === className)
+  assert.equal(bars.length, 1, 'exactly one toolbar across all responsive states')
+  const bar = bars[0]
+  assert.equal(bar.props.role, 'group')
+  assert.ok(bar.props['aria-label'])
+  assert.deepEqual(treeNodes(bar).filter(node => node.type?.name === 'Btn').map(node => node.children[0]), labels)
+  for (const label of labels) {
+    assert.equal(nodes.filter(node => node.type?.name === 'Btn' && node.children?.includes(label)).length, 1, label)
+  }
+  for (const node of nodes.filter(node => node.type?.name === 'Panel')) {
+    assert.ok(!savebarNodes(node).includes(bar), 'toolbar must be outside every clipping Panel')
+  }
+  assert.ok(!nodes.some(node => node.type?.name === 'Savebar' || node.props?.className === 'ob-savebar'))
+  return bar
+}
+
 test('ModulesPage WebUI: list → disabled detail → back, status text and unavailable future hooks', async () => {
   const item = { id: 'disabled', name: '声明式模块', source: 'external', builtin: false, status: 'disabled', generation: 'current', uiRevision: 'revision', enabled: false, canToggle: true }
   const ui = moduleUi(item, { surfaces: [
@@ -2029,6 +2051,7 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
     await control(card(initial, item.name).props.footer, '配置').props.onClick()
     assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/modules/config?id=' + item.id, method: 'GET', body: undefined })
     let tree = render()
+    assertExplicitSavebar(tree, 'ob-module-savebar', ['保存配置', '重新加载配置', '取消'])
     assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块配置').length, 1)
     assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块详情').length, 1)
     if (source === 'external') assert.match(JSON.stringify(tree), /外部声明式（无执行权限）/)
@@ -2053,6 +2076,7 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
     assert.deepEqual(toasts.at(-1), ['模块配置已保存', 'ok'])
     await control(render(), '取消').props.onClick()
     assert.ok(!treeNodes(render()).some((node) => node.type?.name === 'FieldRow'))
+    assert.ok(!savebarNodes(render()).some(node => node.props?.className === 'ob-module-savebar'))
     assert.ok(control(render(), '加载配置'))
     control(render(), '返回模块列表').props.onClick()
     assert.ok(!treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块配置' || node.type?.name === 'FieldRow'))
@@ -2086,12 +2110,14 @@ test('ModulesPage config: busy 禁用、冲突/保存错误保留草稿、重新
       postResult = result
       const saving = control(render(), '保存配置').props.onClick()
       const pending = render()
+      assertExplicitSavebar(pending, 'ob-module-savebar', ['保存配置', '重新加载配置', '取消'])
       assert.equal(control(pending, '保存配置').props.disabled, true)
       assert.equal(control(pending, '取消').props.disabled, true)
       assert.equal(control(pending, '重新加载配置').props.disabled, true)
       assert.ok(treeNodes(pending).filter((node) => node.type?.name === 'FieldRow').every((node) => node.props.disabled))
       release(); await saving
       assert.match(JSON.stringify(render()), expected)
+      assertExplicitSavebar(render(), 'ob-module-savebar', ['保存配置', '重新加载配置', '取消'])
       assert.equal(session.values[4].values.message, 'draft')
       assert.equal(session.values[4].revision, 1)
       assert.equal(control(render(), '保存配置').props.disabled, false)
@@ -2102,6 +2128,7 @@ test('ModulesPage config: busy 禁用、冲突/保存错误保留草稿、重新
     getError = 'load failed'
     await control(render(), '重新加载配置').props.onClick()
     assert.match(JSON.stringify(render()), /load failed/)
+    assertExplicitSavebar(render(), 'ob-module-savebar', ['保存配置', '重新加载配置', '取消'])
     assert.equal(control(render(), '保存配置').props.disabled, true)
     assert.equal(control(render(), '取消').props.disabled, false)
   } finally { globalThis.fetch = original }
@@ -2168,6 +2195,7 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
   try {
     await moduleControl(render(), '详情').props.onClick()
     assert.match(JSON.stringify(render()), /配置只读/)
+    assertExplicitSavebar(render(), 'ob-module-savebar', ['保存配置', '重新加载配置', '取消'])
     let row = treeNodes(render()).find((node) => node.type?.name === 'FieldRow')
     assert.equal(row.props.disabled, true)
     row.props.onChange('forbidden')
@@ -2225,6 +2253,7 @@ test('ModulesPage legacy config: all owned fields, draft values, global patch sa
       const rows = treeNodes(tree).filter((node) => node.type?.name === 'FieldRow')
       assert.deepEqual(rows.map((row) => row.props.spec.path), owned.map((spec) => spec.path))
       assert.equal(treeNodes(tree).find((node) => node.type?.name === 'PreferenceSaveStatus').props.status, prefStatus)
+      assert.ok(!savebarNodes(tree).some(node => ['ob-module-savebar', 'ob-owner-savebar', 'ob-savebar'].includes(node.props?.className) || node.type?.name === 'Savebar'))
       for (const row of rows) {
         const { spec } = row.props
         assert.equal(row.props.value, panel.getByPath(draft, spec.path))
@@ -3365,6 +3394,7 @@ test('profile applied editor reads inactive IDs, sends only changed owner fields
     harness.render(); harness.effects.find(row => row.deps?.length === 1 && row.deps[0] === true).effect(); await harness.settle()
     let tree = await harness.load()
     field(tree, '设置人格').props.onChange({ target: { value: 'inactive' } }); tree = await harness.load()
+    assertExplicitSavebar(tree, 'ob-owner-savebar', ['保存设置', '重新读取'])
     assert.ok(calls.at(-1).path.endsWith('/profiles/config?id=inactive'))
     assert.match(JSON.stringify(tree), /激活后应用/)
     assert.doesNotMatch(JSON.stringify(tree), /staged|Staged|旧编辑器/)
@@ -3379,7 +3409,16 @@ test('profile applied editor reads inactive IDs, sends only changed owner fields
     conflict = true
     await moduleControl(harness.render(), '保存设置').props.onClick()
     assert.match(JSON.stringify(harness.render()), /SETTINGS_CONFLICT/)
+    assertExplicitSavebar(harness.render(), 'ob-owner-savebar', ['保存设置', '重新读取'])
     assert.equal(moduleControl(harness.render(), '保存设置').props.disabled, false)
+    const changed = () => treeNodes(harness.render()).find(node => node.props?.spec?.path === 'cognition.notices.enabled')
+    assert.equal(changed().props.value, false, 'conflict keeps the draft')
+    assert.equal(calls.filter(row => row.body).at(-1).body.revision, 8, 'conflict uses the last saved profile revision')
+    await control(harness.render(), '重新读取').props.onClick()
+    assert.equal(changed().props.value, true, 'reread discards the draft')
+    assert.equal(control(harness.render(), '保存设置').props.disabled, true)
+    assert.doesNotMatch(JSON.stringify(harness.render()), /SETTINGS_CONFLICT/)
+    assertExplicitSavebar(harness.render(), 'ob-owner-savebar', ['保存设置', '重新读取'])
     assert.equal(calls.some(row => /switch|activate|config\/save$/.test(row.path) && !row.path.includes('/profiles/')), false)
   } finally { harness.restore(); globalThis.fetch = original }
 })
@@ -3392,6 +3431,7 @@ test('C03 system secrets use explicit keep/set/clear and never render mask objec
   const harness = ownerHarness(props)
   try {
     let tree = await harness.load()
+    assertExplicitSavebar(tree, 'ob-owner-savebar', ['保存设置', '重新读取'])
     assert.equal(field(tree, 'onebot.wsToken').props.value, '')
     field(tree, 'onebot.wsToken').props.onChange({ target: { value: 'new-secret' } })
     await moduleControl(harness.render(), '保存设置').props.onClick()
@@ -3699,4 +3739,81 @@ test('UI phase 3 CSS: container AND viewport thresholds, equal-height footer car
   assert.match(rule('.ob-number-control'), /flex-wrap:wrap/)
   assert.match(rule('.ob-number-control', true), /flex-direction:column;align-items:stretch/)
   assert.match(rule('.ob-number-control .ob-input', true), /flex:1 1 auto;width:100%;min-height:44px/)
+})
+
+test('UI phase 4 OwnerSettings: one toolbar during loading/errors, disabled save and busy actions', async () => {
+  const original = globalThis.fetch, calls = []
+  const props = { navigation: { area: 'system', section: 'general' }, configInfo: { groups: CONFIG_GROUPS } }
+  const values = Object.fromEntries(panel.ownerFields(props.navigation).map(spec => [spec.path, panel.getByPath(DEFAULTS, spec.path)]))
+  let readError = true, release
+  globalThis.fetch = async (path, init) => {
+    const body = init.body && JSON.parse(init.body); calls.push({ path, body })
+    if (body) await new Promise(resolve => { release = resolve })
+    return { ok: true, json: async () => readError ? { ok: false, code: 'SETTINGS_READ_UNAVAILABLE' }
+      : { ok: true, revision: body ? 5 : 4, values: { ...values, ...body?.patch } } }
+  }
+  const harness = ownerHarness(props)
+  try {
+    let tree = harness.render()
+    assertExplicitSavebar(tree, 'ob-owner-savebar', ['保存设置', '重新读取'])
+    assert.equal(control(tree, '保存设置').props.disabled, true)
+    assert.equal(control(tree, '重新读取').props.disabled, false)
+    tree = await harness.load()
+    assert.match(JSON.stringify(tree), /SETTINGS_READ_UNAVAILABLE/)
+    assertExplicitSavebar(tree, 'ob-owner-savebar', ['保存设置', '重新读取'])
+    assert.equal(control(tree, '保存设置').props.disabled, true)
+    readError = false
+    await control(tree, '重新读取').props.onClick()
+    assert.equal(control(harness.render(), '保存设置').props.disabled, true, 'unchanged form')
+    const row = treeNodes(harness.render()).find(node => node.type?.name === 'FieldRow')
+    const next = row.props.spec.type === 'switch' ? !row.props.value : 'changed'
+    row.props.onChange(next)
+    const saving = control(harness.render(), '保存设置').props.onClick()
+    tree = harness.render()
+    assertExplicitSavebar(tree, 'ob-owner-savebar', ['保存设置', '重新读取'])
+    for (const label of ['保存设置', '重新读取']) assert.equal(control(tree, label).props.disabled, true)
+    assert.ok(treeNodes(tree).filter(node => node.type?.name === 'FieldRow').every(node => node.props.disabled))
+    await control(tree, '保存设置').props.onClick()
+    assert.equal(calls.filter(row => row.body).length, 1, 'busy guard prevents a second write')
+    assert.deepEqual(calls.at(-1).body, { scope: 'system', revision: 4, patch: { [row.props.spec.path]: next } })
+    release(); await saving
+    assert.equal(control(harness.render(), '保存设置').props.disabled, true)
+    assert.equal(control(harness.render(), '重新读取').props.disabled, false)
+  } finally { harness.restore(); globalThis.fetch = original }
+})
+
+test('UI phase 4 profile toolbar preserves unavailable editing and conflict disabled states', () => {
+  const navigation = { area: 'profiles', section: 'reply' }
+  const values = Object.fromEntries(panel.ownerFields(navigation).map(spec => [spec.path, true]))
+  for (const editingAvailable of [false, true]) for (const busy of [false, true]) {
+    stateOverrides = [[], 'inactive', { revision: 9, values, editingAvailable }, 'active', { 'cognition.notices.enabled': false }, 'SETTINGS_CONFLICT', busy]
+    let tree
+    try { tree = panel.OwnerSettings({ navigation, configInfo: { groups: CONFIG_GROUPS } }) } finally { stateOverrides = null }
+    assertExplicitSavebar(tree, 'ob-owner-savebar', ['保存设置', '重新读取'])
+    assert.match(JSON.stringify(tree), /SETTINGS_CONFLICT/)
+    assert.equal(control(tree, '保存设置').props.disabled, busy || !editingAvailable)
+    assert.equal(control(tree, '重新读取').props.disabled, busy)
+    assert.equal(field(tree, '设置人格').props.disabled, busy)
+  }
+})
+
+test('UI phase 4 CSS: only local explicit toolbars stick on mobile with opaque surface, safe area and scroll clearance', () => {
+  const css = panel.PANEL_CSS
+  const mobile = css.match(/@media \(max-width:900px\)\{\n  \/\* Reserve[\s\S]*?\n\}/)?.[0]
+  assert.ok(mobile, 'mobile-only rules at the shared navigation breakpoint')
+  const rules = source => [...source.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  const rule = (source, selector) => { const row = rules(source).find(row => row[1].trim() === selector); assert.ok(row, selector); return row[2] }
+  const selector = '.ob-module-savebar,.ob-owner-savebar'
+  const desktop = rule(css, selector), toolbar = rule(mobile, selector)
+  assert.match(desktop, /display:flex;flex-wrap:wrap/)
+  assert.doesNotMatch(desktop, /position:|bottom:|safe-area/)
+  assert.match(toolbar, /position:sticky;bottom:0;z-index:20/)
+  assert.match(toolbar, /padding:12px 12px calc\(12px \+ env\(safe-area-inset-bottom,0px\)\)/)
+  assert.match(toolbar, /border-top:1px solid var\(--ob-border\);background:var\(--ob-surface\)/)
+  assert.doesNotMatch(toolbar, /transparent|color-mix|backdrop-filter|overflow:|position:fixed/)
+  assert.match(rule(mobile, '.ob-module-savebar > .ob-btn,.ob-owner-savebar > .ob-btn'), /flex:1 1 8rem;height:auto;min-height:44px;white-space:normal;overflow-wrap:anywhere/)
+  assert.match(rule(mobile, '.ob-root:has(.ob-module-savebar,.ob-owner-savebar)'), /scroll-padding-bottom:calc\(12rem \+ env\(safe-area-inset-bottom,0px\)\)/)
+  assert.match(rule(mobile, '.ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner)'), /scroll-margin-block:12px/)
+  assert.match(rule(css, '.ob-root'), /overflow:auto;overflow-x:clip/)
+  assert.ok(rules(css).some(row => row[1].trim() === '.ob-content' && /overflow-x:clip/.test(row[2])), 'content does not create a second vertical scroller')
 })
