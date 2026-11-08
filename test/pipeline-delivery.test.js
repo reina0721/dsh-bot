@@ -16,7 +16,7 @@ const { createPipeline } = await import(`data:text/javascript;base64,${Buffer.fr
 const decision = { id: 'd1', action: 'reply' }
 const turn = { chatType: 'group', chatId: 'g1', senderId: 123, messages: [{ messageId: 'old' }, { messageId: 'latest' }], addressed: false }
 const texts = ['字'.repeat(40), '字'.repeat(40), '字'.repeat(15)]
-const text = texts.join('')
+const text = texts.map(value => `<bubble>${value}</bubble>`).join('')
 const segment = (value) => ({ type: 'text', data: { text: value } })
 
 function registeredRegistry() {
@@ -39,8 +39,7 @@ function harness({ observer = null, engine, deliveryRegistry = engine === 'plann
   return { pipeline, config, calls, notes, marks, warnings, send: (value = text, target = turn, opts) => pipeline._sendDecision(decision, value, target, opts) }
 }
 
-// Initially run against the unchanged core implementation; the same expectations
-// also characterize the opt-in planner after the seam is introduced.
+// Core and registered planners share the model bubble protocol and delivery guards.
 for (const engine of [undefined, 'auto', 'core', 'planner']) {
   test(`delivery ${engine || 'default'}: exact split, quote/@, attribution and side effects`, async () => {
     const h = harness({ engine })
@@ -53,7 +52,7 @@ for (const engine of [undefined, 'auto', 'core', 'planner']) {
     assert.deepEqual(h.pipeline._groupReplyAllowed(turn), { ok: false, reason: 'cooldown' })
   })
 
-  test(`delivery ${engine || 'default'}: split false preserves whitespace; quote and at conditions`, async () => {
+  test(`delivery ${engine || 'default'}: split false trims protocol text; quote and at conditions`, async () => {
     for (const [reply, target, opts, prefix] of [
       [{ split: false }, turn, {}, [{ type: 'reply', data: { id: 'latest' } }, { type: 'at', data: { qq: '123' } }]],
       [{ quote: false, atSender: false }, turn, {}, []],
@@ -63,7 +62,7 @@ for (const engine of [undefined, 'auto', 'core', 'planner']) {
     ]) {
       const h = harness({ engine, reply })
       await h.send(' hi ', target, opts)
-      assert.deepEqual(h.calls[0].segments, [...prefix, segment(reply.split === false ? ' hi ' : 'hi')])
+      assert.deepEqual(h.calls[0].segments, [...prefix, segment('hi')])
     }
   })
 
@@ -159,7 +158,7 @@ test('delivery planner: invalid plan uses guarded single text fallback; runtime 
   // recovery without a production test hook or replacing the actual builder.
   const h = harness({ engine: 'planner', reply: { delayMs: Infinity } })
   assert.deepEqual(await h.send(), { ok: true, status: 'sent', messageId: 'm1', result: { n: 1 }, parts: 1 })
-  assert.deepEqual(h.calls[0].segments, [segment(text)])
+  assert.deepEqual(h.calls[0].segments, [segment(texts.join('\n'))])
   assert.deepEqual(h.pipeline._events[0][1], { decisionId: 'd1', messageId: 'm1', chatType: 'group', chatId: 'g1', action: 'reply', part: 0, parts: 1 })
   h.config.cognition.delivery.engine = 'core'
   h.config.cognition.reply.delayMs = 0
@@ -199,7 +198,7 @@ test('delivery planner: thrown/invalid plans fall back safely in auto and planne
     registry.register({ id: 'bad', stage: 'format', plan })
     const h = harness({ engine, deliveryRegistry: registry })
     assert.equal((await h.send()).parts, 1)
-    assert.deepEqual(h.calls[0].segments, [segment(text)])
+    assert.deepEqual(h.calls[0].segments, [segment(texts.join('\n'))])
     assert.equal(h.notes.length, 1)
     assert.equal(h.pipeline.stats().sent, 1)
     assert.equal(h.pipeline._pending.size, 1)
@@ -243,5 +242,16 @@ test('pipeline delivery engines: one receipt for all parts; historical empty pat
     await h.send('')
     await h.send('   ')
     assert.equal(observation.receipts().length, count)
+  }
+})
+
+
+test('delivery engines: untagged one-shot stays one even with a small legacy target', async () => {
+  for (const engine of [undefined, 'auto', 'core', 'planner']) {
+    const h = harness({ engine })
+    const value = '解释信息。'.repeat(100)
+    assert.equal((await h.send(value)).parts, 1)
+    assert.equal(h.calls[0].segments.at(-1).data.text, value)
+    assert.equal(h.pipeline.stats().sent, 1)
   }
 })

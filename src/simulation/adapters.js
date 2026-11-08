@@ -36,7 +36,7 @@ export function createCapturingTransport({ clock, namespace = 'simulation' } = {
   return { actions, call, captures: () => copy(captures), close() { closed = true } }
 }
 
-export function createFixtureModel({ reply = '这是一条离线模拟回复。', analysis = {} } = {}) {
+export function createFixtureModel({ reply = '<bubble>这是一条离线模拟回复。</bubble>', analysis = {} } = {}) {
   const fixture = copy({ reply, analysis })
   const calls = []
   return {

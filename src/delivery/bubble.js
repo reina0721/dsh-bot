@@ -3,7 +3,7 @@ import { splitReply } from './text-split.js'
 const HARD_LIMIT = 2000
 // Recognize only the protocol's name, including incomplete markers. Ordinary
 // markup (and words such as <bubblegum>) belongs to the reply and is preserved.
-const MARKER = /<\s*(\/?)\s*bubble\b(?:[^<>\r\n]*>|[ \t]*)/gi
+const MARKER = /<\s*(\/?)\s*bubble\b(?:[^<>]*>|\s*)/gi
 
 /** Pure model bubble protocol parser. Length never determines normal pacing. */
 export function parseBubbles(text, { split = true, maxParts = 3, maxChars = HARD_LIMIT } = {}) {

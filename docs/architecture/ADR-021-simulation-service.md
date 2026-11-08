@@ -57,3 +57,7 @@ Chat & Sandbox → 离线 Sandbox 使用 `SandboxChat`，metadata availability �
 `test/sandbox-api.test.js` 和 `test/sandbox-ui.test.js` 覆盖新 API、私群/命令、捕获、零网络、回执/阶段、人格隔离、计时、重置删除、输入/资源限制和 UI handler/loading/error/empty/异步清理；panel/nav/schema/package 检查覆盖六区挂载、元数据同步和原 slot。`test/simulation.test.js` 覆盖两个图、真实命令/私群、访问拒绝早于 raw、notice/request 审批捕获、transport 分类和 raw/unknown 拒绝、虚拟聚合/提醒、fixture source、人格/session 隔离、幂等/冲突、reset/delete、opaque API/身份注入拒绝；子进程仅一次 live apply 与模拟共存，验证 live bus/store/persona/transport/env/fetch/secret 登记不变。子进程配置在启动时注入，不切换运行进程的全局环境。
 
 这是服务依赖隔离，不是任意 Node.js 代码的安全执行边界。没有外部代码、shell、网络模型、媒体识别或真实 DSH agent；没有持久恢复、自动清理崩溃遗留目录、跨进程锁或全事件录制重放。请求与会话受上述额度限制；transcript/captures 仅驻内存，长期会话需 reset/delete，没有分页/导出。HTTP adapter 生命周期绑定仍只在当前进程有效。管理 API 继续依赖宿主身份验证，没有另建用户或租户授权体系。fixture 输出可配置但不代表真实模型质量；UUID 等非业务标识不保证逐字节可复现。C02 profile runtime 仍遵守 legacy 门控。
+
+## 气泡节奏回归
+
+离线 fixture 默认返回带 `<bubble>` 标签的单泡，可由模拟服务的测试参数返回多泡；模拟服务另接受仅包含 split/quote/atSender/maxChars/maxParts/delayMs 的受限 reply 布局选项，类型/范围验证后写入独立模拟配置。Chat HTTP API 的创建字段白名单保持不变，不开放模型或布局配置注入。配置快照显示模拟 reply 参数；捕获动作与出站 transcript 必须无协议标签，realSend 始终为 false。虚拟计时验证泡间延迟，reset 测试在多泡等待中取消；详见[群聊节奏研究](../research/GROUP-CHAT-PACING.md)。

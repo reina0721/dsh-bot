@@ -9,13 +9,14 @@ import { createSandboxChatApi, SANDBOX_CHAT_LIMITS } from '../src/http/sandbox-c
 import { createRoutes } from '../src/http/routes.js'
 import { createFakeDsh } from './helpers/fake-dsh.js'
 
-async function harness(t) {
+async function harness(t, fixtureOptions) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-chat-api-'))
   const simulations = createSimulationService({ dataRoot: root })
   const fake = createFakeDsh()
   let personaId = 'persona-a', serial = 0
   const unavailable = new Proxy({}, { get() { throw Error('LIVE_CAPABILITY_USED') } })
-  createRoutes({ ctx: fake.ctx, simulations, cognition: { activePersonaId: () => personaId }, gateway: unavailable, events: unavailable, ingress: unavailable, getConfig: () => { throw Error('LIVE_CONFIG_USED') } })
+  const isolated = fixtureOptions ? { ...simulations, create: options => simulations.create({ ...fixtureOptions, ...options }) } : simulations
+  createRoutes({ ctx: fake.ctx, simulations: isolated, cognition: { activePersonaId: () => personaId }, gateway: unavailable, events: unavailable, ingress: unavailable, getConfig: () => { throw Error('LIVE_CONFIG_USED') } })
   t.after(async () => { fake.dispose(); await simulations.dispose(); await rm(root, { recursive: true, force: true }) })
   const call = async (action, body, init) => fake.call('/onebot-qq/api/sandbox/chat/' + action,
     body === undefined ? undefined : { requestId: `test_${++serial}`, ...body }, { method: body === undefined ? 'GET' : 'POST', ...init })
@@ -160,4 +161,21 @@ test('chat API bounds session operations, recovers on reset/delete and hides int
   assert.equal((await handle('advance', { id, ms: 1 })).status, 200)
   assert.equal((await handle('delete', { id })).status, 200)
   assert.equal((await handle('advance', { id, ms: 1 })).body.code, 'SIMULATION_NOT_FOUND')
+})
+
+
+test('chat API: tagged bubble fixture reaches captured actions and transcript with zero real sends', async t => {
+  const h = await harness(t, { model: { reply: '<bubble>哈？</bubble><bubble>猜对了。</bubble>' }, reply: { delayMs: 800 } })
+  const { id } = await h.ok('create', {})
+  await h.ok('event', { id, event: message('group', '这就猜对了？') })
+  const state = await h.ok('advance', { id, ms: 12000 }), actions = sends(state)
+  assert.equal(actions.length, 2)
+  assert.deepEqual(actions.map(row => row.params.message.at(-1).data.text), ['哈？', '猜对了。'])
+  assert.equal(actions[0].params.message[0].type, 'reply')
+  assert.equal(actions[1].params.message.length, 1)
+  assert.equal(actions[1].at - actions[0].at, 800)
+  assert.ok(state.capturedActions.every(row => row.realSend === false))
+  assert.equal(state.realSends, 0)
+  assert.doesNotMatch(JSON.stringify([state.capturedActions, state.transcript.filter(row => row.direction === 'out')]), /<\/?bubble>/i)
+  assert.equal(state.deliveryReceipts[0].data.parts, 2)
 })

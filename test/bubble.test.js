@@ -8,6 +8,7 @@ const tagged = values => values.map(value => `<bubble>${value}</bubble>`).join('
 test('bubble protocol: canonical, case, whitespace, empty and omitted closing', () => {
   assert.deepEqual(parseBubbles(tagged(['哈？', '杂鱼就是杂鱼喵。'])), ['哈？', '杂鱼就是杂鱼喵。'])
   assert.deepEqual(parseBubbles(' \n< BUBBLE > 完整回答。 </ BUBBLE >\n<bubble> </bubble>'), ['完整回答。'])
+  assert.deepEqual(parseBubbles('<bubble\n>第一句。</bubble\n>\n<bubble\t>第二句。</bubble>'), ['第一句。', '第二句。'])
   assert.deepEqual(parseBubbles('<bubble>第一句。<bubble>第二句。'), ['第一句。', '第二句。'])
   for (const text of ['', ' \n ', null, undefined, '<bubble></bubble>']) assert.deepEqual(parseBubbles(text), [])
 })

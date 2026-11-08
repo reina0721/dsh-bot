@@ -23,7 +23,7 @@ function text(value, max, required = false) {
   if (typeof value !== 'string' || value.length > max || (required && !value.trim())) invalid()
 }
 function optionsOf(input) {
-  fields(input, ['persona', 'model', 'knowledge', 'access', 'typing', 'reminders'])
+  fields(input, ['persona', 'model', 'knowledge', 'access', 'typing', 'reminders', 'reply'])
   if (input.persona !== undefined) {
     fields(input.persona, ['displayName', 'identity', 'background', 'speakingStyle'])
     for (const value of Object.values(input.persona)) text(value, 1500)
@@ -37,6 +37,17 @@ function optionsOf(input) {
         if (['confidence', 'risk'].includes(key)) {
           if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) invalid()
         } else text(value, 200)
+      }
+    }
+  }
+  if (input.reply !== undefined) {
+    fields(input.reply, ['split', 'quote', 'atSender', 'maxChars', 'maxParts', 'delayMs'])
+    for (const [key, value] of Object.entries(input.reply)) {
+      if (['split', 'quote', 'atSender'].includes(key)) {
+        if (typeof value !== 'boolean') invalid()
+      } else {
+        const [min, max] = { maxChars: [80, 2000], maxParts: [1, 10], delayMs: [0, 5000] }[key]
+        if (!Number.isSafeInteger(value) || value < min || value > max) invalid()
       }
     }
   }
@@ -97,6 +108,7 @@ async function createGraph(root, namespace, options) {
   config.cognition.persona.profile = copy(options.persona || { displayName: '模拟人格' })
   config.cognition.llm.mode = 'direct'
   config.cognition.llm.fallbackToDsh = false
+  Object.assign(config.cognition.reply, options.reply || {})
   config.cognition.typing.enabled = options.typing === true
   config.cognition.reminders.enabled = options.reminders === true
   config.cognition.memory.embedding.enabled = false
@@ -172,6 +184,7 @@ async function createGraph(root, namespace, options) {
         persona: graph.cognition.personaState(), sessions: runtime.sessions(),
         configSnapshot: { model: 'fixture/offline', network: false, media: false, execution: false,
           typing: options.typing === true, reminders: options.reminders === true,
+          reply: copy(graph.getConfig().cognition.reply),
           access: copy(options.access || { private: true, group: true }) },
         notices: scoped.list('timeline_event', { limit: 200 }), requests: graph.cognition.services.notices.list(),
         stats: graph.cognition.snapshot().stats, counts: graph.cognition.snapshot().counts, access: graph.access.summary(),
