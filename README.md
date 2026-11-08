@@ -12,7 +12,7 @@
 
 ## 实机演示
 
-下面是在真实 DSH `0.2.1-rc.3` 中运行 `dsh-bot v0.10.0` 的历史演示截图（当前工作区为 v0.11.23）。账号、人格和消息为合成演示数据，QQ 链路使用仓库自带的模拟 OneBot 网关；不代表真实 QQ 登录或外部模型调用。
+下面是在真实 DSH `0.2.1-rc.3` 中运行 `dsh-bot v0.10.0` 的历史演示截图（当前工作区为 v0.11.24）。账号、人格和消息为合成演示数据，QQ 链路使用仓库自带的模拟 OneBot 网关；不代表真实 QQ 登录或外部模型调用。
 
 ![真实 DSH 面板：模拟网关已连接、账号核验通过、事件计数和人格概览](https://raw.githubusercontent.com/reina0721/dsh-bot/main/docs/assets/screenshots/overview-desktop.jpg)
 
@@ -56,19 +56,19 @@
 
 ## 安装与下载
 
-`v0.11.23` 已发布，可通过以下 GitHub 直链安装或下载；真实 QQ/媒体验收仅完成部分，见[发布检查表](docs/RELEASE.md)。
+`v0.11.24` 已发布，可通过以下 GitHub 直链安装或下载；真实 QQ/媒体验收仅完成部分，见[发布检查表](docs/RELEASE.md)。
 
 | 入口 | 下载 |
 | --- | --- |
 | 最新稳定版 | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.tgz) · [解压包 zip](https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.zip) |
-| 固定版本 0.11.23 | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/download/v0.11.23/dsh-bot.tgz) |
+| 固定版本 0.11.24 | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/download/v0.11.24/dsh-bot.tgz) |
 | 完整版本与校验文件 | [GitHub Releases](https://github.com/reina0721/dsh-bot/releases) |
 | 开发源码 | [main.zip](https://github.com/reina0721/dsh-bot/archive/refs/heads/main.zip) |
 
 将 desktop 换成实际使用的 DSH profile：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/reina0721/dsh-bot/releases/download/v0.11.23/dsh-bot.tgz
+dsh plugin --profile desktop add https://github.com/reina0721/dsh-bot/releases/download/v0.11.24/dsh-bot.tgz
 ```
 
 也可下载并查看安装脚本后执行：

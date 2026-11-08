@@ -475,21 +475,24 @@ test('集成：撤回在无原文时不假装看见；有原文时 sawContent=tr
 })
 
 
-for (const engine of ['core', 'planner']) test(`M2-a ${engine}：长回复按配置分条，首条引用原消息，内容不丢`, async () => {
+for (const engine of ['core', 'planner']) test(`M2-a ${engine}：模型标签决定分条，首条引用原消息，内容不丢`, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-split-'))
   const scheduler = createFakeScheduler()
   const sent = []
   const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 500 + sent.length } } } }
-  const longReply = '这是一段比较长的回复。'.repeat(30)
+  const replyBody = '这是一段比较长的回复。'.repeat(30)
+  const longReply = Array(3).fill('<bubble>' + '这是一段比较长的回复。'.repeat(10) + '</bubble>').join('')
   const cog = makeCog({ dir, gateway, scheduler, llm: fakeLlm(null, longReply), configOverride: { delivery: { engine }, reply: { split: true, maxChars: 100, maxParts: 3, delayMs: 0, quote: true } } })
   try {
     cog.observe(privateEvent(1, '请详细说说'), { accepted: true })
     scheduler.advance(1500)
     await flush(60)
-    assert.ok(sent.length >= 2 && sent.length <= 3, `应分 2-3 条，实际 ${sent.length}`)
+    assert.equal(sent.length, 3, '按三个模型标签分条')
+    assert.ok(sent.slice(1).every(item => item.message.length === 1))
+    assert.doesNotMatch(JSON.stringify(sent), /<\/?bubble>/i)
     assert.equal(sent[0].message[0].type, 'reply')
     const text = sent.map((item) => item.message.filter((segment) => segment.type === 'text').map((segment) => segment.data.text).join('')).join('')
-    assert.equal(text.replace(/\s+/g, ''), longReply.replace(/\s+/g, ''))
+    assert.equal(text.replace(/\s+/g, ''), replyBody.replace(/\s+/g, ''))
   } finally {
     cog.dispose()
     rmSync(dir, { recursive: true, force: true })

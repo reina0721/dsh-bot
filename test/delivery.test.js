@@ -5,12 +5,12 @@ import { buildReplyPlan, buildFallbackPlan, validateDeliveryPlan } from '../src/
 import { executeDeliveryPlan } from '../src/delivery/executor.js'
 
 const turn = { chatType: 'group', chatId: 'g1', senderId: 123, messages: [{ messageId: 'last' }] }
-const context = { text: '字'.repeat(115), turn, decision: { id: 'd1' }, replyCfg: { maxChars: 40, maxParts: 3, delayMs: 19, atSender: true } }
+const context = { text: '<bubble>' + '字'.repeat(40) + '</bubble><bubble>' + '字'.repeat(40) + '</bubble><bubble>' + '字'.repeat(35) + '</bubble>', turn, decision: { id: 'd1' }, replyCfg: { maxChars: 40, maxParts: 3, delayMs: 19, atSender: true } }
 const textSegment = (text) => ({ type: 'text', data: { text } })
 const plan = () => buildReplyPlan(context)
 
 test('delivery architecture: core planner files do not depend on modules', () => {
-  for (const file of ['plan.js', 'reply-plan.js', 'text-split.js']) {
+  for (const file of ['plan.js', 'reply-plan.js', 'bubble.js', 'text-split.js']) {
     const source = readFileSync(new URL(`../src/delivery/${file}`, import.meta.url), 'utf8')
     assert.doesNotMatch(source, /['"][^'"\r\n]*modules\//, `${file} must not import or re-export modules`)
   }
@@ -31,14 +31,14 @@ test('reply plan: exact shape, limits, first-part quote/@ and purity', () => {
   built.parts[0].segments[0].data.id = 'changed'
   assert.equal(turn.messages[0].messageId, 'last')
   const capped = buildReplyPlan({ ...context, replyCfg: { maxChars: 40, maxParts: 2, delayMs: -5 } })
-  assert.deepEqual(capped.parts.map((part) => part.segments.at(-1).data.text.length), [40, 75])
+  assert.deepEqual(capped.parts.map((part) => part.segments.at(-1).data.text.length), [40, 76])
   assert.deepEqual(capped.parts.map((part) => part.delayAfterMs), [0, 0])
-  assert.equal(buildReplyPlan({ ...context, replyCfg: { maxChars: 40, maxParts: 1 } }).parts[0].segments.at(-1).data.text, context.text)
+  assert.equal(buildReplyPlan({ ...context, replyCfg: { maxChars: 40, maxParts: 1 } }).parts[0].segments.at(-1).data.text, '字'.repeat(40) + '\n' + '字'.repeat(40) + '\n' + '字'.repeat(35))
 })
 
 test('reply plan: split false, empty, quote override, private and missing sender/message', () => {
   const single = buildReplyPlan({ ...context, text: '  hi  ', replyCfg: { split: false, quote: false, atSender: false }, source: 'custom', decisionId: 'override' })
-  assert.deepEqual(single.parts, [{ segments: [textSegment('  hi  ')], delayAfterMs: 0 }])
+  assert.deepEqual(single.parts, [{ segments: [textSegment('hi')], delayAfterMs: 0 }])
   assert.equal(single.source, 'custom')
   assert.equal(single.decisionId, 'override')
   const privatePlan = buildReplyPlan({ ...context, turn: { ...turn, chatType: 'private' }, replyTo: 'explicit' })
@@ -66,13 +66,13 @@ test('fallback plan: single pure text, same attribution, no quote/@ or delay', (
   const input = structuredClone(context)
   assert.deepEqual(buildFallbackPlan(input), {
     source: 'pipeline', decisionId: 'd1', target: { chatType: 'group', chatId: 'g1' },
-    parts: [{ segments: [textSegment(context.text)], delayAfterMs: 0 }], meta: { planner: 'core', fallback: true },
+    parts: [{ segments: [textSegment('字'.repeat(40) + '\n' + '字'.repeat(40) + '\n' + '字'.repeat(35))], delayAfterMs: 0 }], meta: { planner: 'core', fallback: true },
   })
   assert.deepEqual(input, context)
   const custom = buildFallbackPlan({ ...context, text: ' hi ', source: 'custom', decisionId: 'd2' })
   assert.equal(custom.source, 'custom')
   assert.equal(custom.decisionId, 'd2')
-  assert.equal(custom.parts[0].segments[0].data.text, ' hi ')
+  assert.equal(custom.parts[0].segments[0].data.text, 'hi')
   for (const text of ['', undefined, ' ']) assert.equal(validateDeliveryPlan(buildFallbackPlan({ ...context, text })), false)
 })
 
@@ -144,7 +144,7 @@ test('executor: invalid/throwing planner falls back once through the same delive
   for (const invalid of [null, {}, { ...plan(), parts: [] }, () => { throw new Error('secret must not escape') }]) {
     const h = recorder()
     assert.deepEqual(await executeDeliveryPlan({ ...h.options, plan: invalid, text: context.text, turn, decisionId: 'fallback-id', source: 'fallback-source' }), { ok: true, status: 'sent', messageId: '1', result: { n: 1 }, parts: 1 })
-    assert.deepEqual(h.calls, [{ chatType: 'group', chatId: 'g1', segments: [textSegment(context.text)], decisionId: 'fallback-id', source: 'fallback-source', dryRun: null }])
+    assert.deepEqual(h.calls, [{ chatType: 'group', chatId: 'g1', segments: [textSegment('字'.repeat(40) + '\n' + '字'.repeat(40) + '\n' + '字'.repeat(35))], decisionId: 'fallback-id', source: 'fallback-source', dryRun: null }])
     assert.deepEqual(h.events, [['deliver', 0], ['sent', { messageId: '1', index: 0, parts: 1 }]])
     for (const text of ['', ' ']) {
       const empty = recorder()

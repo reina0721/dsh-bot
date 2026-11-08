@@ -1,10 +1,8 @@
-import { splitReply } from './text-split.js'
+import { parseBubbles } from './bubble.js'
 
 /** Pure reply layout; no configuration reads, policy checks or delivery I/O. */
 export function buildReplyPlan({ text, turn, decision, replyCfg = {}, replyTo = '', source = 'pipeline', decisionId = '' }) {
-  const texts = !text ? [] : replyCfg.split === false
-    ? [String(text)]
-    : splitReply(text, { maxChars: replyCfg.maxChars, maxParts: replyCfg.maxParts })
+  const texts = parseBubbles(text, replyCfg)
   const quoteId = replyTo || turn?.messages?.at(-1)?.messageId
   const delayMs = Math.max(0, Number(replyCfg.delayMs) || 0)
   return {

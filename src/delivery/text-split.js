@@ -10,7 +10,7 @@ const HARD_MIN_RATIO = 0.45
 
 function cutIndex(text, maxChars) {
   const min = Math.max(1, Math.floor(maxChars * HARD_MIN_RATIO))
-  const window = text.slice(0, maxChars + 1)
+  const window = text.slice(0, maxChars)
   const candidates = [
     window.lastIndexOf('\n\n'),
     window.lastIndexOf('\n'),

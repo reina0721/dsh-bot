@@ -1,3 +1,5 @@
+import { parseBubbles } from './bubble.js'
+
 // Compatibility facade for the core rollback path and Phase 1 callers.
 export { buildReplyPlan } from './reply-plan.js'
 
@@ -16,11 +18,12 @@ export function validateDeliveryPlan(plan) {
 
 /** Recovery is one text-only message, through the same outbound guards. */
 export function buildFallbackPlan({ text, turn, decision, source = 'pipeline', decisionId = '' }) {
+  const texts = parseBubbles(text, { split: false })
   return {
     source,
     decisionId: decisionId || decision?.id || '',
     target: { chatType: turn?.chatType, chatId: turn?.chatId },
-    parts: text && String(text).trim() ? [{ segments: [{ type: 'text', data: { text: String(text) } }], delayAfterMs: 0 }] : [],
+    parts: texts.map(value => ({ segments: [{ type: 'text', data: { text: value } }], delayAfterMs: 0 })),
     meta: { planner: 'core', fallback: true },
   }
 }

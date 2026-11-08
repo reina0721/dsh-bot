@@ -24,6 +24,12 @@ try {
     for (const file of ['client.js', 'docs/design/responsive-navigation-modules.md', 'docs/USER-MANUAL.md', 'docs/README.md', 'README.md', 'CHANGELOG.md']) {
       assert.deepEqual(readFileSync(join(base, file)), readFileSync(file), `Packaged responsive UI file differs: ${file}`);
     }
+    const bubbleFiles = ['src/delivery/bubble.js', 'src/delivery/reply-plan.js', 'src/delivery/plan.js',
+      'src/cognition/analysis.js', 'docs/CONFIG.md', 'docs/research/GROUP-CHAT-PACING.md'];
+    for (const file of bubbleFiles) assert.deepEqual(readFileSync(join(base, file)), readFileSync(file), `Packaged bubble file differs: ${file}`);
+    const { parseBubbles } = await import(pathToFileURL(join(base, 'src/delivery/bubble.js')).href);
+    assert.deepEqual(parseBubbles('<bubble>哈？</bubble><bubble>猜对了。</bubble>'), ['哈？', '猜对了。']);
+    assert.deepEqual(parseBubbles('字'.repeat(750), { maxChars: 80 }), ['字'.repeat(750)]);
     const alignmentFiles = [
       'src/services/assembly.js', 'src/http/sandbox-chat.js',
       'src/simulation/service.js', 'src/simulation/adapters.js', 'src/simulation/preview-contract.js',

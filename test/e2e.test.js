@@ -1372,7 +1372,8 @@ test('e2e: default reply module plans splits, disable changes planner fallback, 
   const unavailable = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'GET' })
   assert.equal(unavailable.json.code, 'MODULE_CONFIG_UNAVAILABLE')
 
-  const longReply = '回复交付测试。'.repeat(40)
+  const replyBody = '回复交付测试。'.repeat(40)
+  const longReply = '<bubble>' + '回复交付测试。'.repeat(20) + '</bubble><bubble>' + '回复交付测试。'.repeat(20) + '</bubble>'
   t.mock.method(handle.cognition.services.llm, 'complete', async () => ({ ok: true, text: longReply }))
   t.mock.method(handle.cognition.services.llm, 'completeJson', async () => ({ ok: false }))
   let turnIndex = 0
@@ -1388,7 +1389,8 @@ test('e2e: default reply module plans splits, disable changes planner fallback, 
     const sent = mock.calls.filter(call => call.action === 'send_private_msg').slice(before)
     assert.equal(sent.length, parts)
     assert.equal(sent[0].params.message[0].type, quoted ? 'reply' : 'text')
-    assert.equal(sent.map(call => call.params.message.filter(s => s.type === 'text').map(s => s.data.text).join('')).join(''), longReply)
+    assert.equal(sent.map(call => call.params.message.filter(s => s.type === 'text').map(s => s.data.text).join('')).join('').replace(/\n/g, ''), replyBody)
+    assert.doesNotMatch(JSON.stringify(sent), /<\/?bubble>/i)
     if (parts > 1) assert.equal(sent[1].params.message.length, 1)
   }
   await send(2, true)

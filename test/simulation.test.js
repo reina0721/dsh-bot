@@ -30,10 +30,10 @@ test('two simulation graphs use real ingress/aggregation/cognition/delivery with
   const { service, root } = await boot(t)
   const environment = { ...process.env }
   const fetchReference = globalThis.fetch
-  const options = { persona: { displayName: '甲' }, model: { reply: '甲的回答。' }, typing: true }
+  const options = { persona: { displayName: '甲' }, model: { reply: '<bubble>甲的回答。</bubble>' }, typing: true }
   const a = await service.create(options)
   options.persona.displayName = '外部修改'
-  const b = await service.create({ persona: { displayName: '乙' }, model: { reply: '乙的回答。' } })
+  const b = await service.create({ persona: { displayName: '乙' }, model: { reply: '<bubble>乙的回答。</bubble>' } })
   await send(service, a.id, message('a1', '你好！'))
   let first = await service.read(a.id)
   let second = await service.read(b.id)
@@ -201,7 +201,7 @@ test('fixture knowledge never follows URLs; virtual scheduler handles nested asy
 
 test('reset/delete remove persona/session/store/timer state and do not revive pending work', async t => {
   const { service, root } = await boot(t)
-  const { id } = await service.create({ reminders: true, model: { reply: '甲'.repeat(750) } })
+  const { id } = await service.create({ reminders: true, model: { reply: '<bubble>第一泡。</bubble><bubble>第二泡。</bubble><bubble>最后一泡。</bubble>' } })
   await send(service, id, message('remind', '/remind 60 不应复活'))
   const old = await service.read(id)
   await service.submit(id, message('pending', '还未完成的轮次'))
@@ -214,6 +214,9 @@ test('reset/delete remove persona/session/store/timer state and do not revive pe
   }
   assert.equal(sends(partial).length, sends(old).length + 1)
   assert.ok(partial.sessions.length > 0)
+  assert.equal(partial.deliveryReceipts.length, old.deliveryReceipts.length + 1)
+  assert.equal(partial.deliveryReceipts.find(row => row.status === 'running')?.data, null, 'reply is still waiting between bubbles')
+  assert.ok(partial.deliveryReceipts.some(row => row.status === 'running'))
   const reset = await service.reset(id)
   assert.equal(reset.generation, 2)
   const fresh = await service.read(id)
@@ -321,4 +324,56 @@ test('shared assembly injects store/config/clock/transport and confines runtime 
   assert.equal(a.transport.captures().filter(row => row.action === 'set_qq_profile').length, 1)
   assert.equal(b.transport.captures().length, 0)
   assert.equal(b.store.count('qq_admin_approval'), 0)
+})
+
+
+test('simulation bubble acceptance: captured group actions, first quote/@, virtual delays and no protocol leakage', async t => {
+  const { service } = await boot(t)
+  const { id } = await service.create({
+    model: { reply: '<bubble>哈？</bubble><bubble>还真让你猜中了。</bubble><bubble>这回算你赢。</bubble>' },
+    reply: { atSender: true, delayMs: 700, maxChars: 80 },
+  })
+  await send(service, id, message('bubbles', '猜中了吧！', 'group', { addressed: true }))
+  const state = await service.read(id), actions = sends(state)
+  assert.equal(actions.length, 3)
+  assert.deepEqual(actions.map(content), ['哈？', '还真让你猜中了。', '这回算你赢。'])
+  assert.ok(actions.every(row => row.action === 'send_group_msg' && row.realSend === false))
+  assert.deepEqual(actions[0].params.message.slice(0, 2), [
+    { type: 'reply', data: { id: '1' } }, { type: 'at', data: { qq: '910002' } },
+  ])
+  assert.ok(actions.slice(1).every(row => row.params.message.every(segment => segment.type === 'text')))
+  assert.deepEqual(actions.slice(1).map((row, i) => row.at - actions[i].at), [700, 700])
+  assert.doesNotMatch(JSON.stringify(actions), /<\/?bubble>/i)
+  assert.equal(state.deliveryReceipts.length, 1)
+  assert.equal(state.deliveryReceipts[0].data.parts, 3)
+  const outgoing = state.transcript.filter(row => row.direction === 'out')
+  assert.deepEqual(outgoing.map(row => row.text), actions.map(content))
+  assert.ok(outgoing.every(row => row.realSend === false))
+})
+
+test('simulation bubble acceptance: split=false merges; tagged and no-tag one-shot stay one despite maxChars', async t => {
+  const { service } = await boot(t)
+  const cases = [
+    { reply: { split: false, delayMs: 5000 }, output: '<bubble>第一句。</bubble><bubble>第二句。</bubble>', expected: '第一句。\n第二句。' },
+    { reply: { maxChars: 80 }, output: '<bubble>' + '完整回答。'.repeat(150) + '</bubble>', expected: '完整回答。'.repeat(150) },
+    { reply: { maxChars: 80 }, output: '完整回答。'.repeat(150), expected: '完整回答。'.repeat(150) },
+  ]
+  for (const { reply, output, expected } of cases) {
+    const { id } = await service.create({ reply, model: { reply: output } })
+    await send(service, id, message('one_shot', '请解释一下。'))
+    const state = await service.read(id), actions = sends(state)
+    assert.equal(actions.length, 1)
+    assert.equal(content(actions[0]), expected)
+    assert.equal(actions[0].params.message[0].type, 'reply')
+    assert.equal(state.deliveryReceipts[0].data.parts, 1)
+    assert.equal(state.configSnapshot.reply.split, reply.split ?? true)
+    assert.ok(state.captures.every(row => row.realSend === false))
+  }
+})
+
+test('simulation reply options reject non-layout capabilities and invalid values', async t => {
+  const { service } = await boot(t)
+  for (const reply of [{ split: 1 }, { quote: 'yes' }, { atSender: null }, { maxParts: 11 }, { maxChars: 79 }, { delayMs: -1 }, { delayMs: 0.1 }, { secret: 'no' }]) {
+    await assert.rejects(service.create({ reply }), /INVALID_SIMULATION_INPUT/)
+  }
 })
