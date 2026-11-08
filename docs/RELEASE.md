@@ -57,7 +57,7 @@ git diff --check
 
 ## 6. 真机验收状态（部分）
 
-**0.11.20 部署**：live 将升级 0.11.20；六区导航、profile/applied、Chat 沙盒、执行 broker fail-closed。
+**0.11.20 部署**：live 已升级 0.11.20；六区导航、profile/applied、Chat 沙盒、执行 broker fail-closed。
 
 **0.11.19 部署**：live 将升级 0.11.19；六区导航、Chat 沙盒、执行 broker fail-closed。
 
