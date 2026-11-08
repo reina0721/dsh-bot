@@ -1774,7 +1774,22 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-module-permissions{display:flex;flex-wrap:wrap;gap:6px;margin-block-start:12px}
 .ob-module-action{display:flex;flex:0 1 16rem;flex-direction:column;align-items:flex-start;gap:6px}
 .ob-module-action-reason{margin:0;overflow-wrap:anywhere}
-.ob-module-metadata{display:grid;grid-template-columns:minmax(0,12rem) minmax(0,1fr);gap:6px 16px;margin:0;min-inline-size:0;max-inline-size:100%}
+.ob-module-metadata{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0;min-inline-size:0;max-inline-size:100%}
+.ob-module-metadata-row{display:grid;grid-template-columns:minmax(0,12rem) minmax(0,1fr);gap:8px 16px;align-items:baseline}
+.ob-module-code{display:inline-block;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;cursor:text}
+.ob-module-technical{margin-block-start:12px;border-block-start:1px solid var(--ob-border);padding-block-start:8px}
+.ob-module-technical > summary{padding-block:8px;min-height:44px;cursor:pointer;font-weight:var(--ob-weight-heading)}
+.ob-module-technical[open] > summary{margin-block-end:8px}
+.ob-module-detail-header{display:flex;flex-direction:column;gap:10px}
+.ob-module-detail-header h1,.ob-module-detail-header p{margin:0}
+.ob-module-detail-header h1{font-size:var(--ob-text-title);line-height:1.3}
+.ob-module-detail-header .ob-module-id{color:var(--ob-ink-muted);font-size:var(--ob-text-small)}
+.ob-module-primary-actions{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px}
+.ob-module-primary-actions > .ob-btn{flex:0 1 auto}
+.ob-module-action-group{display:flex;flex-direction:column;gap:8px}
+.ob-module-action-group h3,.ob-module-action-group p{margin:0}
+.ob-module-action-group .ob-module-actions{align-items:stretch}
+.ob-module-health-headline{margin:0;font-size:var(--ob-text-title)}
 .ob-module-metadata dt,.ob-module-metadata dd{margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
 .ob-module-metadata dt{color:var(--ob-ink-muted)}
 .ob-module-preview{display:flex;flex-direction:column;gap:8px;margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
@@ -1784,10 +1799,13 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-number-control .ob-input{flex:1 1 8rem;min-width:0;width:auto}
 .ob-number-control .ob-field-unit{flex:0 1 auto;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
 @media (max-width:900px){
-  .ob-module-grid,.ob-module-metadata{grid-template-columns:minmax(0,1fr)}
+  .ob-module-grid{grid-template-columns:minmax(0,1fr)}
+  .ob-module-metadata-row{grid-template-columns:minmax(0,7rem) minmax(0,1fr);gap:8px}
+  .ob-module-detail-header{gap:8px}
+  .ob-module-primary-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   .ob-module-card .ob-module-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
   .ob-module-card .ob-module-actions > .ob-btn{width:100%}
-  .ob-module-action{flex:1 1 100%;width:100%;align-items:stretch}
+  .ob-module-action{flex:1 1 10rem;align-items:flex-start}
   .ob-module-toolbar .ob-btn,.ob-module-actions .ob-btn{min-height:44px}
   .ob-number-control{flex-direction:column;align-items:stretch}
   .ob-number-control .ob-input{flex:1 1 auto;width:100%;min-height:44px}
@@ -6064,31 +6082,60 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       useEffect(() => {
         if (!ready || !props.navigation?.anchor) return
         // The normalized default module anchor is a page landing, below the heading.
-        if (props.ownerIntegration && ['detail', 'ob-module-detail'].includes(props.navigation.anchor)) return
+        if (['detail', 'ob-module-detail'].includes(props.navigation.anchor)) return
         // Run after the destination has committed, including same-tab requests.
         const timer = setTimeout(() => document.getElementById(props.navigation.anchor.startsWith('ob-') ? props.navigation.anchor : prefix + props.navigation.anchor)?.scrollIntoView?.({ block: 'start' }), 0)
         return () => clearTimeout(timer)
       }, [props.navigation, prefix, ready])
     }
-    function metadataRows(data, keys) {
-      return h('dl', { className: 'ob-module-metadata ob-small' }, keys.map(key => h(Fragment, { key }, h('dt', null, key), h('dd', null, observedValue(data?.[key])))))
+    function metadataRows(data, keys, { labels = {}, code = true } = {}) {
+      return h('dl', { className: 'ob-module-metadata ob-small' }, keys.map(key => {
+        const value = Array.isArray(data?.[key]) ? (data[key].join('、') || '无') : observedValue(data?.[key])
+        return h('div', { key, className: 'ob-module-metadata-row' }, h('dt', null, labels[key] || key), h('dd', null, code ? h('code', { className: 'ob-module-code', tabIndex: 0 }, value) : value))
+      }))
+    }
+    function moduleHealthSummary(health, loading, error) {
+      if (error) return { headline: '需要注意', reason: '健康信息读取失败，请刷新重试。' }
+      if (!health) return { headline: loading ? '加载中' : '需要注意', reason: loading ? '正在读取模块健康状态。' : '尚无可用健康观测，不能判断运行正常。' }
+      const reasons = {
+        MODULE_LOADING: '模块正在加载，请稍候。', MODULE_DISABLED: '模块已停用，启用后恢复运行。', MODULE_STOPPED: '模块已停止运行。',
+        DEPENDENCY_BLOCKED: '所需依赖尚未就绪，请检查依赖模块。', STOP_PENDING: '正在等待任务排空，停止尚未完成。',
+        PROVIDER_UNAVAILABLE: '服务提供者不可用，请查看技术详情。', MODULE_SETUP_FAILED: '模块加载失败，请检查配置与依赖。',
+        BUSINESS_DISABLED: '功能开关已关闭，模块保持空闲。', QUIET_HOURS: '当前处于安静时段。', BUDGET_EXHAUSTED: '当前预算已用尽。',
+        NO_TASK: '当前没有待处理任务。', NO_CANDIDATE: '当前没有合适的执行对象。', BUSY: '当前任务正在执行。',
+      }
+      let headline = '需要注意', reason = '健康观测不足，请查看技术详情。'
+      if (health.lifecycle === 'error' || health.health === 'unhealthy') { headline = '错误'; reason = '模块报告错误，请检查配置、依赖和最近错误。' }
+      else if (health.lifecycle === 'blocked' || health.health === 'degraded' || health.phase === 'draining' || health.reasonCode === 'STOP_PENDING') { reason = '模块运行受限，请查看原因与技术详情。' }
+      else if (health.reasonCode === 'MODULE_LOADING' || health.phase === 'starting') { headline = '加载中'; reason = '模块正在启动，请稍候。' }
+      else if (health.health === 'stopped' || health.lifecycle === 'disabled') { headline = '已停止'; reason = '模块当前未运行。' }
+      else if (health.health === 'healthy') { headline = '运行正常'; reason = '最近健康观测正常；空闲时不代表正在执行任务。' }
+      return { headline, reason: reasons[health.reasonCode] || reason }
     }
     function CoreModuleHealth(props) {
       const api = useCogApi(props, '/modules/health?id=' + encodeURIComponent(props.moduleId))
       const health = safeArray(api.data?.items).find(row => row.moduleId === props.moduleId)
-      return h(Panel, { className: 'ob-module-scope', title: '核心健康', description: '核心缓存快照；未观察的计数不等于零。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新健康') },
-        api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
-        !health ? h('p', null, api.loading ? '加载健康…' : '健康不可用') : h(Fragment, null,
-          metadataRows(health, ['lifecycle', 'phase', 'health', 'reasonCode', 'runtimeGeneration', 'telemetryGeneration', 'observedAt']),
-          h('p', null, 'reasons：' + (safeArray(health.reasons).join(' · ') || '未观察')),
-          h('h3', null, 'lastError'), health.lastError ? metadataRows(health.lastError, ['reasonCode', 'observedAt', 'runtimeGeneration']) : h('p', null, '未观察'),
-          h('h3', null, 'Provider 注册与实际所有者'),
-          safeArray(health.providers).length ? health.providers.map(row => h('div', { key: row.name }, metadataRows(row, ['name', 'registeredModuleId', 'owner', 'ownerModuleId', 'ownerRuntimeGeneration', 'state', 'phase', 'reasonCode']), h('p', null, 'fallback：' + observedValue(row.fallback?.active) + ' · ' + observedValue(row.fallback?.reasonCode)))) : h('p', null, '不适用（无 Provider）'),
-          h('h3', null, '依赖'), safeArray(health.dependencies).length ? health.dependencies.map(row => h('p', { key: row.moduleId }, row.moduleId + ' · available：' + observedValue(row.available))) : h('p', null, '不适用（无依赖）'),
-          h('h3', null, '调度计数'), metadataRows(health.scheduler, ['active', 'running', 'scheduled', 'fired', 'cancelled', 'completed', 'failed', 'nextDueAt']),
-          h('h3', null, '引擎计数'), metadataRows(health.engine, ['runs', 'succeeded', 'failed', 'skipped', 'inFlight']),
-          h('h3', null, '遥测'), metadataRows(health.telemetry, ['lastStartedAt', 'lastStoppedAt', 'lastSuccessAt', 'lastFailureAt', 'nextRunAt', 'inFlight', 'timerScheduled']),
+      useEffect(() => { props.onSnapshot?.(health || null) }, [health, props.onSnapshot])
+      const summary = moduleHealthSummary(health, api.loading, api.error)
+      return h(Panel, { className: 'ob-module-scope', title: '模块健康', description: '最近一次核心观测；刷新健康不会重启模块。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新健康') },
+        h('div', { className: 'ob-stack' },
+          h('h3', { className: 'ob-module-health-headline' }, summary.headline),
+          h('p', { className: 'ob-muted ob-small' }, summary.reason),
         ),
+        api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
+        health ? h(Fragment, null,
+          metadataRows(health, ['lifecycle', 'phase', 'health', 'reasonCode'], { labels: { lifecycle: '运行状态', phase: '工作阶段', health: '健康', reasonCode: '原因代码' } }),
+          h('details', { className: 'ob-module-technical' }, h('summary', null, '健康技术详情'),
+            metadataRows(health, ['runtimeGeneration', 'telemetryGeneration', 'observedAt', 'reasons']),
+            h('h3', null, '最近错误 · lastError'), health.lastError ? metadataRows(health.lastError, ['reasonCode', 'observedAt', 'runtimeGeneration']) : h('p', null, '未观察'),
+            h('h3', null, 'Provider 注册与实际所有者'),
+            safeArray(health.providers).length ? health.providers.map(row => h('div', { key: row.name }, metadataRows(row, ['name', 'registeredModuleId', 'owner', 'ownerModuleId', 'ownerRuntimeGeneration', 'state', 'phase', 'reasonCode']), metadataRows(row.fallback, ['active', 'reasonCode'], { labels: { active: 'fallback', reasonCode: 'fallback 原因' } }))) : h('p', null, '不适用（无 Provider）'),
+            h('h3', null, '依赖'), safeArray(health.dependencies).length ? health.dependencies.map(row => h('div', { key: row.moduleId }, metadataRows(row, ['moduleId', 'available']))) : h('p', null, '不适用（无依赖）'),
+            h('h3', null, '调度计数'), metadataRows(health.scheduler, ['active', 'running', 'scheduled', 'fired', 'cancelled', 'completed', 'failed', 'nextDueAt']),
+            h('h3', null, '引擎计数'), metadataRows(health.engine, ['runs', 'succeeded', 'failed', 'skipped', 'inFlight']),
+            h('h3', null, '遥测'), metadataRows(health.telemetry, ['lastStartedAt', 'lastStoppedAt', 'lastSuccessAt', 'lastFailureAt', 'nextRunAt', 'inFlight', 'timerScheduled']),
+          ),
+        ) : null,
       )
     }
     async function readCoreApi(path) {
@@ -6152,22 +6199,41 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         } catch (err) { if (guard.current.active) setError(String(err.message || '动作不可用')) }
         finally { guard.current.busy = false; if (guard.current.active) setBusy(false) }
       }
+      const pending = busy || Boolean(operation && !operationTerminal(operation))
+      const groups = [
+        { id: 'lifecycle', label: '运行管理', description: '启停、重启或重载会影响本模块和依赖模块；恢复调度后可能调用模型或发送消息。', ids: ['module.enable', 'module.disable', 'module.restart', 'module.reload'] },
+        { id: 'tasks', label: '手动任务', description: '手动执行可能调用模型、消耗预算、写入学习结果或向 QQ 发送消息，仍遵循现有闸门。', ids: ['proactivity.runOnce', 'learning.runPending'] },
+      ]
+      const effects = { 'module.enable': '恢复模块及符合条件的依赖调度。', 'module.disable': '停止模块并等待关联任务排空。', 'module.restart': '先停止再启动，运行中的任务会受影响。', 'module.reload': '重新读取外部代码与清单，并恢复符合条件的模块。', 'proactivity.runOnce': '尝试一次主动行为，可能向 QQ 发送消息。', 'learning.runPending': '执行到期待处理任务，可能检索、调用模型并写入结果。' }
       const content = h('div', { className: 'ob-stack ob-module-scope' },
         api.error || error ? h(Banner, { tone: 'err', message: error || api.error }) : null,
-        h('div', { className: 'ob-module-actions' }, safeArray(api.data?.items).filter(row => Object.hasOwn(ACTION_LABELS, row.actionId) && (!props.actionIds || props.actionIds.includes(row.actionId))).map(row => {
-          const reasonId = 'ob-module-action-' + props.moduleId + '-' + row.actionId + '-reason'
-          return h('div', { key: row.actionId, className: 'ob-module-action' },
-            h(Btn, { small: true, 'aria-describedby': !row.available ? reasonId : undefined, disabled: busy || Boolean(operation && !operationTerminal(operation)) || !row.available, onClick: () => run(row.actionId) }, ACTION_LABELS[row.actionId]),
-            !row.available ? h('p', { id: reasonId, className: 'ob-module-action-reason ob-small ob-muted' }, observedValue(row.reasonCode)) : null,
+        groups.map(group => {
+          const rows = safeArray(api.data?.items).filter(row => group.ids.includes(row.actionId) && (!props.actionIds || props.actionIds.includes(row.actionId)))
+          if (!rows.length) return null
+          const groupId = 'ob-module-actions-' + props.moduleId + '-' + group.id
+          return h('section', { key: group.id, className: 'ob-module-action-group', role: 'group', 'aria-labelledby': groupId },
+            h('h3', { id: groupId }, group.label), h('p', { className: 'ob-muted ob-small' }, group.description),
+            h('div', { className: 'ob-module-actions' }, rows.map(row => {
+              const reasonId = 'ob-module-action-' + props.moduleId + '-' + row.actionId + '-reason'
+              const effectId = reasonId + '-effect'
+              const disabledReason = !row.available ? ({ MODULE_ACTION_UNAVAILABLE: '此操作不适用于当前模块或状态（MODULE_ACTION_UNAVAILABLE）。', MODULE_ACTION_BUSY: '关联模块已有操作正在处理（MODULE_ACTION_BUSY）。', MODULE_KERNEL_DISPOSED: '插件正在停止，暂不能操作（MODULE_KERNEL_DISPOSED）。' })[row.reasonCode] || observedValue(row.reasonCode) : pending ? '已有操作正在处理中，请等待终态或继续观察。' : ''
+              return h('div', { key: row.actionId, className: 'ob-module-action' },
+                h(Btn, { small: true, kind: row.actionId === 'module.disable' ? 'danger' : 'secondary', 'aria-describedby': effectId + (disabledReason ? ' ' + reasonId : ''), disabled: pending || !row.available, onClick: () => run(row.actionId) }, ACTION_LABELS[row.actionId]),
+                disabledReason ? h('p', { id: reasonId, className: 'ob-module-action-reason ob-small ob-muted' }, disabledReason) : null,
+                h('p', { id: effectId, className: 'ob-small ob-muted' }, effects[row.actionId]),
+              )
+            })),
           )
-        }), h(Btn, { small: true, disabled: busy, onClick: api.reload }, '刷新动作')),
+        }),
+        !api.data && !api.error ? h('p', { className: 'ob-small ob-muted' }, api.loading ? '正在读取可用操作…' : '暂无可用操作') : null,
+        h('div', { className: 'ob-module-toolbar' }, h(Btn, { small: true, kind: 'ghost', disabled: busy, onClick: api.reload }, '刷新动作')),
         operation ? h('div', { role: 'status', 'aria-live': 'polite' },
           h('p', null, 'operation：' + operation.status + ' · ' + operation.phase + (operation.code ? ' · ' + operation.code : '')),
           operation.status === 'STOP_PENDING' ? h('p', null, 'STOP_PENDING：仍在排空，尚未完成；继续观察同一操作。') : null,
           !busy && !operationTerminal(operation) ? h(Btn, { small: true, onClick: () => run(null, true) }, '继续观察操作') : null,
         ) : null,
       )
-      return props.compact ? content : h(Panel, { className: 'ob-module-scope', title: '核心动作', description: '动作与可用性来自核心；接纳后轮询至终态，忙碌、跳过或失败不表示成功。' }, content)
+      return props.compact ? content : h(Panel, { className: 'ob-module-scope', title: '模块操作', description: '可用性由核心检查，操作接纳后持续观察至完成；忙碌、跳过或失败不表示成功。' }, content)
     }
     function ModuleFeatureLinks(props) {
       if (!props.item.builtin || props.item.source !== 'builtin') return null
@@ -8464,6 +8530,25 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const actionGuard = useRef({ active: true, busy: false })
       const consumedNavigation = useRef(null)
       const [healthRevision, setHealthRevision] = useState(0)
+      const [healthSnapshot, setHealthSnapshot] = useState(null)
+      const receiveHealth = useCallback(value => setHealthSnapshot(value), [])
+      const landingRef = useRef(null)
+      const lastLandingRef = useRef(null)
+      const requestedAnchorRef = useRef(null)
+      useLayoutEffect(() => {
+        if (loading && !items.length) return
+        const root = landingRef.current?.closest('.ob-root')
+        const heading = root?.querySelector('#ob-page-title')
+        const destination = detailId ? 'module:' + detailId : 'list'
+        if (!root || !heading || lastLandingRef.current === destination) return
+        root.scrollTop = 0
+        heading.focus({ preventScroll: true })
+        lastLandingRef.current = destination
+        if (requestedAnchorRef.current) {
+          root.querySelector(requestedAnchorRef.current)?.scrollIntoView?.({ block: 'start' })
+          requestedAnchorRef.current = null
+        }
+      }, [detailId, loading, items.length])
       useEffect(() => { actionGuard.current.active = true; return () => { actionGuard.current.active = false } }, [])
       useNavigationAnchor(props, 'ob-module-', !loading && Boolean(detailId))
 
@@ -8534,6 +8619,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const openDetail = async (item, anchor = 'detail') => {
         if (busy) return
         if (props.ownerIntegration && (props.navigation?.moduleId !== item.id || anchor !== 'detail')) { props.goTo?.({ area: 'extensions', section: 'module', moduleId: item.id, anchor: 'ob-module-' + anchor }); return }
+        requestedAnchorRef.current = anchor === 'config' ? '#ob-module-config' : null
         setDetailId(item.id)
         setEditor(null)
         setConfigError('')
@@ -8636,12 +8722,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
       const badges = (item) => h('div', { className: 'ob-row' },
         h(Badge, { tone: item.builtin ? 'brand' : 'muted' }, item.builtin ? '内置受信任' : uiFor(item)?.sandbox ? '外部隔离 WebUI' : '外部声明式（无执行权限）'),
-        h(Badge, { tone: item.status === 'loaded' ? 'ok' : ['error', 'blocked'].includes(item.status) ? 'err' : 'muted' }, String(item.status || 'unknown')),
+        h(Badge, { tone: item.status === 'loaded' ? 'ok' : ['error', 'blocked'].includes(item.status) ? 'err' : 'muted' }, moduleStatusLabel(item.status)),
         h(Badge, { tone: item.enabled ? 'brand' : 'muted' }, item.enabled ? '已启用' : '已停用'),
-      )
-      const moduleActions = (item) => h('div', { className: 'ob-module-actions' },
-        item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
-        h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', 'aria-describedby': !item.canToggle && !item.builtin ? 'ob-module-toggle-' + item.id + '-reason' : undefined, busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
       )
       const statusSummary = (item, surface) => h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
         h('p', { className: 'ob-small' }, String(item.description || item.name || item.id)),
@@ -8719,24 +8801,45 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (detailId) {
         const item = items.find((item) => item.id === detailId)
         const ui = item ? uiFor(item) : null
-        return h('section', { id: 'ob-module-detail', className: 'ob-stack ob-module-scope', 'aria-label': '模块详情' },
+        const primaryConfigReasonId = 'ob-module-primary-config-' + detailId + '-reason'
+        const primaryToggleReasonId = 'ob-module-primary-toggle-' + detailId + '-reason'
+        return h('section', { ref: landingRef, id: 'ob-module-detail', className: 'ob-stack ob-module-scope', 'aria-label': '模块详情' },
           h('div', { className: 'ob-module-toolbar', role: 'group', 'aria-label': '模块详情工具栏' },
             h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { if (props.ownerIntegration) props.goTo?.({ area: 'extensions', section: 'modules' }); else { setDetailId(''); setEditor(null); setConfigError('') } } }, '返回模块列表'),
             h(Btn, { kind: 'secondary', disabled: Boolean(busy) || loading, onClick: refresh }, '刷新详情'),
+          ),
+          h('header', { className: 'ob-module-detail-header' },
+            h('h1', { id: 'ob-page-title', tabIndex: -1, className: 'ob-display' }, String(item?.name || '模块详情')),
+            item ? h(Fragment, null,
+              h('p', { className: 'ob-module-id' }, h('code', { className: 'ob-module-code', tabIndex: 0 }, item.id)),
+              badges(item),
+              h('div', { className: 'ob-module-primary-actions', role: 'group', 'aria-label': '模块主要操作' },
+                h(Btn, { kind: 'primary', disabled: Boolean(busy) || !(hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui)), 'aria-describedby': primaryConfigReasonId, onClick: async () => {
+                  if (hasConfigUi(item, ui) && editor?.id !== item.id) await openConfig(item)
+                  landingRef.current?.querySelector('#ob-module-config')?.scrollIntoView?.({ block: 'start' })
+                } }, '配置'),
+                h(Btn, { kind: item.enabled ? 'danger' : 'secondary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || Boolean(cardOperation && !operationTerminal(cardOperation)) || !item.canToggle, 'aria-describedby': primaryToggleReasonId, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+              ),
+              h('p', { id: primaryConfigReasonId, className: 'ob-small ob-muted' }, !(hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui)) ? '此模块暂无可用配置界面。' : busy ? '正在处理操作，请稍候。' : '配置保存沿用当前模块的生效规则；未运行时只读。'),
+              h('p', { id: primaryToggleReasonId, className: 'ob-small ob-muted' }, !item.canToggle ? (!item.builtin ? '请编辑外部清单并重载后启停。' : '当前状态不允许启停。') : busy || (cardOperation && !operationTerminal(cardOperation)) ? '操作正在处理中，请等待完成或继续观察。' : item.enabled ? '停用将停止模块与关联任务，并影响依赖模块。' : '启用后将恢复符合条件的调度，可能调用模型或发送消息。'),
+            ) : null,
           ),
           error ? h(Banner, { tone: 'err', message: error }) : null,
           uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
           cardOperationStatus,
           item ? h(Fragment, null,
-            h(Panel, { key: item.id + ':summary', className: 'ob-module-summary', title: String(item.name || item.id), description: String(item.description || item.id), footer: item.builtin ? null : moduleActions(item) },
-              badges(item),
-              metadataRows(item, ['id', 'version', 'generation', 'uiRevision', 'requires', 'permissions']),
-              !item.canToggle && !item.builtin ? h('p', { id: 'ob-module-toggle-' + item.id + '-reason', className: 'ob-module-action-reason ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
-              item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
-              item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
+            h(Panel, { key: item.id + ':summary', className: 'ob-module-summary', title: '模块概况', description: String(item.description || '暂无说明') },
+              metadataRows({ source: item.builtin && item.source === 'builtin' ? '内置受信任' : '外部', version: item.version, status: moduleStatusLabel(item.status) }, ['source', 'version', 'status'], { labels: { source: '来源', version: '版本', status: '状态' }, code: false }),
+              item.error ? h('p', { className: 'ob-field-error' }, '模块加载失败，请查看技术信息并检查配置与依赖。') : null,
+              item.configWarning ? h('p', { className: 'ob-muted ob-small' }, '配置需要检查，请查看技术信息。') : null,
+              h('details', { className: 'ob-module-technical' }, h('summary', null, '技术信息'),
+                metadataRows({ ...item, ...(healthSnapshot?.moduleId === item.id ? { runtimeGeneration: healthSnapshot.runtimeGeneration, telemetryGeneration: healthSnapshot.telemetryGeneration, observedAt: healthSnapshot.observedAt } : {}) }, ['id', 'generation', 'uiRevision', 'runtimeGeneration', 'telemetryGeneration', 'observedAt', 'requires', 'permissions']),
+                item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
+                item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
+              ),
             ),
-            h(CoreModuleHealth, { ...props, key: item.id + ':' + item.generation + ':health:' + healthRevision, moduleId: item.id }),
-            h(CoreModuleActions, { ...props, key: item.id + ':actions', moduleId: item.id, onSettled: refresh }),
+            h(CoreModuleHealth, { ...props, key: item.id + ':' + item.generation + ':health:' + healthRevision, moduleId: item.id, onSnapshot: receiveHealth }),
+            h(CoreModuleActions, { ...props, key: item.id + ':actions', moduleId: item.id, actionIds: ['module.restart', 'module.reload', ...(item.enabled && ['error', 'blocked'].includes(item.status) ? ['module.enable'] : []), 'proactivity.runOnce', 'learning.runPending'], onSettled: refresh }),
             h(ModuleFeatureLinks, { ...props, item }),
             item.id === 'builtin-reminders' && item.builtin && item.source === 'builtin' ? h('section', { id: 'ob-module-reminders' }, h(ReminderData, props)) : null,
             !ui || !ui.surfaces.length ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
@@ -8755,7 +8858,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
       return h(
         'div',
-        { className: 'ob-stack ob-module-scope' },
+        { ref: landingRef, className: 'ob-stack ob-module-scope' },
         h(Panel, { title: '模块目录', description: '内置模块随插件发布；外部模块是操作员安装的同进程代码。permissions 不是沙箱，请先审核外部代码。', actions: h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: loading, disabled: Boolean(busy) || loading, onClick: refresh }, '刷新') },
           h('div', { className: 'ob-row' }, h(Badge, { tone: 'muted' }, '内置 ' + items.filter((item) => item.builtin).length), h(Badge, { tone: 'muted' }, '外部 ' + items.filter((item) => !item.builtin).length)),
         ),
@@ -9270,7 +9373,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                         ],
                       })
                     : null,
-                  h(PageHeader, {
+                  navigation.area === 'extensions' && navigation.moduleId ? null : h(PageHeader, {
                     eyebrow: headerInfo.eyebrow,
                     title: headerInfo.title,
                     description: headerInfo.description,

@@ -1981,7 +1981,7 @@ test('ModulesPage WebUI: UI request failure preserves list, toggles and safe det
     assert.match(JSON.stringify(render()), /UI 目录暂不可用/)
     control(actions(item.id), '详情').props.onClick()
     assert.match(JSON.stringify(render()), /UI 描述不可用或未声明/)
-    await control(actions(item.id), '启用').props.onClick()
+    await control(render(), '启用').props.onClick()
     assert.ok(calls.includes(panel.API_PREFIX + '/modules/toggle'))
     assert.equal(session.values[2], '')
   } finally { globalThis.fetch = original }
@@ -2169,15 +2169,7 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
   const original = globalThis.fetch, confirm = window.confirm
   window.confirm = () => true
   const catalog = () => ({ ok: true, moduleId: item.id, expectedGeneration: 'runtime', items: [{ actionId: item.enabled ? 'module.disable' : 'module.enable', available: true }] })
-  const toggle = async label => {
-    if (source === 'external') return moduleControl(render(), label).props.onClick()
-    const node = treeNodes(render()).find(node => node.type === panel.CoreModuleActions)
-    const saved = hookSession
-    stateOverrides = [catalog(), '', false, { current: true }]
-    let tree
-    try { tree = node.type(node.props) } finally { stateOverrides = null; hookSession = saved }
-    return control(tree, label).props.onClick()
-  }
+  const toggle = async label => moduleControl(render(), label).props.onClick()
   globalThis.fetch = async (path, options) => {
     calls.push([path, options.method])
     if (path.includes('/modules/actions?')) return { ok: true, json: async () => catalog() }
@@ -3265,14 +3257,14 @@ test('navigation resets the plugin scroller and focuses the heading for go/goTo,
       action(); h.render()
       assert.deepEqual(h.page().props.navigation, expected)
       assert.equal(h.root.scrollTop, 0)
-      assert.equal(h.focusLog.length, focusCount + 1)
+      assert.equal(h.focusLog.length, focusCount + (expected.moduleId ? 0 : 1))
       assert.deepEqual(h.focusLog.at(-1).options, { preventScroll: true })
     }
     navigate(() => h.page().props.go('cognition', 'cog-reply'), contractGo('cognition', 'cog-reply'))
     navigate(() => h.page().props.goTo({ area: 'profiles', section: 'turn' }), { area: 'profiles', section: 'turn' })
     for (const moduleId of ['builtin-learning', 'builtin-proactivity']) {
       navigate(() => h.page().props.goTo({ tab: 'modules', moduleId }), contractGoTo({ tab: 'modules', moduleId }))
-      assert.equal(h.focusLog.at(-1).title, '模块详情')
+      assert.equal(treeNodes(h.tree).some(node => node.type?.name === 'PageHeader'), false, 'module child owns its h1; root defers focus until it mounts')
     }
     navigate(() => h.page().props.goTo({ tab: 'modules' }), { area: 'extensions', section: 'modules' })
     navigate(() => h.page().props.go('cognition.reply.split'), contractGo('cognition.reply.split'))
@@ -3302,7 +3294,7 @@ test('URL deep links, hash aliases and back/forward keep host routing and consis
       const count = h.focusLog.length
       h.travel(delta)
       assert.deepEqual(h.page().props.navigation, expected)
-      assert.equal(h.root.scrollTop, 0); assert.equal(h.focusLog.length, count + 1)
+      assert.equal(h.root.scrollTop, 0); assert.equal(h.focusLog.length, count + (expected.moduleId ? 0 : 1))
     }
     const url = new URL(window.location.href)
     assert.equal(url.pathname, '/console'); assert.equal(url.searchParams.get('keep'), '1'); assert.equal(url.hash, '#/main/onebot-qq')
@@ -3681,8 +3673,8 @@ test('UI phase 3 metadata/actions: long health values and reasons wrap without t
   const [button, reason] = action.children
   assert.equal(reason.type, 'p')
   assert.equal(reason.children[0], long)
-  assert.equal(button.props['aria-describedby'], reason.props.id)
-  assert.equal(button.type(button.props).props['aria-describedby'], reason.props.id)
+  assert.ok(button.props['aria-describedby'].split(' ').includes(reason.props.id))
+  assert.equal(button.type(button.props).props['aria-describedby'], button.props['aria-describedby'])
   assert.ok(!treeNodes(button).includes(reason))
 })
 
@@ -3733,14 +3725,16 @@ test('UI phase 3 CSS: container AND viewport thresholds, equal-height footer car
   assert.match(rule('.ob-module-scope .ob-panel'), /overflow:visible/)
   assert.match(rule('.ob-module-scope .ob-badge'), /height:auto;min-height:22px;white-space:normal;overflow-wrap:anywhere/)
   assert.match(rule('.ob-module-toolbar,.ob-module-actions'), /display:flex;flex-wrap:wrap/)
-  assert.match(rule('.ob-module-metadata'), /display:grid;grid-template-columns:minmax\(0,12rem\) minmax\(0,1fr\)/)
+  assert.match(rule('.ob-module-metadata'), /display:grid;grid-template-columns:minmax\(0,1fr\)/)
+  assert.match(rule('.ob-module-metadata-row'), /display:grid;grid-template-columns:minmax\(0,12rem\) minmax\(0,1fr\)/)
   assert.match(rule('.ob-module-metadata dt,.ob-module-metadata dd'), /margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere/)
   assert.match(rule('.ob-module-preview'), /gap:8px;margin:0/)
   assert.match(rule('.ob-module-preview p'), /margin:0/)
   assert.match(rule('.ob-module-scope iframe'), /width:100%;min-width:0;max-width:100%/)
   assert.match(rule('.ob-number-control .ob-input'), /flex:1 1 8rem;min-width:0;width:auto/)
   assert.match(rule('.ob-number-control .ob-field-unit'), /white-space:normal;overflow-wrap:anywhere/)
-  assert.match(css, /@media \(max-width:900px\)\{\s*\.ob-module-grid,\.ob-module-metadata\{grid-template-columns:minmax\(0,1fr\)\}/)
+  assert.match(css, /@media \(max-width:900px\)\{\s*\.ob-module-grid\{grid-template-columns:minmax\(0,1fr\)\}/)
+  assert.match(rule('.ob-module-metadata-row', true), /grid-template-columns:minmax\(0,7rem\) minmax\(0,1fr\)/)
   assert.match(rule('.ob-module-card .ob-module-actions', true), /display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);width:100%/)
   assert.match(rule('.ob-module-card .ob-module-actions > .ob-btn', true), /width:100%/)
   assert.match(rule('.ob-module-toolbar .ob-btn,.ob-module-actions .ob-btn'), /min-height:44px/)
@@ -3904,4 +3898,188 @@ test('UI phase B module cards cap permissions at three with +N and keep three eq
     assert.ok(treeNodes(card).some(node => node.props?.id === buttons[1].props['aria-describedby']))
   }
   assert.match(panel.PANEL_CSS, /\.ob-module-card \.ob-module-actions > \.ob-btn\{flex:1 1 5rem;min-height:44px/)
+})
+
+// Follow native closed <details> semantics when checking the default visible text.
+const moduleVisibleText = value => {
+  if (value == null || typeof value === 'boolean') return ''
+  if (typeof value !== 'object') return String(value)
+  if (Array.isArray(value)) return value.map(moduleVisibleText).join(' ')
+  const children = value.type === 'details' && !value.props?.open ? value.children.filter(child => child?.type === 'summary') : value.children
+  return moduleVisibleText(children)
+}
+
+test('UI phase B detail: named h1, secondary ID, closed whitelist technical info and clean visible summary', () => {
+  const item = { id: 'external-opaque-id', name: '实用工具', description: '处理日常任务。', source: 'external', builtin: false, enabled: true, canToggle: true, status: 'loaded', version: '1.2.3', generation: 'manifest-generation', uiRevision: 'ui-revision', runtimeGeneration: 'runtime-generation', telemetryGeneration: 'telemetry-generation', observedAt: 123456789, requires: ['opaque-dependency'], permissions: ['permission-a', 'permission-b', 'permission-c', 'permission-d'], config: { secret: 'do-not-render-secret' } }
+  stateOverrides = [[item], false, '', '', null, '', null, '', item.id]
+  let tree
+  try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+  const nodes = treeNodes(tree), heading = nodes.find(node => node.type === 'h1')
+  assert.equal(heading.children[0], item.name)
+  assert.equal(heading.props.id, 'ob-page-title'); assert.equal(heading.props.tabIndex, -1)
+  assert.equal(nodes.filter(node => node.type === 'h1').length, 1)
+  assert.equal(tree.children[0].props['aria-label'], '模块详情工具栏')
+  assert.deepEqual(treeNodes(tree.children[0]).filter(node => node.type?.name === 'Btn').map(node => node.children[0]), ['返回模块列表', '刷新详情'])
+  const summary = nodes.find(node => node.props?.className === 'ob-module-summary')
+  const rendered = summary.type({ ...summary.props, children: summary.children })
+  const visible = moduleVisibleText(rendered)
+  for (const value of [item.description, item.version, '来源', '外部', '状态', '运行中', '技术信息']) assert.ok(visible.includes(value), value)
+  const technical = treeNodes(rendered).find(node => node.type === 'details')
+  assert.equal(technical.props.open, undefined)
+  assert.equal(technical.children[0].children[0], '技术信息')
+  for (const key of ['id', 'generation', 'uiRevision', 'runtimeGeneration', 'telemetryGeneration', 'observedAt', 'requires', 'permissions']) {
+    assert.ok(!visible.includes(key), key + ' hidden by default')
+    assert.ok(treeNodes(technical).some(node => node.type === 'dt' && node.children[0] === key))
+  }
+  for (const value of [item.id, item.generation, item.uiRevision, item.runtimeGeneration, item.telemetryGeneration, ...item.requires, ...item.permissions]) {
+    assert.ok(!visible.includes(value), value + ' hidden in summary')
+    assert.ok(moduleVisibleText(technical.children.slice(1)).includes(value), value + ' retained')
+  }
+  assert.doesNotMatch(JSON.stringify(rendered), /do-not-render-secret/)
+  const code = nodes.find(node => node.props?.className === 'ob-module-id').children[0]
+  assert.equal(code.type, 'code'); assert.equal(code.children[0], item.id)
+  assert.ok(treeNodes(technical).filter(node => node.type === 'code').every(node => node.props.className === 'ob-module-code'))
+  const primary = nodes.find(node => node.props?.['aria-label'] === '模块主要操作')
+  assert.deepEqual(treeNodes(primary).filter(node => node.type?.name === 'Btn').map(node => node.children[0]), ['配置', '停用'])
+  for (const button of treeNodes(primary).filter(node => node.type?.name === 'Btn')) {
+    assert.ok(nodes.some(node => node.props?.id === button.props['aria-describedby']))
+    assert.equal(button.type(button.props).props['aria-describedby'], button.props['aria-describedby'])
+  }
+  const maintenance = nodes.find(node => node.type === panel.CoreModuleActions)
+  assert.ok(maintenance.props.actionIds.includes('module.reload'), 'external reload stays available in detail')
+  assert.ok(!maintenance.props.actionIds.includes('module.disable'), 'primary lifecycle action occurs once')
+})
+
+test('UI phase B health: human headlines, primary metrics and closed technical diagnostics retain observations', () => {
+  const cases = [
+    [null, true, '', '加载中'], [null, false, '', '需要注意'], [null, false, 'API_UNAVAILABLE', '需要注意'],
+    [{ lifecycle: 'loaded', phase: 'idle', health: 'healthy' }, false, '', '运行正常'],
+    [{ lifecycle: 'loaded', phase: 'starting', health: 'unknown' }, false, '', '加载中'],
+    [{ lifecycle: 'loaded', phase: 'draining', health: 'healthy', reasonCode: 'STOP_PENDING' }, false, '', '需要注意'],
+    [{ lifecycle: 'loaded', health: 'degraded' }, false, '', '需要注意'],
+    [{ lifecycle: 'blocked', health: 'stopped', reasonCode: 'DEPENDENCY_BLOCKED' }, false, '', '需要注意'],
+    [{ lifecycle: 'disabled', health: 'stopped' }, false, '', '已停止'],
+    [{ lifecycle: 'error', health: 'unhealthy' }, false, '', '错误'],
+    [{ lifecycle: 'loaded', health: 'unknown' }, false, '', '需要注意'],
+  ]
+  for (const [observation, loading, error, headline] of cases) {
+    const health = observation && { moduleId: 'health-module', runtimeGeneration: 'opaque-runtime', telemetryGeneration: 'opaque-telemetry', observedAt: 222222, lastError: { reasonCode: 'ENGINE_FAILED', runtimeGeneration: 'old-generation' }, ...observation }
+    stateOverrides = [{ items: health ? [health] : [] }, error, loading]
+    let tree
+    try { tree = panel.CoreModuleHealth({ moduleId: 'health-module' }) } finally { stateOverrides = null }
+    assert.equal(treeNodes(tree).find(node => node.props?.className === 'ob-module-health-headline').children[0], headline)
+    const visible = moduleVisibleText(tree)
+    assert.ok(!visible.includes('opaque-runtime')); assert.ok(!visible.includes('opaque-telemetry')); assert.ok(!visible.includes('lastError'))
+    if (!health) continue
+    const details = treeNodes(tree).find(node => node.type === 'details')
+    assert.equal(details.props.open, undefined); assert.equal(details.children[0].children[0], '健康技术详情')
+    for (const label of ['运行状态', '工作阶段', '健康', '原因代码']) assert.ok(visible.includes(label))
+    assert.ok(JSON.stringify(details).includes('old-generation'))
+    if (health.reasonCode === 'STOP_PENDING') assert.match(visible, /排空/)
+    if (health.lifecycle === 'blocked') assert.match(visible, /依赖尚未就绪/)
+  }
+})
+
+test('UI phase B actions: named groups, consequences and service/busy reasons describe native buttons', () => {
+  const catalog = { items: [
+    { actionId: 'module.restart', available: true }, { actionId: 'module.reload', available: false, reasonCode: 'MODULE_RELOAD_UNAVAILABLE' },
+    { actionId: 'learning.runPending', available: true }, { actionId: 'untrusted.action', available: true },
+  ] }
+  for (const busy of [false, true]) {
+    stateOverrides = [catalog, '', false, null, '', busy]
+    let tree
+    try { tree = panel.CoreModuleActions({ moduleId: 'actions-module' }) } finally { stateOverrides = null }
+    const nodes = treeNodes(tree), groups = nodes.filter(node => node.props?.role === 'group')
+    assert.equal(groups.length, 2)
+    assert.deepEqual(groups.map(group => nodes.find(node => node.props?.id === group.props['aria-labelledby']).children[0]), ['运行管理', '手动任务'])
+    assert.match(moduleVisibleText(tree), /消耗预算/); assert.match(moduleVisibleText(tree), /依赖模块/)
+    assert.ok(!moduleVisibleText(tree).includes('untrusted.action'))
+    for (const label of ['重启', '重载', '运行待处理']) {
+      const button = control(tree, label)
+      assert.equal(button.props.disabled, busy || label === '重载')
+      const descriptions = button.props['aria-describedby'].split(' ').map(id => nodes.find(node => node.props?.id === id))
+      assert.ok(descriptions.every(Boolean))
+      assert.ok(descriptions.some(node => moduleVisibleText(node).length > 10))
+      if (label === '重载') assert.ok(descriptions.some(node => moduleVisibleText(node) === 'MODULE_RELOAD_UNAVAILABLE'))
+      else if (busy) assert.ok(descriptions.some(node => /正在处理中/.test(moduleVisibleText(node))))
+      assert.equal(button.type(button.props).props['aria-describedby'], button.props['aria-describedby'])
+    }
+  }
+})
+
+function moduleLandingHarness({ items, loading = false, navigation } = {}) {
+  const saved = { layout: reactShim.useLayoutEffect, effect: reactShim.useEffect }
+  const session = { values: [items || [], loading, '', '', null, '', null, ''], index: 0 }, scheduled = [], focusLog = [], anchors = []
+  let tree
+  const root = { scrollTop: 800, querySelector: selector => selector === '#ob-page-title' ? { focus: options => focusLog.push({ options, title: treeNodes(tree).find(node => node.type === 'h1')?.children[0] || '模块目录' }) } : { scrollIntoView: options => anchors.push({ selector, options }) } }
+  const dom = { closest: selector => { assert.equal(selector, '.ob-root'); return root }, querySelector: root.querySelector }
+  reactShim.useEffect = () => {}
+  reactShim.useLayoutEffect = (run, deps) => {
+    const state = shimState(() => ({ deps: null }))[0]
+    if (!state.deps || deps.some((value, i) => !Object.is(value, state.deps[i]))) scheduled.push(() => { run(); state.deps = deps })
+  }
+  const instance = registration.factory(requireShim)
+  const render = () => {
+    session.index = 0; hookSession = session
+    try { tree = instance.ModulesPage({ navigation }) } finally { hookSession = null }
+    if (tree.props.ref) tree.props.ref.current = dom
+    for (const run of scheduled.splice(0)) run()
+    return tree
+  }
+  render()
+  return { render, root, focusLog, anchors, instance, get tree() { return tree },
+    loaded(values) { session.values[0] = values; session.values[1] = false; return render() },
+    loading(value) { session.values[1] = value; return render() },
+    restore() { reactShim.useLayoutEffect = saved.layout; reactShim.useEffect = saved.effect },
+  }
+}
+
+test('UI phase B module landing resets scroll and focuses after asynchronous detail load and local list/detail switches', async () => {
+  const item = { id: 'list', name: '模块标题', source: 'external', builtin: false, status: 'loaded', enabled: true, canToggle: true, generation: 'g' }
+  const h = moduleLandingHarness({ loading: true, navigation: { moduleId: item.id, anchor: 'ob-module-detail' } })
+  try {
+    assert.equal(h.focusLog.length, 0)
+    h.loaded([item]); assert.equal(h.root.scrollTop, 0)
+    assert.deepEqual(h.focusLog, [{ options: { preventScroll: true }, title: item.name }])
+    assert.ok(control(h.tree, '返回模块列表')); assert.ok(control(h.tree, '刷新详情'))
+    h.root.scrollTop = 900; h.render(); h.loading(true); h.loading(false)
+    assert.equal(h.root.scrollTop, 900); assert.equal(h.focusLog.length, 1, 'refresh does not refocus')
+    const health = treeNodes(h.tree).find(node => node.type === h.instance.CoreModuleHealth)
+    health.props.onSnapshot({ moduleId: item.id, runtimeGeneration: 'live-runtime', telemetryGeneration: 'live-telemetry', observedAt: 333333 })
+    h.render(); assert.equal(h.root.scrollTop, 900); assert.equal(h.focusLog.length, 1)
+    const technical = treeNodes(h.tree).find(node => node.type === 'details')
+    assert.ok(JSON.stringify(technical).includes('live-runtime')); assert.ok(JSON.stringify(technical).includes('live-telemetry'))
+    control(h.tree, '返回模块列表').props.onClick(); h.render()
+    assert.equal(h.root.scrollTop, 0); assert.equal(h.focusLog.at(-1).title, '模块目录')
+    h.root.scrollTop = 700
+    await moduleControl(h.tree, '详情').props.onClick(); h.render()
+    assert.equal(h.root.scrollTop, 0); assert.equal(h.focusLog.at(-1).title, item.name)
+    assert.equal(h.focusLog.length, 3); assert.deepEqual(h.anchors, [], 'default landing never scrolls past top controls')
+  } finally { h.restore() }
+})
+
+test('UI phase B mobile CSS keeps label/value rows, closed native details and compact two-column actions without horizontal overflow', () => {
+  const css = panel.PANEL_CSS
+  assert.match(css, /\.ob-module-metadata-row\{display:grid;grid-template-columns:minmax\(0,12rem\) minmax\(0,1fr\)/)
+  assert.match(css, /@media \(max-width:900px\)\{[\s\S]*?\.ob-module-metadata-row\{grid-template-columns:minmax\(0,7rem\) minmax\(0,1fr\);gap:8px/)
+  assert.match(css, /\.ob-module-primary-actions\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/)
+  assert.match(css, /\.ob-module-code\{display:inline-block;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text/)
+  assert.match(css, /\.ob-module-technical > summary\{padding-block:8px;min-height:44px/)
+  assert.match(css, /\.ob-module-action\{flex:1 1 10rem;align-items:flex-start/)
+  assert.doesNotMatch(css, /\.ob-module-technical[^{}]*\{[^{}]*(?:display:block!important|white-space:nowrap)/)
+})
+
+
+test('UI phase B detail preserves enable recovery for enabled error/blocked modules alongside primary disable', () => {
+  for (const status of ['error', 'blocked']) {
+    const item = { id: 'builtin-recovery', name: '待恢复模块', source: 'builtin', builtin: true, enabled: true, canToggle: true, status }
+    stateOverrides = [[item], false, '', '', null, '', null, '', item.id]
+    let tree
+    try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
+    assert.ok(control(tree, '停用'))
+    const actions = treeNodes(tree).find(node => node.type === panel.CoreModuleActions)
+    assert.ok(actions.props.actionIds.includes('module.enable'))
+    stateOverrides = [{ items: [{ actionId: 'module.enable', available: true }] }, '', false]
+    try { assert.equal(control(actions.type(actions.props), '启用').props.disabled, false) } finally { stateOverrides = null }
+  }
 })
