@@ -76,7 +76,7 @@ test('C02 partial explicit values preserve false, zero, empty arrays, strings an
 
 for (const backend of ['sqlite', 'json']) {
   test(`C02 ${backend} restart preserves snapshot, revision, active persona and explicit edits`, t => {
-    const dir = mkdtempSync(join(tmpdir(), 'profile-settings-')); t.after(() => rmSync(dir, { recursive: true, force: true }))
+    const dir = mkdtempSync(join(tmpdir(), 'profile-settings-')); t.after(() => { try { rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }) } catch {} })
     const file = join(dir, 'test.sqlite')
     if (backend === 'json') mkdirSync(file)
     let store = createStore({ file })
