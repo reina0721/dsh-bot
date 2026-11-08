@@ -3056,10 +3056,8 @@ test('top command bar: six areas and only the current visible section chips shar
       }
     }
     h.props.navigation = contractGoTo({ tab: 'modules', moduleId: 'builtin-learning', anchor: 'config' }); h.render()
-    assert.equal(h.get('.ob-section-chip').props['aria-current'], undefined)
-    assert.equal(h.byLabel('分区').props.value, 'module')
-    assert.ok(treeNodes(h.tree).some(node => node.props?.['aria-current'] === 'page' && node.children?.includes('模块详情')))
-    assert.equal(h.get('.ob-section-chip').props['data-section'], 'extensions:modules')
+    assert.ok(!h.get('.ob-sectionbar'), 'module detail uses breadcrumb, not the list sectionbar')
+    assert.equal(h.byLabel('分区'), undefined)
     assert.equal(h.get('.ob-command-status').props['aria-label'].includes('已连接'), true)
     assert.ok(treeNodes(h.tree).some(node => node.children?.includes('小葵'))); assert.ok(treeNodes(h.tree).some(node => node.children?.includes('v0.11.21')))
     h.click('刷新状态'); assert.equal(refreshes, 1)
@@ -4119,15 +4117,9 @@ test('UI phase C native area/section selects use canonical routes and describe m
     h.props.navigation = { area: 'extensions', section: 'module', moduleId: 'builtin-learning' }
     h.render()
     assert.equal(h.byLabel('区域').props.value, 'extensions')
-    const sections = h.byLabel('分区')
-    assert.equal(sections.props.value, 'module')
-    assert.equal(treeNodes(field(h.tree, '分区')).filter(node => node.type === 'option').at(-1).children[0], '模块详情')
-    assert.equal(h.get('.ob-section-chip').props['aria-current'], undefined, 'directory is not the current route')
-    const count = h.targets.length
-    sections.props.onChange({ target: { value: 'module' } })
-    assert.equal(h.targets.length, count, 'current detail preserves the module ID')
-    sections.props.onChange({ target: { value: 'modules' } })
-    assert.deepEqual(h.targets.at(-1), { area: 'extensions', section: 'modules' })
+    assert.equal(h.byLabel('分区'), undefined, 'module detail uses breadcrumb, not a section select')
+    assert.ok(!h.get('.ob-sectionbar'), 'module detail hides the list sectionbar')
+    assert.ok(h.get('.ob-module-breadcrumb-current') === null || h.get('.ob-module-breadcrumb-current') === undefined, 'breadcrumb is rendered by ModuleDetail, not the command bar')
   } finally { h.restore() }
 })
 

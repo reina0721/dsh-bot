@@ -3520,16 +3520,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h('div', { className: 'ob-command-actions' },
               h('button', { type: 'button', 'aria-label': '打开搜索', title: '搜索（Ctrl/Cmd+K）', 'aria-haspopup': 'dialog', 'aria-expanded': open, 'aria-controls': 'ob-command-palette', onClick: () => setOpen(true) }, h(Icon, { name: 'search', size: 18 })),
               h('button', { type: 'button', 'aria-label': '刷新状态', title: '刷新状态', disabled: refreshing, onClick: () => refreshAll?.() }, h(Icon, { name: 'refresh', size: 18 })))),
-          h('nav', { className: 'ob-sectionbar', 'aria-label': '当前区域分区' }, sections.map(section =>
+          isModuleDetail ? null : h('nav', { className: 'ob-sectionbar', 'aria-label': '当前区域分区' }, sections.map(section =>
             h('button', { key: section.id, type: 'button', className: 'ob-section-chip', 'data-section': navigation.area + ':' + section.id,
               'aria-current': navigation.section === section.id ? 'page' : undefined,
-              onClick: () => select({ area: navigation.area, section: section.id }) }, SECTION_LABELS[section.id] || section.id)),
-            isModuleDetail ? h('span', { className: 'ob-section-chip', 'aria-current': 'page' }, '模块详情') : null),
-          sections.length > 1 || isModuleDetail ? h('label', { className: 'ob-section-select-row' }, h('span', null, '分区'),
+              onClick: () => select({ area: navigation.area, section: section.id }) }, SECTION_LABELS[section.id] || section.id))),
+          !isModuleDetail && sections.length > 1 ? h('label', { className: 'ob-section-select-row' }, h('span', null, '分区'),
             h('select', { 'aria-label': '分区', value: navigation.section, onChange: event => {
               if (event.target.value !== navigation.section) select({ area: navigation.area, section: event.target.value })
-            } }, sections.map(section => h('option', { key: section.id, value: section.id }, SECTION_LABELS[section.id] || section.id)),
-            isModuleDetail ? h('option', { value: 'module' }, '模块详情') : null)) : null),
+            } }, sections.map(section => h('option', { key: section.id, value: section.id }, SECTION_LABELS[section.id] || section.id)))) : null),
         open ? h('div', { className: 'ob-palette-overlay', onClick: event => { if (event.target === event.currentTarget) close() } },
           h('div', { id: 'ob-command-palette', className: 'ob-palette', role: 'dialog', 'aria-modal': true, 'aria-labelledby': 'ob-palette-title', onKeyDown: keyDown },
             h('div', { className: 'ob-palette-head' }, h('h2', { id: 'ob-palette-title', className: 'ob-palette-title' }, '搜索页面与设置'),
