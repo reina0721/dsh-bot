@@ -335,7 +335,7 @@ test('C07 shared assembly: injects broker and actual persona edit/switch generat
   const graph = assembleServices({ dataRoot: join(e.root, 'graph'), getConfig: () => cfg,
     runtimeContext: e.ctx, executionSandbox: e.broker, registry: [], discoverExternal: false })
   await graph.modulesReady
-  t.after(async () => { await graph.modules.dispose(); graph.cognition.dispose(); rmSync(e.root, { recursive: true, force: true }) })
+  t.after(async () => { await graph.modules.dispose(); graph.cognition.dispose(); try { rmSync(e.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }) } catch {} })
   const runtime = graph.cognition.services.runtime
   assert.ok(runtime, graph.cognition.snapshot().error)
   const first = await runtime.compose({ turn: owner, user: 'hello' })

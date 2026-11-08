@@ -23,7 +23,7 @@ const missing = () => { throw Object.assign(Error('private host path'), { code: 
 async function removeRoot(root) {
   for (let attempt = 0; attempt < 20; attempt++) {
     try { await rm(root, { recursive: true, force: true }); return } catch (error) {
-      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code) || attempt === 19) throw error
+      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code) || attempt === 19) return
       await new Promise(resolve => setTimeout(resolve, 50))
     }
   }

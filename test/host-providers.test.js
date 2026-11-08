@@ -24,7 +24,7 @@ async function boot(t, { builtin = false } = {}) {
     fake.dispose()
     if (previous === undefined) delete process.env.DSH_BOT_DATA_DIR
     else process.env.DSH_BOT_DATA_DIR = previous
-    await rm(root, { recursive: true, force: true })
+    try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }) } catch {}
   })
   const coreStart = t.mock.method(host.cognition.services.reminders, 'start')
   return { host, fake, coreStart }
