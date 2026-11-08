@@ -314,7 +314,7 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 | `cog-core` | `cognition.enabled` / `dryRun` / `paused` | `true` / `false` / `false` | 总开关、演练（完整决策但不发送）、暂停（保留状态） |
 | `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `budgetScope` / `personaDailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` / `modelRouting.*` | `auto` / `true` / `""` / `""` / `300000` / `global` / `300000` / `1800` / `800` / 空 | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；`modelRouting` 按聊天覆盖 provider/model，优先级：会话覆盖 > 私聊/群默认 > 全局路由 |
 | `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `groupReplyMode` / `groupReplyProbability` / `groupCooldownMs` / `groupMaxRepliesPerMinute` / `maxConsecutiveGroupReplies` | `1800` / `10000` / `9000` / `addressed` / `0.2` / `3000` / `6` / `3` | 碎片聚合软/硬等待；群聊参与方式（仅@/概率/所有消息）及冷却/频率上限；旧 `addressedOnlyGroups` 仍兼容映射 |
-| `cog-reply` | `reply.split` / `maxChars` / `maxParts` / `delayMs` / `quote` / `atSender` / `notice.patReply` / `patCooldownMs` | `true` / `300` / `3` / `600` / `true` / `false` / `true` / `60000` | 长回复分条、引用与群聊 @；拍一拍回应与冷却；分条中途失败不回滚 |
+| `cog-reply` | `reply.split` / `maxChars` / `maxParts` / `delayMs` / `quote` / `atSender` / `notice.patReply` / `patCooldownMs` | `true` / `300` / `3` / `600` / `true` / `false` / `true` / `60000` | 模型决定气泡分条、引用与群聊 @；拍一拍回应与冷却；分条中途失败不回滚 |
 | `cog-purpose` | `purpose.enabled` / `injectPrompt` / `promptLimit` / `maxActive` | `true` / `true` / `3` / `5` | 长期目标/计划/意图；注入少量高优先级目的；面板与 `/purpose` 管理 |
 | `cog-persona` | `persona.traits` / `style` / `values` / `evolutionEnabled` / `evolutionPerDay` | 见默认值 | 12 维稳定人格、6 维表达风格、价值边界；最长每日小步慢演化。**文本人设（名字/背景/性格/风格/喜好/边界）存在认知 persona 记录，不在此表** |
 | `cog-emotion` | `emotion.halfLifeMinutes` / `regulation` / `expressiveness` | `–` | 情绪惯性/衰减/调节、外显阈值；模拟状态 |
@@ -324,6 +324,8 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 | `cog-learning` | `learning.enabled` / `autoResearch` / `minConfidence` / `maxSources` / `dailyTokenBudget` / `sources` | `true` / `false` / `0.3` / `5` / `20000` / built-in off | 未知检测、学习任务、多来源证据、claims；默认只检测，外部检索需显式开启与许可 |
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
+
+`cognition.reply.split`（允许气泡分条（模型决定））按 `<bubble>文本</bubble>` 排版，关闭后合成一条消息。无标签默认一泡；`maxChars`（异常长文兜底上限）仅在无标签/损坏标签且单泡超过 2000 字时用于安全切分，不参与正常节奏。有效标签单泡超过 2000 字按 2000 字兜底。`maxParts` 是安全上限，模型通常用 1–3 泡，超出部分并入最后一泡，保留全部正文；`delayMs` 是气泡间隔，最后一泡之后不等待。标签不会发送到 QQ，第一泡独享引用和 @。详见[用户手册](USER-MANUAL.md#34-回复分条引用-与群聊节奏)。
 
 ### LLM 每日预算与今日用量
 

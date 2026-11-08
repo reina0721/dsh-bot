@@ -47,13 +47,13 @@ test('builtin reply delivery: registered planner preserves Phase 1 layout and co
   assert.equal(planner.id, 'builtin-reply-delivery')
   const turn = { chatType: 'group', chatId: 'g1', senderId: 'u1', messages: [{ messageId: 'last' }] }
   for (const replyCfg of [{}, { split: false }, { quote: false }, { atSender: true, maxChars: 40, maxParts: 2, delayMs: 25 }]) {
-    const ctx = { text: '字'.repeat(130), turn, replyCfg, replyTo: 'explicit', source: 'pipeline', decisionId: 'd1' }
+    const ctx = { text: '<bubble>' + '字'.repeat(40) + '</bubble><bubble>' + '字'.repeat(90) + '</bubble>', turn, replyCfg, replyTo: 'explicit', source: 'pipeline', decisionId: 'd1' }
     const before = structuredClone(ctx)
     const plan = planner.plan(ctx)
     assert.equal(validateDeliveryPlan(plan), true)
     assert.deepEqual(plan, buildReplyPlan(ctx))
     assert.deepEqual(ctx, before)
-    assert.equal(plan.parts.map(part => part.segments.at(-1).data.text).join(''), ctx.text)
+    assert.equal(plan.parts.map(part => part.segments.at(-1).data.text).join('').replace(/\s/g, ''), '字'.repeat(130))
     assert.equal(plan.parts[0].segments.some(s => s.type === 'reply'), replyCfg.quote !== false)
     if (replyCfg.atSender) {
       assert.deepEqual(plan.parts.map(part => part.delayAfterMs), [25, 0])

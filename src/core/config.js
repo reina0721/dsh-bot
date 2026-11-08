@@ -771,12 +771,12 @@ export const CONFIG_GROUPS = [
   {
     id: 'cog-reply',
     title: '回复与出站',
-    description: '长回复分条、引用、@ 与分条间隔；只影响认知侧自动发送，不影响面板手动发送。',
+    description: '模型气泡分条、引用、@ 与气泡间隔；只影响认知侧自动发送，不影响面板手动发送。',
     fields: [
-      { path: 'cognition.reply.split', module: 'builtin-reply-delivery', label: '长回复分条', type: 'switch', default: true, help: '超过字数上限时拆成多条，优先按段落/句末标点切。' },
-      { path: 'cognition.reply.maxChars', module: 'builtin-reply-delivery', label: '单条字数上限', type: 'number', default: 300, min: 80, max: 2000, step: 10 },
-      { path: 'cognition.reply.maxParts', module: 'builtin-reply-delivery', label: '最多分条', type: 'number', default: 3, min: 1, max: 10, step: 1, help: '超过上限的剩余内容并入最后一条，不截断。' },
-      { path: 'cognition.reply.delayMs', module: 'builtin-reply-delivery', label: '分条间隔', type: 'number', default: 600, min: 0, max: 5000, step: 100, unit: 'ms' },
+      { path: 'cognition.reply.split', module: 'builtin-reply-delivery', label: '允许气泡分条（模型决定）', type: 'switch', default: true, help: '按模型的 <bubble> 标签分条；关闭后合为一条消息。' },
+      { path: 'cognition.reply.maxChars', module: 'builtin-reply-delivery', label: '异常长文兜底上限', type: 'number', default: 300, min: 80, max: 2000, step: 10, help: '仅无标签或标签损坏且单泡超过 2000 字时作为兜底切分目标，不参与正常节奏；有效标签超长时按 2000 字兜底。' },
+      { path: 'cognition.reply.maxParts', module: 'builtin-reply-delivery', label: '最多分条', type: 'number', default: 3, min: 1, max: 10, step: 1, help: '安全条数上限；提示模型通常用 1–3 泡，超出部分并入最后一泡，不截断。' },
+      { path: 'cognition.reply.delayMs', module: 'builtin-reply-delivery', label: '气泡间隔', type: 'number', default: 600, min: 0, max: 5000, step: 100, unit: 'ms' },
       { path: 'cognition.reply.quote', module: 'builtin-reply-delivery', label: '回复时引用原消息', type: 'switch', default: true },
       { path: 'cognition.reply.atSender', module: 'builtin-reply-delivery', label: '群聊回复时 @ 对方', type: 'switch', default: false, help: '默认关闭，避免每条回复都带 @；与引用同时开启时可能显得重叠。' },
       { path: 'cognition.notices.enabled', label: '记录 QQ 通知到时间轴', type: 'switch', default: true },

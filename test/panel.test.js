@@ -2349,7 +2349,7 @@ test('ModulesPage trusted previews render bounded read-only drafts without reque
   globalThis.fetch = () => { throw Error('preview must not request data') }
   try {
     const cases = [
-      ['reply-delivery', ['模块启用：开启', '长回复分条：开启', '单条字数上限：480', '最多分条：4', '引用原消息：开启；群聊 @ 对方：关闭', '分条等待：800 ms / 条间']],
+      ['reply-delivery', ['模块启用：开启', '允许气泡分条（模型决定）：开启', '异常长文兜底上限：480', '最多分条：4', '引用原消息：开启；群聊 @ 对方：关闭', '气泡间隔：800 ms / 条间']],
       ['learning', ['模块启用：开启', '学习开关：开启', '自动外部检索：关闭', '未知检测：开启', '每小时任务上限：3']],
       ['typing', ['模块启用：开启', '输入状态开关：开启', '输入状态有效状态：开启（仅私聊，依赖网关支持）']],
       ['proactivity', ['模块启用：开启', '主动行为开关：开启（仅私聊）', '安静时段（本地小时）：23–8', '滚动 24 小时私聊上限：1', '最低熟悉度：0.5；无回应退避：24 小时']],

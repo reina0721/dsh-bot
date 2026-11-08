@@ -8400,11 +8400,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       'reply-delivery.preview': function ReplyDeliveryPreview({ module, config, summary }) {
         return previewBody(summary, [
           '模块启用：' + previewSwitch(module.enabled),
-          '长回复分条：' + previewSwitch(config.split),
-          '单条字数上限：' + previewValue(config.maxChars),
+          '允许气泡分条（模型决定）：' + previewSwitch(config.split),
+          '异常长文兜底上限：' + previewValue(config.maxChars),
           '最多分条：' + previewValue(config.maxParts),
           '引用原消息：' + previewSwitch(config.quote) + '；群聊 @ 对方：' + previewSwitch(config.atSender),
-          '分条等待：' + (config.split === false ? '分条关闭，无条间等待' : previewValue(config.delayMs, ' ms / 条间')),
+          '气泡间隔：' + (config.split === false ? '分条关闭，无条间等待' : previewValue(config.delayMs, ' ms / 条间')),
         ])
       },
       'typing.preview': function TypingPreview({ module, config, summary }) {
