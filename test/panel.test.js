@@ -3134,6 +3134,21 @@ test('command palette: aliases, deep links and settings paths route with goTo; c
   } finally { h.restore() }
 })
 
+test('history navigation dismisses an open palette without restoring focus over the destination heading', () => {
+  const h = commandBarHarness()
+  try {
+    h.render(); h.click('打开搜索'); h.query('settings')
+    const focusCount = h.focusLog.length
+    h.props.navigation = { area: 'system', section: 'about' }
+    h.render(); h.render() // Flush the route effect's close update.
+    assert.equal(h.get('.ob-palette'), null)
+    assert.equal(h.focusLog.length, focusCount, 'route cleanup lets the parent heading retain focus')
+    h.click('打开搜索')
+    assert.equal(h.byLabel('搜索页面、旧名称或设置路径').props.value, '')
+    h.key('Escape'); assert.equal(h.active, h.byLabel('打开搜索'))
+  } finally { h.restore() }
+})
+
 test('command bar remains outside loading/error content and palette interactions preserve draft and URL', () => {
   const originalLocation = window.location
   window.location = { href: 'https://example.test/console?keep=1#onebot-qq' }
@@ -3178,6 +3193,178 @@ test('top shell CSS: full-width single column, sticky rows, horizontal navigatio
   assert.match(panel.MOTION_CSS, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.ob-root \.ob-commandbar \*::after\{animation:none!important;transition:none!important\}/)
 })
 
+
+
+// Run only root navigation/layout effects; data polling stays outside this navigation test.
+function rootNavigationHarness({ href = 'https://example.test/console?keep=1#/main/onebot-qq', loading = false } = {}) {
+  const saved = { layout: reactShim.useLayoutEffect, effect: reactShim.useEffect, observer: globalThis.ResizeObserver }
+  const windowKeys = ['location', 'history', 'addEventListener', 'removeEventListener']
+  const windowSaved = Object.fromEntries(windowKeys.map(key => [key, Object.getOwnPropertyDescriptor(window, key)]))
+  const listeners = new Map(), entries = [href], focusLog = [], properties = new Map(), observers = []
+  let position = 0, height = 109, hasHeading = false, tree
+  const hostState = { host: 'preserved' }
+  window.location = { href }
+  window.history = { state: hostState, pushState(state, _title, path) {
+    assert.equal(state, hostState); entries.splice(++position); entries.push(new URL(path, window.location.href).href); window.location.href = entries[position]
+  } }
+  window.addEventListener = (name, listener) => { assert.equal(listeners.has(name), false); listeners.set(name, listener) }
+  window.removeEventListener = (name, listener) => { assert.equal(listeners.get(name), listener); listeners.delete(name) }
+  globalThis.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; observers.push(this) }
+    observe(node) { this.node = node }
+    disconnect() { this.disconnected = true }
+  }
+  const heading = { focus: options => focusLog.push({ options, title: treeNodes(tree).find(node => node.type?.name === 'PageHeader')?.props.title }) }
+  const bar = { getBoundingClientRect: () => ({ height }) }
+  const root = { scrollTop: 731, style: { setProperty: (key, value) => properties.set(key, value) }, querySelector: selector => selector === '.ob-commandbar' ? bar : selector === '#ob-page-title' && hasHeading ? heading : null }
+  const session = { values: [], index: 0 }, scheduled = [], layouts = new Set(), passive = []
+  reactShim.useEffect = (run, deps) => passive.push({ run, deps })
+  reactShim.useLayoutEffect = (run, deps) => {
+    const state = shimState(() => ({ deps: undefined, mounted: false, cleanup: null }))[0]
+    if (!state.mounted || deps.some((dep, index) => !Object.is(dep, state.deps?.[index]))) scheduled.push(() => {
+      state.cleanup?.(); state.cleanup = run(); state.deps = deps; state.mounted = true; layouts.add(state)
+    })
+  }
+  const instance = registration.factory(requireShim)
+  const render = () => {
+    session.index = 0; passive.length = 0; hookSession = session
+    try { tree = instance.OneBotPage() } finally { hookSession = null }
+    treeNodes(tree).find(node => node.props?.className === 'ob-root').props.ref.current = root
+    hasHeading = treeNodes(tree).some(node => node.type === instance.PageHeader)
+    for (const run of scheduled.splice(0)) run()
+    return tree
+  }
+  let disposeHistory
+  render()
+  if (!loading) { session.values[1] = { gateway: {} }; session.values[4] = false; render() }
+  disposeHistory = passive.find(row => row.run.toString().includes('createNavigationHistory')).run()
+  const page = () => treeNodes(tree).find(node => node.type === instance.AreaContent)
+  return { root, focusLog, properties, observers, listeners, entries, page, render,
+    get tree() { return tree },
+    loaded() { session.values[1] = { gateway: {} }; session.values[4] = false; return render() },
+    travel(delta) { position += delta; window.location.href = entries[position]; listeners.get('popstate')(); return render() },
+    resize(value) { height = value; observers[0].callback() },
+    restore() {
+      disposeHistory?.(); for (const state of layouts) state.cleanup?.()
+      reactShim.useLayoutEffect = saved.layout; reactShim.useEffect = saved.effect
+      if (saved.observer === undefined) delete globalThis.ResizeObserver; else globalThis.ResizeObserver = saved.observer
+      for (const key of windowKeys) { if (windowSaved[key]) Object.defineProperty(window, key, windowSaved[key]); else delete window[key] }
+    },
+  }
+}
+
+test('navigation resets the plugin scroller and focuses the heading for go/goTo, same-area sections and different module IDs', () => {
+  const h = rootNavigationHarness()
+  try {
+    assert.equal(h.root.scrollTop, 0)
+    assert.deepEqual(h.focusLog.at(-1), { options: { preventScroll: true }, title: '概览' })
+    const navigate = (action, expected) => {
+      h.root.scrollTop = 731
+      const focusCount = h.focusLog.length
+      action(); h.render()
+      assert.deepEqual(h.page().props.navigation, expected)
+      assert.equal(h.root.scrollTop, 0)
+      assert.equal(h.focusLog.length, focusCount + 1)
+      assert.deepEqual(h.focusLog.at(-1).options, { preventScroll: true })
+    }
+    navigate(() => h.page().props.go('cognition', 'cog-reply'), contractGo('cognition', 'cog-reply'))
+    navigate(() => h.page().props.goTo({ area: 'profiles', section: 'turn' }), { area: 'profiles', section: 'turn' })
+    for (const moduleId of ['builtin-learning', 'builtin-proactivity']) {
+      navigate(() => h.page().props.goTo({ tab: 'modules', moduleId }), contractGoTo({ tab: 'modules', moduleId }))
+      assert.equal(h.focusLog.at(-1).title, '模块详情')
+    }
+    navigate(() => h.page().props.goTo({ tab: 'modules' }), { area: 'extensions', section: 'modules' })
+    navigate(() => h.page().props.go('cognition.reply.split'), contractGo('cognition.reply.split'))
+    const focusCount = h.focusLog.length
+    h.root.scrollTop = 384; h.render()
+    assert.equal(h.root.scrollTop, 384); assert.equal(h.focusLog.length, focusCount, 'data rerender does not steal focus or scroll')
+    h.page().props.goTo(h.page().props.navigation); h.render()
+    assert.equal(h.root.scrollTop, 384); assert.equal(h.focusLog.length, focusCount, 'identical destination does not reset')
+    assert.equal(h.properties.get('--ob-commandbar-height'), '109px')
+    h.resize(157); assert.equal(h.properties.get('--ob-commandbar-height'), '157px')
+  } finally { h.restore() }
+  assert.equal(h.listeners.size, 0); assert.equal(h.observers[0].disconnected, true)
+})
+
+test('URL deep links, hash aliases and back/forward keep host routing and consistently reset scroll/focus', () => {
+  const target = contractGoTo({ tab: 'modules', moduleId: 'builtin-learning', anchor: 'panel' })
+  const href = 'https://example.test' + panel.navigationUrl('https://example.test/console?keep=1#/main/onebot-qq', target)
+  const h = rootNavigationHarness({ href })
+  try {
+    assert.deepEqual(h.page().props.navigation, target)
+    h.page().props.goTo({ area: 'extensions', section: 'modules' }); h.render()
+    const list = h.page().props.navigation
+    h.page().props.goTo({ tab: 'modules', moduleId: 'builtin-proactivity' }); h.render()
+    const detail = h.page().props.navigation
+    for (const [delta, expected] of [[-1, list], [-1, target], [1, list], [1, detail]]) {
+      h.root.scrollTop = 600
+      const count = h.focusLog.length
+      h.travel(delta)
+      assert.deepEqual(h.page().props.navigation, expected)
+      assert.equal(h.root.scrollTop, 0); assert.equal(h.focusLog.length, count + 1)
+    }
+    const url = new URL(window.location.href)
+    assert.equal(url.pathname, '/console'); assert.equal(url.searchParams.get('keep'), '1'); assert.equal(url.hash, '#/main/onebot-qq')
+    assert.deepEqual(window.history.state, { host: 'preserved' })
+    window.location.href = 'https://example.test/console?keep=1#ob-tab-config'
+    h.root.scrollTop = 600; h.listeners.get('hashchange')(); h.render()
+    assert.deepEqual(h.page().props.navigation, contractGo('config')); assert.equal(h.root.scrollTop, 0)
+  } finally { h.restore() }
+})
+
+test('navigation during initial loading defers heading focus until the compact heading is mounted', () => {
+  const h = rootNavigationHarness({ loading: true })
+  try {
+    assert.equal(h.root.scrollTop, 0); assert.deepEqual(h.focusLog, [])
+    const command = treeNodes(h.tree).find(node => node.type?.name === 'CommandBar')
+    h.root.scrollTop = 600; command.props.goTo({ area: 'system', section: 'about' }); h.render()
+    assert.equal(h.root.scrollTop, 0); assert.deepEqual(h.focusLog, [])
+    h.loaded(); assert.equal(h.focusLog.length, 1); assert.equal(h.focusLog[0].title, '关于')
+    h.render(); assert.equal(h.focusLog.length, 1)
+  } finally { h.restore() }
+})
+
+test('compact PageHeader has a focusable title and one-line description; global status and refresh live in the command bar', () => {
+  const tree = panel.PageHeader({ eyebrow: 'Extensions', title: '模块详情', description: 'builtin-learning' })
+  const nodes = treeNodes(tree), title = nodes.find(node => node.type === 'h1')
+  assert.equal(title.props.id, 'ob-page-title'); assert.equal(title.props.tabIndex, -1)
+  assert.equal(nodes.find(node => node.props?.className === 'ob-subtitle').props.title, 'builtin-learning')
+  assert.equal(nodes.some(node => node.type === 'button' || node.type?.name === 'Badge' || node.type?.name === 'StatusPill'), false)
+  const root = rootNavigationHarness()
+  try {
+    const header = treeNodes(root.tree).find(node => node.type?.name === 'PageHeader')
+    assert.ok(header.props.description)
+    assert.deepEqual(Object.keys(header.props), ['eyebrow', 'title', 'description'])
+    const overview = panel.Overview({ status: { gateway: {} } })
+    assert.equal(treeNodes(overview).some(node => node.props?.title === '刷新状态'), false)
+    assert.ok(treeNodes(root.tree).some(node => node.type?.name === 'CommandBar' && typeof node.props.refreshAll === 'function'))
+  } finally { root.restore() }
+  const rules = [...panel.PANEL_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  const rule = selector => rules.find(row => row[1].trim() === selector)?.[2]
+  assert.match(rule('.ob-display'), /font-size:var\(--ob-text-title\)/)
+  assert.match(rule('.ob-subtitle'), /white-space:nowrap;overflow:hidden;text-overflow:ellipsis/)
+  assert.match(rule('.ob-content :is([id],[data-setting-path])'), /scroll-margin-top:calc\(var\(--ob-commandbar-height\) \+ 12px\)/)
+  assert.doesNotMatch(panel.PANEL_CSS, /ob-header-meta|ob-header-actions/)
+})
+
+test('default module landing keeps the new heading at scroll top, while explicit config/panel aliases still scroll', async () => {
+  const originalEffect = reactShim.useEffect, originalDocument = globalThis.document
+  const effects = [], ids = []
+  reactShim.useEffect = (run, deps) => effects.push({ run, deps })
+  const instance = registration.factory(requireShim)
+  globalThis.document = { getElementById: id => { ids.push(id); return { scrollIntoView() {} } } }
+  try {
+    for (const anchor of ['ob-module-detail', 'ob-module-config', 'ob-module-panel']) {
+      const navigation = contractGoTo({ tab: 'modules', moduleId: 'builtin-learning', anchor })
+      stateOverrides = [[], false, '', '', null, '', null, '', 'builtin-learning']
+      effects.length = 0
+      try { instance.ModulesPage({ navigation, ownerIntegration: true }) } finally { stateOverrides = null }
+      const cleanup = effects.find(row => row.deps?.length === 3 && row.deps[0] === navigation && row.deps[1] === 'ob-module-').run()
+      await new Promise(resolve => setTimeout(resolve, 5)); cleanup?.()
+    }
+    assert.deepEqual(ids, ['ob-module-config', 'ob-module-panel'])
+  } finally { reactShim.useEffect = originalEffect; globalThis.document = originalDocument }
+})
 
 function ownerHarness(props) {
   const session = { values: [], index: 0 }, effects = [], original = reactShim.useEffect
@@ -3632,7 +3819,7 @@ test('UI phase 4 CSS: only local explicit toolbars stick on mobile with opaque s
   assert.doesNotMatch(toolbar, /transparent|color-mix|backdrop-filter|overflow:|position:fixed/)
   assert.match(rule(mobile, '.ob-module-savebar > .ob-btn,.ob-owner-savebar > .ob-btn'), /flex:1 1 8rem;height:auto;min-height:44px;white-space:normal;overflow-wrap:anywhere/)
   assert.match(rule(mobile, '.ob-root:has(.ob-module-savebar,.ob-owner-savebar)'), /scroll-padding-bottom:calc\(12rem \+ env\(safe-area-inset-bottom,0px\)\)/)
-  assert.match(rule(mobile, '.ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner)'), /scroll-margin-block:12px/)
+  assert.match(rule(mobile, '.ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner)'), /scroll-margin-block:calc\(var\(--ob-commandbar-height\) \+ 12px\) 12px/)
   assert.match(rule(css, '.ob-root'), /overflow:auto;overflow-x:clip/)
   assert.ok(rules(css).some(row => row[1].trim() === '.ob-content' && /overflow-x:clip/.test(row[2])), 'content does not create a second vertical scroller')
 })

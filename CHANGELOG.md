@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- UI rework phase A（页头与滚动）：页头压缩为 eyebrow/标题/单行说明，全局状态/版本/刷新仅在命令栏，概览移除重复刷新；go/goTo、URL/hash、返回/前进切换目的地时重置插件 scrollTop 并聚焦 h1，loading 后补焦点、数据轮询不抢焦点。默认模块详情不再被隐式锚点滚离页首，显式功能/配置/设置路径继续定位；命令栏实际高度驱动锚点留白。新增根组件导航/焦点/历史/测量回归，包检查改验 CommandBar。真实 DSH 新版视觉验收仍待后续截图。
+
 - UI rework phase A：移除插件内部第三列侧栏、折叠图标轨道、导航 localStorage 偏好及移动 drawer/滚动锁，改为单列全宽顶部命令栏与当前区域的横向分区按钮。品牌、状态圆点、版本、六区、搜索和刷新集中在顶部；移动使用相同导航与 44px 目标。命令搜索支持 Ctrl/Cmd+K、↑↓/Enter/Escape、焦点恢复及页面/旧别名/设置路径，保留六区过滤、URL/history 和恰好两项 DSH 注册。更新回归、设计契约和手册；真实 DSH 新截图待验收，版本仍为 0.11.21。
 
 - UI phase 5：补齐[响应式导航、模块与保存栏验收契约](docs/design/responsive-navigation-modules.md)、移动 CSS/唯一控件回归和双格式发行包文档断言，保留现有行为与恰好两项 DSH 注册。1440/1024/768/390px × DSH 外层侧栏 × dark/light × zoom × keyboard 浏览器验收全部 pending，Chromium 启动缺少 libnspr4.so；Node shim/CSS 契约不代表真实布局通过。仅测试与文档，版本不变。

@@ -1626,6 +1626,7 @@ body[data-ds-dark-theme] .ob-root[data-contrast='high']{
     const PANEL_CSS = `
 .ob-root{
   height:100%;overflow:auto;overflow-x:clip;box-sizing:border-box;
+  --ob-commandbar-height:calc(109px + env(safe-area-inset-top,0px));
   background:var(--ob-canvas);color:var(--ob-ink);
   font-family:var(--ob-font-ui);font-size:var(--ob-text-body);line-height:var(--ob-leading-body);
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
@@ -1641,19 +1642,17 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-root :focus-visible{outline:var(--ob-focus-width) solid var(--ob-focus-ring);outline-offset:var(--ob-focus-offset);border-radius:var(--ob-radius-control)}
 .ob-shell{display:block;width:100%;min-width:0;max-width:none;margin:0;padding:0 20px}
 :root[data-platform='darwin'] .ob-root{padding-top:var(--dsh-frame-top-clearance,0px)}
-.ob-page{display:flex;flex-direction:column;gap:12px;padding-top:24px}
+.ob-page{display:flex;flex-direction:column;gap:12px;padding-top:12px}
 .ob-content .ob-page{padding-top:12px;gap:16px}
 .ob-content{gap:0}
 
-/* ---------- 页头（PageHeader：eyebrow + 大标题 + 描述 + 动作） ---------- */
-.ob-header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px;margin-bottom:4px}
-.ob-header-main{min-width:0;max-width:52rem}
-.ob-eyebrow{display:inline-flex;align-items:center;gap:8px;margin:0 0 10px;font-size:var(--ob-text-micro);line-height:1;letter-spacing:var(--ob-tracking-eyebrow);text-transform:uppercase;font-weight:var(--ob-weight-heading);color:var(--ob-brand)}
+/* ---------- 紧凑页头（eyebrow + 标题 + 单行描述） ---------- */
+.ob-header{display:block;min-width:0;margin:0}
+.ob-header-main{min-width:0;max-width:100%}
+.ob-eyebrow{display:inline-flex;align-items:center;gap:8px;margin:0 0 4px;font-size:var(--ob-text-micro);line-height:1;letter-spacing:var(--ob-tracking-eyebrow);text-transform:uppercase;font-weight:var(--ob-weight-heading);color:var(--ob-brand)}
 .ob-eyebrow-dot{width:6px;height:6px;border-radius:var(--ob-radius-pill);background:var(--ob-brand)}
-.ob-display{margin:0;font-size:var(--ob-text-display);line-height:1.2;letter-spacing:var(--ob-tracking-display);font-weight:var(--ob-weight-display);color:var(--ob-ink);overflow-wrap:anywhere;text-wrap:balance}
-.ob-subtitle{margin:10px 0 0;max-width:44rem;font-size:var(--ob-text-body);line-height:1.7;color:var(--ob-ink-muted);overflow-wrap:anywhere}
-.ob-header-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
-.ob-header-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.ob-display{margin:0;font-size:var(--ob-text-title);line-height:1.2;letter-spacing:var(--ob-tracking-display);font-weight:var(--ob-weight-display);color:var(--ob-ink);overflow-wrap:anywhere;text-wrap:balance}
+.ob-subtitle{margin:4px 0 0;max-width:100%;font-size:var(--ob-text-small);line-height:1.5;color:var(--ob-ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ob-brand-mark{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;border-radius:var(--ob-radius-control);background:var(--ob-brand);color:var(--ob-on-brand);box-shadow:var(--ob-shadow-card)}
 .ob-brand-mark svg{width:22px;height:22px}
 .ob-hint-inline{display:inline-flex;align-items:center;gap:6px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
@@ -1893,8 +1892,8 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-settings-nav-btn{display:flex;align-items:center;gap:8px;height:var(--ob-control-sm);padding:0 12px;border:0;border-radius:var(--ob-radius-control);background:transparent;color:var(--ob-ink-muted);font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);text-align:left;cursor:pointer;transition:background-color var(--ob-dur-control) var(--ob-ease),color var(--ob-dur-control) var(--ob-ease)}
 .ob-settings-nav-btn:hover{background:var(--ob-hover);color:var(--ob-ink)}
 .ob-settings-nav-btn.on{background:var(--ob-brand-soft);color:var(--ob-brand);font-weight:var(--ob-weight-label)}
-.ob-settings-content{display:flex;flex-direction:column;gap:var(--ob-control-gap);min-width:0;scroll-margin-top:96px}
-.ob-settings-section{scroll-margin-top:96px}
+.ob-settings-content{display:flex;flex-direction:column;gap:var(--ob-control-gap);min-width:0;scroll-margin-top:calc(var(--ob-commandbar-height) + 12px)}
+.ob-settings-section{scroll-margin-top:calc(var(--ob-commandbar-height) + 12px)}
 .ob-settings-pane{display:flex;flex-direction:column;gap:var(--ob-control-gap);min-width:0}
 .ob-settings-nav-title{margin:10px 0 2px;padding:0 12px;font-size:var(--ob-text-micro);font-weight:var(--ob-weight-heading);letter-spacing:0.08em;text-transform:uppercase;color:var(--ob-ink-muted)}
 .ob-settings-status{display:inline-flex;align-items:center;gap:6px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
@@ -2125,11 +2124,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 }
 @media (max-width:640px){
   .ob-shell{padding:0 16px}
-  .ob-page{padding-top:18px;gap:14px}
-  .ob-display{font-size:calc(1.5rem * var(--ob-font-scale))}
+  .ob-page{padding-top:12px;gap:12px}
   .ob-tabs{padding:8px 0 10px}
   .ob-stat-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,136px),1fr))}
-  .ob-header-actions{width:100%}
   .ob-bar-row{grid-template-columns:minmax(48px,84px) minmax(0,1fr) auto}
 }
 @media (max-width:420px){
@@ -2176,12 +2173,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-palette-option{display:block;width:100%;min-height:44px;padding:10px 12px;border:0;border-radius:var(--ob-radius-control);background:transparent;color:var(--ob-ink);text-align:left;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
 .ob-palette-option[aria-selected=true]{background:var(--ob-brand-soft);color:var(--ob-brand)}
 .ob-page,.ob-content,.ob-shell > *{min-width:0}
+.ob-content :is([id],[data-setting-path]){scroll-margin-top:calc(var(--ob-commandbar-height) + 12px)}
 @media (max-width:900px){
   /* Reserve space for up to three wrapped 44px controls, padding and the safe area. */
   .ob-root:has(.ob-module-savebar,.ob-owner-savebar){scroll-padding-bottom:calc(12rem + env(safe-area-inset-bottom,0px))}
   .ob-module-savebar,.ob-owner-savebar{position:sticky;bottom:0;z-index:20;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--ob-border);background:var(--ob-surface)}
   .ob-module-savebar > .ob-btn,.ob-owner-savebar > .ob-btn{flex:1 1 8rem;height:auto;min-height:44px;white-space:normal;overflow-wrap:anywhere}
-  .ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner){scroll-margin-block:12px}
+  .ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner){scroll-margin-block:calc(var(--ob-commandbar-height) + 12px) 12px}
   .ob-commandbar-main{gap:4px;min-height:48px}
   .ob-command-brand{gap:4px;max-width:34%}
   .ob-command-version{font-size:10px}
@@ -2909,11 +2907,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           props.eyebrow
             ? h('p', { className: 'ob-eyebrow' }, h('i', { className: 'ob-eyebrow-dot', 'aria-hidden': true }), props.eyebrow)
             : null,
-          h('h1', { className: 'ob-display' }, props.title),
-          props.description ? h('p', { className: 'ob-subtitle' }, props.description) : null,
-          props.meta ? h('div', { className: 'ob-header-meta' }, props.meta) : null,
+          h('h1', { id: 'ob-page-title', tabIndex: -1, className: 'ob-display' }, props.title),
+          props.description ? h('p', { className: 'ob-subtitle', title: props.description }, props.description) : null,
         ),
-        props.actions ? h('div', { className: 'ob-header-actions' }, props.actions) : null,
       )
     }
 
@@ -3412,13 +3408,21 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     function CommandBar({ navigation, goTo, configInfo, gateway = {}, version = '', dirty, refreshAll, refreshing }) {
       const [open, setOpen] = useState(false), [query, setQuery] = useState(''), [selected, setSelected] = useState(0)
       const barRef = useRef(null), searchRef = useRef(null), closeRef = useRef(null), resultsRef = useRef(null)
-      const restoreRef = useRef(null)
+      const restoreRef = useRef(null), paletteRouteRef = useRef(JSON.stringify(navigation))
       const labels = { ...LEGACY_NAV_LABELS, ...SECTION_LABELS }
       for (const group of buildFieldSpecs(configInfo?.groups)) { labels['group:' + group.id] = group.title; for (const field of group.fields) labels[field.path] = field.label }
       const results = query.trim() ? searchNavigation(query, labels) : navigationSearchIndex(labels).filter(row => !row.target.fieldPath)
       const active = Math.min(selected, Math.max(0, results.length - 1))
       const close = () => { setOpen(false); setQuery(''); setSelected(0) }
       const select = target => { close(); goTo(target) }
+      const paletteRoute = JSON.stringify(navigation)
+      useLayoutEffect(() => {
+        if (paletteRouteRef.current === paletteRoute) return
+        paletteRouteRef.current = paletteRoute
+        // History navigation focuses the new heading; modal cleanup must not steal it.
+        restoreRef.current = null
+        close()
+      }, [paletteRoute])
       useLayoutEffect(() => {
         const shortcut = event => {
           if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'k' || !barRef.current?.getClientRects().length) return
@@ -3454,7 +3458,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const state = stateLabel(gateway.state)
       const statusText = [state.text, gateway.login?.nickname, endpointModeLabel(gateway.endpoint?.mode), dirty ? '有未保存的改动' : ''].filter(Boolean).join(' · ')
       return h(Fragment, null,
-        h('header', { ref: barRef, className: 'ob-commandbar', 'aria-label': '小葵命令栏' },
+        h('header', { ref: barRef, className: 'ob-commandbar', 'aria-label': BRAND + '命令栏' },
           h('div', { className: 'ob-commandbar-main' },
             h('div', { className: 'ob-command-brand' },
               h('strong', { title: BRAND }, BRAND),
@@ -3895,7 +3899,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         actionButtons.push(h(Btn, { key: 'conn', kind: 'primary', icon: 'play', onClick: () => act('connect', '连接'), busy: busy === 'connect' }, '连接'))
       }
       actionButtons.push(h(Btn, { key: 'rec', icon: 'refresh', onClick: () => act('reconnect', '重连'), busy: busy === 'reconnect' }, '重连'))
-      actionButtons.push(h(IconBtn, { key: 'refresh', title: '刷新状态', icon: 'refresh', onClick: () => props.refreshAll() }))
 
       return h(
         'div',
@@ -6052,6 +6055,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     function useNavigationAnchor(props, prefix, ready = true) {
       useEffect(() => {
         if (!ready || !props.navigation?.anchor) return
+        // The normalized default module anchor is a page landing, below the heading.
+        if (props.ownerIntegration && ['detail', 'ob-module-detail'].includes(props.navigation.anchor)) return
         // Run after the destination has committed, including same-tab requests.
         const timer = setTimeout(() => document.getElementById(props.navigation.anchor.startsWith('ob-') ? props.navigation.anchor : prefix + props.navigation.anchor)?.scrollIntoView?.({ block: 'start' }), 0)
         return () => clearTimeout(timer)
@@ -8920,6 +8925,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [configTarget, setConfigTarget] = useState('')
       const [navigation, setNavigation] = useState(() => readNavigationUrl(window.location?.href || ''))
       const historyRef = useRef(null)
+      const rootRef = useRef(null), lastNavigationRef = useRef(null), focusPendingRef = useRef(false)
 
       const draftRef = useRef(null)
       const configInfoRef = useRef(null)
@@ -9152,11 +9158,35 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         goTo(target)
       }, [goTo])
 
+      const navigationKey = JSON.stringify(navigation)
+      const initialLoading = loading && !status && !configInfo
+      useLayoutEffect(() => {
+        const root = rootRef.current, bar = root?.querySelector('.ob-commandbar')
+        if (!bar) return
+        const measure = () => root.style.setProperty('--ob-commandbar-height', bar.getBoundingClientRect().height + 'px')
+        measure()
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+        observer?.observe(bar)
+        return () => observer?.disconnect()
+      }, [])
+      useLayoutEffect(() => {
+        const root = rootRef.current
+        if (!root) return
+        if (lastNavigationRef.current !== navigationKey) {
+          lastNavigationRef.current = navigationKey
+          root.scrollTop = 0
+          focusPendingRef.current = true
+        }
+        if (!initialLoading && focusPendingRef.current) {
+          const heading = root.querySelector('#ob-page-title')
+          if (heading) { heading.focus({ preventScroll: true }); focusPendingRef.current = false }
+        }
+      }, [navigationKey, initialLoading])
+
       const gateway = safeObject(status && status.gateway)
-      const state = stateLabel(gateway.state)
-      const login = isPlainObject(gateway.login) ? gateway.login : null
       const version = (configInfo && configInfo.version) || (status && status.version) || ''
-      const headerInfo = { eyebrow: NAVIGATION_REGISTRY.find(area => area.id === navigation.area)?.label || 'Overview', title: SECTION_LABELS[navigation.section] || '模块详情', description: navigation.moduleId || '' }
+      const areaDescriptions = { overview: '连接、事件与运行概况。', chat: '消息管理与离线模拟。', profiles: '人格设置与认知数据。', extensions: '模块目录、状态与配置。', data: '媒体、事件、日志与数据治理。', system: '连接、运行与全局设置。' }
+      const headerInfo = { eyebrow: NAVIGATION_REGISTRY.find(area => area.id === navigation.area)?.label || 'Overview', title: SECTION_LABELS[navigation.section] || '模块详情', description: navigation.moduleId || areaDescriptions[navigation.area] }
 
       const tabProps = {
         configTarget,
@@ -9186,7 +9216,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const body = h(AreaContent, tabProps)
 
       const loadingShell =
-        loading && !status && !configInfo
+        initialLoading
           ? h(
               'div',
               { className: 'ob-page' },
@@ -9197,8 +9227,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                   'div',
                   { className: 'ob-header-main' },
                   h(Skeleton, { variant: 'text', width: '96px' }),
-                  h(Skeleton, { variant: 'title', width: 'min(420px, 62%)', style: { marginTop: '14px', height: '38px' } }),
-                  h(Skeleton, { variant: 'text', width: 'min(560px, 84%)', style: { marginTop: '12px' } }),
+                  h(Skeleton, { variant: 'title', width: 'min(420px, 62%)', style: { marginTop: '4px', height: '26px' } }),
+                  h(Skeleton, { variant: 'text', width: 'min(560px, 84%)', style: { marginTop: '4px' } }),
                 ),
               ),
               h('div', { className: 'ob-stat-grid' }, [0, 1, 2, 3, 4].map((index) => h(StatSkeleton, { key: index }))),
@@ -9211,12 +9241,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         { value: motion },
         h(
           'div',
-          Object.assign({ className: 'ob-root' }, rootData),
+          Object.assign({ className: 'ob-root', ref: rootRef }, rootData),
           h(
             'div',
             { className: 'ob-shell' },
             h(CommandBar, { navigation, goTo, configInfo, gateway, version, dirty, refreshAll, refreshing }),
-            h('div', { id: 'ob-navigation-destination', tabIndex: -1, 'aria-label': headerInfo.eyebrow + ' · ' + headerInfo.title }, loadingShell
+            h('div', { className: 'ob-destination', 'aria-labelledby': initialLoading ? undefined : 'ob-page-title' }, loadingShell
               ? loadingShell
               : h(
                   'div',
@@ -9235,15 +9265,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                     eyebrow: headerInfo.eyebrow,
                     title: headerInfo.title,
                     description: headerInfo.description,
-                    meta: [
-                      h(StatusPill, { key: 'state', tone: state.tone, text: state.text, live: gateway.state === 'connected' || gateway.state === 'connecting', extra: login && login.nickname ? String(login.nickname) : '' }),
-                      h(Badge, { key: 'mode', tone: 'brand' }, endpointModeLabel(gateway.endpoint && gateway.endpoint.mode)),
-                      version ? h(Badge, { key: 'version', tone: 'muted' }, 'v' + String(version)) : null,
-                      dirty && tab !== 'settings' ? h(Badge, { key: 'dirty', tone: 'warn' }, '有未保存的改动') : null,
-                    ],
-                    actions: [
-                      h(IconBtn, { key: 'refresh', title: '刷新状态', icon: 'refresh', onClick: () => refreshAll(), disabled: refreshing }),
-                    ],
                   }),
                   h(TopProgress, { phase: progress }),
                   h(
@@ -9316,6 +9337,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.navigationSearchIndex = navigationSearchIndex
     exports.ownerFields = ownerFields
     exports.OwnerSettings = OwnerSettings
+    exports.PageHeader = PageHeader
     exports.CommandBar = CommandBar
     exports.SandboxChat = SandboxChat
     exports.AreaContent = AreaContent

@@ -13,10 +13,17 @@ UI rework phase A，基线 main `3d2eeb2`，版本保持 0.11.21。DSH 的全局
 
 - ≤900px 使用相同命令栏和分区行；区域按钮和分区按钮至少 44×44px、文字不换行、横向溢出仅在各自导航行内滚动。正文紧接分区行。没有 hamburger、移动专属顶栏、分区 select 或导航 drawer。
 - 搜索按钮及 Ctrl/Cmd+K 打开 `.ob-palette-overlay` 固定遮罩；`.ob-palette` 为带 `aria-modal` 和标题标签的 dialog 角色，输入为 combobox，结果为 listbox/options。使用普通固定 overlay，不依赖原生 dialog。
-- 打开时聚焦输入，↑↓循环选择结果，Enter 经现有 `goTo` 导航，Escape、关闭按钮或遮罩关闭并恢复原焦点。Tab/Shift+Tab 在输入与关闭按钮间循环；结果通过 active descendant 和方向键选择。卸载移除快捷键监听。
+- 打开时聚焦输入，↑↓循环选择结果，Enter 经现有 `goTo` 导航，Escape、关闭按钮或遮罩关闭并恢复原焦点。Tab/Shift+Tab 在输入与关闭按钮间循环；结果通过 active descendant 和方向键选择。浏览器历史切换也会关闭搜索，清理时由新页头保留焦点；卸载移除快捷键监听。
 - 默认列出页面/分区；搜索仅使用页面、分区、旧别名、模块和设置路径的元数据，不索引当前值、默认值或密钥。空结果可安全使用方向键/Enter。
 - 已移除旧 drawer 的 focus trap、document/body/root scroll lock 及断点状态。搜索不修改宿主或面板的滚动样式。
 - 命令栏考虑顶部 safe-area，遮罩考虑左右和底部 safe-area；正文保留左右/底部 safe-area。移动输入/select 至少 16px，常规控件至少 44px。
+
+## 紧凑页头、导航滚动与焦点
+
+- `PageHeader` 只呈现 eyebrow、紧凑标题和单行描述；描述长时省略显示，完整内容保留在 title。全局连接状态、版本和刷新集中在命令栏；概览不再重复全局刷新，模块目录/详情/健康保留自身读取动作。
+- `.ob-root` 是插件滚动容器。`go`、`goTo`、URL/hash 变化及前进/后退改变目的地后，将 `scrollTop` 设为 0 并以 `preventScroll` 聚焦 `#ob-page-title`（h1、tabIndex=-1）。初始 loading 时推迟到标题挂载；轮询/数据重渲染或完全相同的目的地不复位、不抢焦点。
+- 历史导航统一回到页首，不维护历史滚动快照。设置路径、任务及显式配置/功能锚点仍在内容加载后定位；默认 `ob-module-detail` 作为详情页入口，避免自动把新页头滚走。
+- `ResizeObserver` 测量命令栏两行总高度并更新 `--ob-commandbar-height`；不支持时使用含 safe-area 的保守回退。正文锚点和移动表单的 scroll-margin-top 为命令栏高度加 12px，底部保留显式保存栏留白。
 
 ## 模块目录与详情
 
@@ -35,7 +42,7 @@ UI rework phase A，基线 main `3d2eeb2`，版本保持 0.11.21。DSH 的全局
 
 ## 自动化证据及边界
 
-`test/panel.test.js` 的 command bar harness 覆盖六区/当前分区、别名搜索、快捷键、方向键/Enter/Escape、模态标签、焦点恢复、监听清理、草稿与 URL 保持，以及单列/横向滚动/44px/安全区 CSS 契约。保留模块结构、元数据、数字控件及保存/冲突回归。`test/navigation.test.js` 保持全量旧入口、设置路径及 URL/history 回归；`test/module-webui.test.js` 保持公开值、surfaces 与 component keys 契约。
+`test/panel.test.js` 的 command bar harness 覆盖六区/当前分区、别名搜索、快捷键、方向键/Enter/Escape、模态标签、焦点恢复、监听清理、草稿与 URL 保持、go/goTo/历史滚动复位、loading 后标题聚焦、命令栏测量和显式锚点，以及单列/横向滚动/44px/安全区 CSS 契约。保留模块结构、元数据、数字控件及保存/冲突回归。`test/navigation.test.js` 保持全量旧入口、设置路径及 URL/history 回归；`test/module-webui.test.js` 保持公开值、surfaces 与 component keys 契约。
 
 `npm test` 执行 Node shim/静态 CSS 与服务测试，不执行浏览器布局。`npm run check:docs` 检查文档链接；`npm run check:parity` 检查能力矩阵；`npm run pack:release` 仅生成本地归档，`npm run check:package` 检查双格式文档逐字节一致、链接、客户端加载、恰好两项 DSH 注册及私有数据排除。测试文件不进入发行包。
 
@@ -58,4 +65,4 @@ DSH 已用真实 Chromium 提供旧版截图，确认第三列侧栏、图标轨
 2. 检查搜索聚焦、↑↓/Enter/Escape、Tab/Shift+Tab、快捷键与关闭恢复；搜索设置路径、旧名称及模块。重复打开/关闭、离页，确认无重复 ID 或快捷键监听残留。
 3. 模块目录测试容器 759/760px 及视口 900/901px 边界、同行 footer、唯一动作、禁用原因、metadata/预览/iframe/数字单位。
 4. System、Profiles、模块文件配置分别编辑/保存/重读并制造 revision 冲突；检查唯一保存栏、禁用/忙碌、草稿保留及 legacy-core 即时保存。聚焦末字段并打开软键盘，检查控件互不遮挡。
-5. 主题、缩放及宿主侧栏状态下重复关键路径；补充读屏、焦点、触控、安全区、浏览器返回/前进及旧入口证据后，才将对应 pending 改为实测结果。
+5. 从长页切换区域/分区/模块详情，确认插件回到页首、标题获焦；显式设置/配置锚点定位不被吸附命令栏遮挡。返回/前进统一复位。主题、缩放及宿主侧栏状态下重复关键路径；补充读屏、焦点、触控、安全区、浏览器返回/前进及旧入口证据后，才将对应 pending 改为实测结果。
