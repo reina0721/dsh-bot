@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- UI rework phase A：移除插件内部第三列侧栏、折叠图标轨道、导航 localStorage 偏好及移动 drawer/滚动锁，改为单列全宽顶部命令栏与当前区域的横向分区按钮。品牌、状态圆点、版本、六区、搜索和刷新集中在顶部；移动使用相同导航与 44px 目标。命令搜索支持 Ctrl/Cmd+K、↑↓/Enter/Escape、焦点恢复及页面/旧别名/设置路径，保留六区过滤、URL/history 和恰好两项 DSH 注册。更新回归、设计契约和手册；真实 DSH 新截图待验收，版本仍为 0.11.21。
+
 - UI phase 5：补齐[响应式导航、模块与保存栏验收契约](docs/design/responsive-navigation-modules.md)、移动 CSS/唯一控件回归和双格式发行包文档断言，保留现有行为与恰好两项 DSH 注册。1440/1024/768/390px × DSH 外层侧栏 × dark/light × zoom × keyboard 浏览器验收全部 pending，Chromium 启动缺少 libnspr4.so；Node shim/CSS 契约不代表真实布局通过。仅测试与文档，版本不变。
 
 - UI phase 4：模块文件配置的保存/重新加载/取消移至 Panel 外唯一 `.ob-module-savebar`，OwnerSettings 的保存/重新读取使用同级工具栏，去除错误提示中的重复读取按钮。两处在 ≤900px 时底部吸附，使用不透明表面、顶部分隔线、44px 触控目标、安全区及滚动留白；桌面沿用同一组控件。保留模块 revision、保存后重读、冲突草稿、只读与忙碌状态及 profile CAS；旧绑定内置模块继续即时保存与 PreferenceSaveStatus。补充单工具栏、动作、禁用/冲突、safe-area/scroll-padding 的 Panel 回归与手册；Node shim/CSS 契约不代表真实浏览器的软键盘、安全区、吸附及焦点滚动已验收。仅 phase 4，无新保存机制或全局 Savebar，版本不变，无推送、部署、tag 或发布。
