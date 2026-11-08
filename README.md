@@ -8,6 +8,8 @@
 
 开发契约（AstrBot alignment C01）：[设置所有权与导航别名](docs/architecture/ADR-020-settings-ownership-navigation.md)明确 system/profile/module/operation 职责、六区登记模型及全部旧入口映射。当前界面、配置存储与 DSH 注册保持原样，尚未进行 profile 迁移或新沙盒实现。
 
+响应式 UI phase 5：[导航、模块与保存栏验收契约](docs/design/responsive-navigation-modules.md)汇总桌面 240/72、移动 dialog、模块网格及回归边界。1440/1024/768/390px 的 DSH 外层侧栏、dark/light、缩放与键盘浏览器矩阵仍为 pending：当前 Chromium 缺少 libnspr，尚未实测。
+
 ## 实机演示
 
 下面是在真实 DSH `0.2.1-rc.3` 中运行 `dsh-bot v0.10.0` 的历史演示截图（当前工作区为 v0.11.20）。账号、人格和消息为合成演示数据，QQ 链路使用仓库自带的模拟 OneBot 网关；不代表真实 QQ 登录或外部模型调用。

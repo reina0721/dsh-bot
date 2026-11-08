@@ -2,6 +2,14 @@
 
 ## 未发布
 
+- UI phase 5：补齐[响应式导航、模块与保存栏验收契约](docs/design/responsive-navigation-modules.md)、移动 CSS/唯一控件回归和双格式发行包文档断言，保留现有行为与恰好两项 DSH 注册。1440/1024/768/390px × DSH 外层侧栏 × dark/light × zoom × keyboard 浏览器验收全部 pending，Chromium 启动缺少 libnspr4.so；Node shim/CSS 契约不代表真实布局通过。仅测试与文档，版本不变。
+
+- UI phase 4：模块文件配置的保存/重新加载/取消移至 Panel 外唯一 `.ob-module-savebar`，OwnerSettings 的保存/重新读取使用同级工具栏，去除错误提示中的重复读取按钮。两处在 ≤900px 时底部吸附，使用不透明表面、顶部分隔线、44px 触控目标、安全区及滚动留白；桌面沿用同一组控件。保留模块 revision、保存后重读、冲突草稿、只读与忙碌状态及 profile CAS；旧绑定内置模块继续即时保存与 PreferenceSaveStatus。补充单工具栏、动作、禁用/冲突、safe-area/scroll-padding 的 Panel 回归与手册；Node shim/CSS 契约不代表真实浏览器的软键盘、安全区、吸附及焦点滚动已验收。仅 phase 4，无新保存机制或全局 Savebar，版本不变，无推送、部署、tag 或发布。
+
+- UI phase 3：模块目录使用 inline-size 容器和专用网格，默认单列，仅视口 >900px 且目录 ≥760px 时两列；卡片同行等高，详情/配置/重载/启停移至底部，移动端全宽单列、至少 44px。详情拆为工具栏、摘要、健康、动作、功能入口、提醒和声明界面同级区块，消除外层嵌套内边距与裁切，保留锚点、字段和组件键。元数据标签/值网格、长文本及徽章换行、按钮原因 aria-describedby、预览段距、iframe 宽度和数字输入/单位窄屏堆叠均补回归；保留配置、健康、动作与隔离信任边界。更新手册，Node shim 与 CSS 契约覆盖，真实浏览器尺寸/触控/读屏仍待验收。仅 phase 3，无移动保存栏或导航改动；版本不变，无推送、部署、tag 或 release。
+
+- UI phase 1+2：桌面内部侧栏支持 240px 展开 / 72px 图标栏，正文收回宽度；首次显示前读取独立浏览器偏好，搜索展开聚焦、六区高亮、键盘/悬停提示与减少动态效果。移动端增加持续可用的顶部导航与分区选择器、单实例原生 dialog 抽屉、可见可用控件焦点循环、面板/文档滚动锁定及样式/位置恢复；关闭、选择、断点和卸载统一清理。保留六区、旧别名、URL/history 和恰好两项 DSH 注册。模块布局由后续 phase 3 完成，保存栏 phase 4 未实施；新增 storage/matchMedia/dialog/focus/scroll Node shim 回归，真实浏览器验收仍待完成。版本不变，无推送、部署、tag 或 release。
+
 - 激活 profile 运行时：认知、模型/命令、轮次、人格与后台任务统一解析 active profile；在途轮次捕获配置及数据人格，后续轮次应用保存/切换结果，System 安全策略与模块绑定保持实时读取。
 - C02 切换刷新未编辑快照的真实 legacy 行为，保留明确 overrides，事务迁移/重启幂等；旧人格编辑/reset/演化同步 revision。profile 不可用或迁移失败整份回退 legacy 并禁用编辑，保留稳定错误与脱敏。
 - 设置 API 报告 profile/applied；UI 移除 staged/旧编辑模式，显示应用状态、冲突和重新读取。legacy `/config` 与 `/model` 写 active profile；实际跨 owner 的 `/quiet`、`/active` 明确拒绝且零写入。新增运行行为、异步路由/人设捕获、数据隔离、迁移/CAS/回退/UI 回归。无版本变更、推送、部署、tag 或 release。

@@ -20,6 +20,10 @@ try {
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
     for (const file of ['src/modules/health.js', 'src/modules/actions.js', 'src/modules/action-audit.js', 'src/observability/loop.js', 'src/observability/loop-query.js', 'docs/architecture/ADR-018-module-closed-loop.md', 'docs/architecture/ADR-019-system-closed-loop.md', 'docs/architecture/CLOSED-LOOP-ACCEPTANCE.md']) readFileSync(join(base, file));
     assert.equal(pkg.dsh.client.platform, 'web');
+    // UI phase 5: design docs are already whitelisted; tests stay source-only.
+    for (const file of ['client.js', 'docs/design/responsive-navigation-modules.md', 'docs/USER-MANUAL.md', 'docs/README.md', 'README.md', 'CHANGELOG.md']) {
+      assert.deepEqual(readFileSync(join(base, file)), readFileSync(file), `Packaged responsive UI file differs: ${file}`);
+    }
     const alignmentFiles = [
       'src/services/assembly.js', 'src/http/sandbox-chat.js',
       'src/simulation/service.js', 'src/simulation/adapters.js', 'src/simulation/preview-contract.js',
@@ -158,5 +162,5 @@ try {
     `],{stdio:'pipe'});
     execFileSync(process.execPath,['--check',join(base,'client.js')]);
   }
-  console.log('Both archives verified: checksums, AstrBot alignment files/ADR-020/021/022/acceptance match source, exhaustive aliases, exactly two DSH registrations, credential/private state/path scan, links and standalone module loading (Node shim; no browser).');
+  console.log('Both archives verified: checksums, responsive UI docs/client and AstrBot alignment files/ADR-020/021/022/acceptance match source, exhaustive aliases, exactly two DSH registrations, credential/private state/path scan, links and standalone module loading (Node shim; no browser).');
 } finally { rmSync(work,{recursive:true,force:true}); }

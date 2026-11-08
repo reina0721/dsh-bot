@@ -1609,6 +1609,9 @@ body[data-ds-dark-theme] .ob-root[data-contrast='high']{
     transition-duration:0.01ms!important;
   }
   .ob-root:not([data-motion='full']) .ob-reveal[data-reveal='pending']{opacity:1}
+  .ob-root .ob-navigation-host *,
+  .ob-root .ob-navigation-host *::before,
+  .ob-root .ob-navigation-host *::after{animation:none!important;transition:none!important}
 }
 `
 
@@ -1742,6 +1745,47 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .ob-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border:1px solid var(--ob-border);border-radius:5px;background:var(--ob-surface);font-size:var(--ob-text-micro);font-family:var(--ob-font-mono);color:var(--ob-ink-muted)}
 .ob-issue-list{margin:6px 0 0;padding-left:18px;font-size:var(--ob-text-small);line-height:1.6;color:var(--ob-warning)}
+
+/* ---------- 模块目录 / 详情（仅模块作用域） ---------- */
+.ob-module-list{container:ob-module-list / inline-size;min-inline-size:0;max-inline-size:100%}
+.ob-module-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--ob-control-gap);align-items:stretch;min-inline-size:0;max-inline-size:100%}
+@media (width > 900px){
+  @container ob-module-list (min-width:760px){
+    .ob-module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+}
+.ob-module-card{min-inline-size:0;max-inline-size:100%;display:flex;flex-direction:column}
+.ob-module-card > .ob-panel{flex:1;display:flex;flex-direction:column;min-inline-size:0;max-inline-size:100%}
+.ob-module-card > .ob-panel > .ob-panel-body{flex:1}
+.ob-module-card > .ob-panel > .ob-panel-foot{margin-block-start:auto}
+.ob-module-scope,.ob-module-scope *{min-inline-size:0;max-inline-size:100%}
+.ob-module-scope{overflow-wrap:anywhere}
+.ob-module-scope .ob-panel{overflow:visible}
+.ob-module-scope .ob-badge{height:auto;min-height:22px;white-space:normal;overflow-wrap:anywhere}
+.ob-module-scope .ob-btn{height:auto;min-height:44px;min-width:44px;white-space:normal;overflow-wrap:anywhere}
+.ob-module-toolbar,.ob-module-actions{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}
+.ob-module-savebar,.ob-owner-savebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.ob-module-card .ob-module-actions{flex:1;justify-content:flex-end}
+.ob-module-action{display:flex;flex:0 1 16rem;flex-direction:column;align-items:flex-start;gap:6px}
+.ob-module-action-reason{margin:0;overflow-wrap:anywhere}
+.ob-module-metadata{display:grid;grid-template-columns:minmax(0,12rem) minmax(0,1fr);gap:6px 16px;margin:0;min-inline-size:0;max-inline-size:100%}
+.ob-module-metadata dt,.ob-module-metadata dd{margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
+.ob-module-metadata dt{color:var(--ob-ink-muted)}
+.ob-module-preview{display:flex;flex-direction:column;gap:8px;margin:0;min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
+.ob-module-preview p{margin:0}
+.ob-module-scope iframe{display:block;width:100%;min-width:0;max-width:100%}
+.ob-number-control{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;min-width:0;max-width:100%}
+.ob-number-control .ob-input{flex:1 1 8rem;min-width:0;width:auto}
+.ob-number-control .ob-field-unit{flex:0 1 auto;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+@media (max-width:900px){
+  .ob-module-grid,.ob-module-metadata{grid-template-columns:minmax(0,1fr)}
+  .ob-module-card .ob-module-actions{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+  .ob-module-card .ob-module-actions > .ob-btn{width:100%}
+  .ob-module-action{flex:1 1 100%;width:100%;align-items:stretch}
+  .ob-module-toolbar .ob-btn,.ob-module-actions .ob-btn{min-height:44px}
+  .ob-number-control{flex-direction:column;align-items:stretch}
+  .ob-number-control .ob-input{flex:1 1 auto;width:100%;min-height:44px}
+}
 
 /* ---------- 顶部进度条 ---------- */
 .ob-progress{position:relative;height:3px;border-radius:var(--ob-radius-pill);background:transparent;overflow:hidden;margin:0}
@@ -2107,21 +2151,55 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       @media (max-width:900px) { .ob-sandbox-grid { grid-template-columns:minmax(0,1fr); } }
 
 .ob-area-shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;align-items:start}
-.ob-navigation{position:sticky;top:16px;max-height:calc(100dvh - 32px);overflow-y:auto;padding:16px 8px;background:var(--ob-surface);border-right:1px solid var(--ob-border)}
+.ob-area-shell:has(> .ob-navigation-host[data-desktop='collapsed']){grid-template-columns:72px minmax(0,1fr)}
+.ob-navigation-host{position:sticky;top:16px;min-width:0}
+.ob-navigation{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;padding:8px;background:var(--ob-surface);border-right:1px solid var(--ob-border)}
+.ob-nav-tools{position:sticky;top:0;z-index:1;display:flex;flex-direction:column;gap:8px;padding:8px 0;background:var(--ob-surface)}
 .ob-nav-group{display:flex;flex-direction:column;gap:4px;margin:16px 0}
-.ob-nav-group h2{font-size:var(--ob-text-small);color:var(--ob-ink-muted);margin:8px}
-.ob-navigation button{font:inherit;color:var(--ob-ink);background:transparent;border:0;border-radius:var(--ob-radius-control);padding:8px 12px;text-align:left;cursor:pointer}
+.ob-navigation button{min-width:44px;min-height:44px;font:inherit;color:var(--ob-ink);background:transparent;border:0;border-radius:var(--ob-radius-control);padding:8px 12px;text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.ob-nav-area{display:flex;align-items:center;gap:8px;width:100%}
+.ob-nav-area svg{flex:none}
+.ob-nav-area[aria-current=true]{color:var(--ob-brand);background:var(--ob-brand-soft)}
+.ob-nav-sections{display:flex;flex-direction:column;gap:4px}
+.ob-nav-sections[hidden]{display:none}
 .ob-navigation button[aria-current=page]{background:var(--ob-brand-soft);color:var(--ob-brand)}
 .ob-navigation button:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px}
 .ob-nav-results{display:flex;flex-direction:column;overflow-wrap:anywhere}
-.ob-nav-toggle,.ob-nav-close,.ob-nav-backdrop{display:none}
+.ob-nav-rail-control{display:flex;justify-content:center;align-items:center;width:44px;height:44px}
+.ob-navigation-host[data-desktop='collapsed'] .ob-nav-group{margin:8px 0}
+.ob-navigation-host[data-desktop='collapsed'] .ob-nav-area{width:44px;height:44px;padding:10px}
+.ob-nav-tip{position:fixed;z-index:110;max-width:240px;padding:6px 10px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface-raised);color:var(--ob-ink);box-shadow:var(--ob-shadow-card);pointer-events:none}
+.ob-mobile-topbar,.ob-mobile-sections{display:none}
+.ob-page,.ob-content,.ob-area-shell > *{min-width:0}
 @media (max-width:900px){
+  /* Reserve space for up to three wrapped 44px controls, padding and the safe area. */
+  .ob-root:has(.ob-module-savebar,.ob-owner-savebar){scroll-padding-bottom:calc(12rem + env(safe-area-inset-bottom,0px))}
+  .ob-module-savebar,.ob-owner-savebar{position:sticky;bottom:0;z-index:20;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--ob-border);background:var(--ob-surface)}
+  .ob-module-savebar > .ob-btn,.ob-owner-savebar > .ob-btn{flex:1 1 8rem;height:auto;min-height:44px;white-space:normal;overflow-wrap:anywhere}
+  .ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner){scroll-margin-block:12px}
   .ob-area-shell{display:block}
-  .ob-nav-toggle{display:inline-flex;margin-top:12px}
-  .ob-navigation{display:none;position:fixed;inset:0 auto 0 0;width:min(320px,85vw);max-height:100dvh;z-index:101;box-sizing:border-box;background:var(--ob-canvas);padding:16px;overscroll-behavior:contain}
-  .ob-navigation.is-open{display:block}
-  .ob-nav-backdrop{display:block;position:fixed;inset:0;z-index:100;border:0;background:var(--ob-scrim)}
-  .ob-navigation .ob-nav-close{display:block}
+  .ob-navigation-host{top:0;z-index:30;background:var(--ob-canvas)}
+  .ob-mobile-topbar{position:sticky;top:0;display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top,0px)) 0 8px;background:var(--ob-canvas)}
+  .ob-mobile-location{min-width:0;overflow-wrap:anywhere;font-size:var(--ob-text-small)}
+  .ob-mobile-location span{display:block}
+  .ob-mobile-sections{display:flex;align-items:center;gap:8px;padding-bottom:8px}
+  .ob-mobile-sections label{flex:none}
+  .ob-nav-dialog{position:fixed;inset:0 auto 0 0;margin:0;width:min(320px,85vw);max-width:85vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;padding:0;border:0;background:var(--ob-surface);color:var(--ob-ink);overscroll-behavior:contain;overflow:hidden}
+  .ob-nav-dialog::backdrop{background:var(--ob-scrim)}
+  .ob-nav-dialog .ob-navigation{height:100%;max-height:100%;overflow-y:auto;overscroll-behavior:contain;padding:env(safe-area-inset-top,0px) max(12px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+  .ob-nav-dialog .ob-nav-tools{top:env(safe-area-inset-top,0px)}
+  .ob-nav-dialog .ob-nav-group{margin:16px 0}
+  .ob-nav-dialog .ob-nav-area{width:100%;height:auto;padding:8px 12px}
+  .ob-root .ob-shell{padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+  .ob-root{padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
+  .ob-root input,.ob-root select,.ob-root textarea{font-size:16px}
+  .ob-root button,.ob-root input:not([type=checkbox]):not([type=radio]),.ob-root select{min-height:44px}
+  .ob-root button{min-width:44px;max-width:100%;white-space:normal}
+  .ob-root .ob-grid,.ob-root .ob-grid.two,.ob-root .ob-stat-grid,.ob-root .ob-models-grid,.ob-root .ob-split,.ob-root .ob-settings,.ob-root .ob-sandbox-grid{grid-template-columns:minmax(0,1fr)}
+  .ob-header,.ob-panel-head,.ob-row,.ob-spread{flex-wrap:wrap;min-width:0}
+  .ob-root .ob-page,.ob-root .ob-content,.ob-root .ob-panel{overflow-wrap:anywhere}
+  .ob-root pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+  .ob-root img,.ob-root video,.ob-root canvas{max-width:100%}
 }
 @media (pointer:coarse){
   .ob-input,.ob-select,.ob-textarea,.ob-tags input{font-size:16px}
@@ -2780,6 +2858,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           disabled,
           title: props.title,
           'aria-label': props['aria-label'],
+          'aria-describedby': props['aria-describedby'],
           'aria-busy': busy ? true : undefined,
           onClick: disabled ? undefined : props.onClick,
         },
@@ -3028,7 +3107,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (spec.type === 'number') {
         return h(
           'span',
-          { className: 'ob-row', style: { flexWrap: 'nowrap', width: '100%' } },
+          { className: 'ob-number-control' },
           h('input', {
             id,
             className: 'ob-input',
@@ -3328,37 +3407,166 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         && field.canonical.area === target.area && field.canonical.section === target.section
         && (field.canonical.moduleId || '') === (target.moduleId || ''))
     }
+    const DESKTOP_NAVIGATION_KEY = 'dsh-bot:navigation:desktop:v1'
+    const MOBILE_NAVIGATION_QUERY = '(max-width:900px)'
+    const AREA_ICONS = { overview: 'overview', chat: 'message', profiles: 'brain', extensions: 'layout', data: 'logs', system: 'config' }
+    function readDesktopNavigation() {
+      try { return window.localStorage.getItem(DESKTOP_NAVIGATION_KEY) === 'collapsed' ? 'collapsed' : 'expanded' }
+      catch { return 'expanded' }
+    }
+    function navigationSections(area) {
+      return (NAVIGATION_REGISTRY.find(row => row.id === area)?.sections || [])
+        .filter(section => section.id !== 'module' && !(area === 'profiles' && section.id === 'settings'))
+    }
+    function lockNavigationScroll(root) {
+      const elements = [...new Set([document.documentElement, document.body, root].filter(Boolean))]
+      const snapshots = elements.map(element => ({ element, css: element.style.cssText, top: element.scrollTop, left: element.scrollLeft }))
+      const x = window.scrollX, y = window.scrollY
+      const scrollbar = Math.max(0, window.innerWidth - document.documentElement.clientWidth)
+      const rootScrollbar = root ? Math.max(0, root.offsetWidth - root.clientWidth -
+        (parseFloat(window.getComputedStyle(root).borderLeftWidth) || 0) - (parseFloat(window.getComputedStyle(root).borderRightWidth) || 0)) : 0
+      for (const element of elements) element.style.overflow = 'hidden'
+      if (root) root.style.paddingRight = (parseFloat(window.getComputedStyle(root).paddingRight) || 0) + rootScrollbar + 'px'
+      document.body.style.position = 'fixed'
+      document.body.style.top = -y + 'px'
+      document.body.style.left = -x + 'px'
+      document.body.style.width = '100%'
+      document.body.style.boxSizing = 'border-box'
+      document.body.style.paddingRight = (parseFloat(window.getComputedStyle(document.body).paddingRight) || 0) + scrollbar + 'px'
+      return () => {
+        for (const { element, css, top, left } of snapshots) { element.style.cssText = css; element.scrollTop = top; element.scrollLeft = left }
+        const behavior = document.documentElement.style.scrollBehavior
+        document.documentElement.style.scrollBehavior = 'auto'
+        window.scrollTo({ left: x, top: y, behavior: 'instant' })
+        document.documentElement.style.scrollBehavior = behavior
+      }
+    }
+    function trapNavigationFocus(event) {
+      if (event.key !== 'Tab') return
+      const dialog = event.currentTarget
+      const controls = [...dialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')]
+        .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && !node.closest('[hidden],[inert],[aria-hidden="true"]')
+          && node.getClientRects().length && !['hidden', 'collapse'].includes(window.getComputedStyle(node).visibility))
+      const first = controls[0], last = controls[controls.length - 1]
+      if (!first) { event.preventDefault(); dialog.focus(); return }
+      if (event.shiftKey && (event.target === first || !controls.includes(event.target))) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && (event.target === last || !controls.includes(event.target))) { event.preventDefault(); first.focus() }
+    }
     function NavigationMenu({ navigation, goTo, configInfo }) {
-      const [open, setOpen] = useState(false), [query, setQuery] = useState('')
+      // Lazy reads precede the first paint; desktop preference never follows mobile state.
+      const [desktop, setDesktop] = useState(readDesktopNavigation)
+      const [mobile, setMobile] = useState(() => Boolean(window.matchMedia?.(MOBILE_NAVIGATION_QUERY).matches))
+      const [open, setOpen] = useState(false), [query, setQuery] = useState(''), [tip, setTip] = useState(null)
+      const hostRef = useRef(null), dialogRef = useRef(null), triggerRef = useRef(null), searchRef = useRef(null)
+      const searchPending = useRef(false), destinationPending = useRef(false)
+      const collapsed = !mobile && desktop === 'collapsed'
       const labels = { ...LEGACY_NAV_LABELS, ...SECTION_LABELS }
       for (const group of buildFieldSpecs(configInfo?.groups)) { labels['group:' + group.id] = group.title; for (const field of group.fields) labels[field.path] = field.label }
-      useEffect(() => {
-        if (open && typeof document !== 'undefined') document.getElementById('ob-navigation')?.querySelector('input')?.focus()
-      }, [open])
-      const select = target => { goTo(target); setOpen(false); setQuery('') }
-      const links = NAVIGATION_REGISTRY.map(area => h('section', { key: area.id, className: 'ob-nav-group' },
-        h('h2', null, area.label),
-        area.sections.filter(section => section.id !== 'module' && !(area.id === 'profiles' && section.id === 'settings')).map(section =>
-          h('button', { key: section.id, type: 'button', 'aria-current': navigation.area === area.id && navigation.section === section.id ? 'page' : undefined,
-            onClick: () => select({ area: area.id, section: section.id }) }, SECTION_LABELS[section.id] || section.id))))
-      return h(Fragment, null,
-        h('button', { className: 'ob-nav-toggle ob-btn', type: 'button', 'aria-expanded': open, 'aria-controls': 'ob-navigation', onClick: () => setOpen(!open) }, '导航与搜索'),
-        open ? h('button', { className: 'ob-nav-backdrop', 'aria-label': '关闭导航', onClick: () => setOpen(false) }) : null,
-        h('nav', { id: 'ob-navigation', className: cx('ob-navigation', open && 'is-open'), 'aria-label': '六区导航',
-          onKeyDown: event => {
-            if (event.key === 'Escape') { setOpen(false); if (typeof document !== 'undefined') document.querySelector('.ob-nav-toggle')?.focus() }
-            if (event.key === 'Tab' && open) {
-              const controls = [...event.currentTarget.querySelectorAll('button,input')].filter(node => node.getClientRects().length)
-              const first = controls[0], last = controls[controls.length - 1]
-              if (event.shiftKey && event.target === first) { event.preventDefault(); last?.focus() }
-              else if (!event.shiftKey && event.target === last) { event.preventDefault(); first?.focus() }
-            }
-          } },
-          h('button', { type: 'button', className: 'ob-nav-close ob-btn', onClick: () => setOpen(false) }, '关闭导航'),
-          h('input', { type: 'search', className: 'ob-input', 'aria-label': '搜索页面、旧名称或设置路径', value: query, onChange: event => setQuery(event.target.value) }),
-          query.trim() ? h('div', { className: 'ob-nav-results', 'aria-live': 'polite' },
-            searchNavigation(query, labels).map((row, index) => h('button', { type: 'button', key: index, onClick: () => select(row.target) }, row.label)),
-            searchNavigation(query, labels).length ? null : h('p', null, '没有匹配的页面或设置')) : links))
+      const changeDesktop = value => {
+        setDesktop(value); setTip(null)
+        try { window.localStorage.setItem(DESKTOP_NAVIGATION_KEY, value) } catch { /* Session preference still works. */ }
+      }
+      const close = () => { setOpen(false); setQuery(''); setTip(null) }
+      useLayoutEffect(() => {
+        const media = window.matchMedia?.(MOBILE_NAVIGATION_QUERY)
+        if (!media) return
+        const change = () => { setMobile(media.matches); close() }
+        // Also reconcile a resize between render and effect attachment.
+        if (media.matches !== mobile) change()
+        if (media.addEventListener) media.addEventListener('change', change)
+        else media.addListener?.(change)
+        return () => { if (media.removeEventListener) media.removeEventListener('change', change); else media.removeListener?.(change) }
+      }, [])
+      useLayoutEffect(() => {
+        if (!mobile || !open) return
+        const dialog = dialogRef.current
+        if (!dialog) return
+        dialog.showModal()
+        const unlock = lockNavigationScroll(hostRef.current?.closest('.ob-root'))
+        searchRef.current?.focus({ preventScroll: true })
+        return () => {
+          // Restore before native close/focus handling; ignore the resulting delayed close event.
+          unlock()
+          if (dialog.open) dialog.close()
+          const trigger = triggerRef.current
+          if (trigger?.isConnected && trigger.getClientRects().length) trigger.focus({ preventScroll: true })
+          else hostRef.current?.querySelector('[data-desktop-toggle]')?.focus({ preventScroll: true })
+        }
+      }, [mobile, open])
+      useLayoutEffect(() => {
+        if (searchPending.current && !collapsed) { searchPending.current = false; searchRef.current?.focus({ preventScroll: true }) }
+        if (destinationPending.current && !open) {
+          const destination = hostRef.current?.closest('.ob-root')?.querySelector('#ob-navigation-destination')
+          if (destination) { destinationPending.current = false; destination.focus({ preventScroll: true }) }
+        }
+      })
+      const select = target => {
+        destinationPending.current = mobile
+        goTo(target); close()
+      }
+      const tooltipProps = (id, label) => ({
+        'aria-label': label,
+        'aria-describedby': tip?.id === id ? 'ob-nav-tooltip' : undefined,
+        onFocus: event => {
+          if (!collapsed) return
+          const rect = event.currentTarget.getBoundingClientRect()
+          setTip({ id, label, top: Math.max(8, Math.min(rect.top, window.innerHeight - 56)), left: rect.right + 8 })
+        },
+        onMouseEnter: event => {
+          if (!collapsed) return
+          const rect = event.currentTarget.getBoundingClientRect()
+          setTip({ id, label, top: Math.max(8, Math.min(rect.top, window.innerHeight - 56)), left: rect.right + 8 })
+        },
+        onBlur: () => setTip(null),
+        onMouseLeave: event => { if (document.activeElement !== event.currentTarget) setTip(null) },
+      })
+      const links = NAVIGATION_REGISTRY.map(area => h('section', { key: area.id, className: 'ob-nav-group', 'aria-label': area.label },
+        h('button', { ...tooltipProps(area.id, area.label), className: 'ob-nav-area', type: 'button',
+          'data-area': area.id, 'aria-current': navigation.area === area.id ? 'true' : undefined,
+          onClick: () => select({ area: area.id, section: navigationSections(area.id)[0].id }) },
+        h(Icon, { name: AREA_ICONS[area.id], size: 24 }), collapsed ? null : h('span', null, area.label)),
+        h('div', { className: 'ob-nav-sections', hidden: collapsed }, navigationSections(area.id).map(section =>
+          h('button', { key: section.id, type: 'button', tabIndex: collapsed ? -1 : undefined,
+            'data-section': area.id + ':' + section.id,
+            'aria-current': navigation.area === area.id && (navigation.section === section.id || (section.id === 'modules' && navigation.section === 'module')) ? 'page' : undefined,
+            onClick: () => select({ area: area.id, section: section.id }) }, SECTION_LABELS[section.id] || section.id)))))
+      const nav = h('nav', { id: 'ob-navigation', className: 'ob-navigation', 'aria-label': '六区导航' },
+        h('div', { className: 'ob-nav-tools' },
+          mobile ? h('button', { type: 'button', className: 'ob-nav-close ob-btn', 'aria-label': '关闭导航', onClick: close }, '关闭导航') :
+            h('button', { ...tooltipProps('expand', collapsed ? '展开导航' : '折叠导航'), type: 'button', 'data-desktop-toggle': true,
+              className: collapsed ? 'ob-nav-rail-control' : 'ob-btn', 'aria-expanded': !collapsed, 'aria-controls': 'ob-nav-sections',
+              onClick: () => changeDesktop(collapsed ? 'expanded' : 'collapsed') }, h(Icon, { name: 'layout', size: 24 }), collapsed ? null : '折叠导航'),
+          collapsed ? h('button', { ...tooltipProps('search', '搜索导航'), type: 'button', className: 'ob-nav-rail-control',
+            onClick: () => { searchPending.current = true; changeDesktop('expanded') } }, h(Icon, { name: 'search', size: 24 })) :
+            h('input', { ref: searchRef, type: 'search', className: 'ob-input', 'aria-label': '搜索页面、旧名称或设置路径', value: query, onChange: event => setQuery(event.target.value) })),
+        h('div', { id: 'ob-nav-sections' }, !collapsed && query.trim() ? h('div', { className: 'ob-nav-results', 'aria-live': 'polite' },
+          searchNavigation(query, labels).map((row, index) => h('button', { type: 'button', key: index, onClick: () => select(row.target) }, row.label)),
+          searchNavigation(query, labels).length ? null : h('p', null, '没有匹配的页面或设置')) : links))
+      return h('div', { ref: hostRef, className: 'ob-navigation-host', 'data-desktop': desktop,
+        onKeyDown: event => { if (event.key === 'Escape') setTip(null) } },
+        h('div', { className: 'ob-mobile-topbar', role: 'toolbar', 'aria-label': '移动导航' },
+          h('button', { ref: triggerRef, className: 'ob-nav-toggle ob-btn', type: 'button', 'aria-label': '导航与搜索',
+            'aria-expanded': mobile && open, 'aria-haspopup': 'dialog', 'aria-controls': 'ob-navigation-dialog', onClick: () => { if (mobile) setOpen(true) } }, '导航与搜索'),
+          h('div', { className: 'ob-mobile-location' }, h('span', null, NAVIGATION_REGISTRY.find(area => area.id === navigation.area)?.label),
+            h('span', null, navigation.section === 'module' ? '模块详情 · ' + navigation.moduleId : SECTION_LABELS[navigation.section] || navigation.section))),
+        h('div', { className: 'ob-mobile-sections', role: 'toolbar', 'aria-label': '当前区域分区' },
+          h('label', { htmlFor: 'ob-mobile-section' }, '分区'),
+          h('select', { id: 'ob-mobile-section', className: 'ob-select', 'aria-label': '当前区域分区', value: navigation.section,
+            onChange: event => { if (event.target.value !== 'module') select({ area: navigation.area, section: event.target.value }) } },
+          navigationSections(navigation.area).map(section => h('option', { key: section.id, value: section.id }, SECTION_LABELS[section.id] || section.id)),
+          navigation.section === 'module' ? h('option', { value: 'module' }, '当前模块 · ' + navigation.moduleId) :
+            !navigationSections(navigation.area).some(section => section.id === navigation.section)
+              ? h('option', { value: navigation.section, disabled: true }, '当前分区 · ' + (SECTION_LABELS[navigation.section] || navigation.section)) : null)),
+        mobile ? h('dialog', { ref: dialogRef, id: 'ob-navigation-dialog', className: 'ob-nav-dialog', tabIndex: -1, 'aria-label': '导航与搜索',
+          onCancel: event => { event.preventDefault(); close() },
+          onClose: event => { if (!event.currentTarget.open) close() },
+          onKeyDown: trapNavigationFocus,
+          onClick: event => {
+            if (event.target !== event.currentTarget) return
+            const rect = event.currentTarget.getBoundingClientRect()
+            if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close()
+          } }, nav) : nav,
+        collapsed && tip ? h('span', { id: 'ob-nav-tooltip', role: 'tooltip', className: 'ob-nav-tip', style: { top: tip.top, left: tip.left } }, tip.label) : null)
     }
 
     // One partition per destination. Profile edits use explicit IDs and CAS, without activation.
@@ -3419,13 +3627,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         finally { savingGuard.current = false; setBusy(false) }
       }
       if (!fields.length) return null
-      return h('section', { className: 'ob-stack', 'aria-label': '所有者设置' },
+      return h('section', { className: 'ob-stack ob-owner-settings', 'aria-label': '所有者设置' },
         profile ? h(Banner, { tone: view?.runtimeMode === 'legacy' || error === 'SETTINGS_MIGRATION_UNAVAILABLE' ? 'warn' : view ? 'ok' : undefined, message: view?.runtimeMode === 'legacy' || error === 'SETTINGS_MIGRATION_UNAVAILABLE' ? 'Profile 不可用：运行已回退旧配置，请重新读取或检查迁移错误。' : !view ? (error ? 'Profile 设置读取失败，请重新读取。' : '正在读取 Profile 设置与运行状态…') : 'Profile 运行已启用：保存当前激活人格会应用于后续轮次；编辑其他人格不会激活它。业务数据与操作属于当前激活人格。' }) : null,
         profile ? h('label', null, '设置人格 ', h('select', { className: 'ob-select', 'aria-label': '设置人格', value: id, disabled: busy,
           onChange: event => { request.current++; setView(null); setChanges({}); setId(event.target.value) } }, catalog.map(item => h('option', { key: item.id, value: item.id }, item.displayName || item.name || item.id)))) : null,
-        error ? h(Banner, { tone: 'err', message: error + '；重新读取会丢弃草稿。', actions: h(Btn, { onClick: load, disabled: busy }, '重新读取') }) : null,
-        !view ? h(PanelSkeleton, { rows: 3 }) : h(Panel, { title: SECTION_LABELS[props.navigation.section] || '设置', description: profile ? (id === activeId ? '已应用 · ' : '激活后应用 · ') + 'revision ' + view.revision : '按所有者保存',
-            actions: h('div', { className: 'ob-row' }, h(Btn, { onClick: save, disabled: busy || !Object.keys(changes).length || view.editingAvailable === false && profile }, '保存设置'), h(Btn, { onClick: load, disabled: busy }, '重新读取')) },
+        error ? h(Banner, { tone: 'err', message: error + '；重新读取会丢弃草稿。' }) : null,
+        !view ? h(PanelSkeleton, { rows: 3 }) : h(Panel, { title: SECTION_LABELS[props.navigation.section] || '设置', description: profile ? (id === activeId ? '已应用 · ' : '激活后应用 · ') + 'revision ' + view.revision : '按所有者保存' },
             fields.map(field => {
               const spec = fieldSpecByPath(props.configInfo?.groups, field.path) || { path: field.path, label: field.path, type: Array.isArray(view.values[field.path]) ? 'string-list' : typeof view.values[field.path] === 'number' ? 'number' : typeof view.values[field.path] === 'boolean' ? 'switch' : 'text' }
               const secret = ['secret', 'secret-reference'].includes(field.sensitivity)
@@ -3437,7 +3644,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                   h(Btn, { disabled: busy, onClick: () => setChanges(previous => ({ ...previous, [field.path]: { op: 'clear' } })) }, '清除 ' + field.path), value?.op === 'clear' ? h('span', null, '保存后清除') : null)
                   : h(FieldRow, { spec, value, disabled: busy, onChange: next => setChanges(previous => ({ ...previous, [field.path]: next })) }),
                 h('small', { className: 'ob-muted' }, field.path + ' · ' + field.apply))
-            })))
+            })),
+        h('div', { className: 'ob-owner-savebar', role: 'group', 'aria-label': '所有者设置保存工具栏' },
+          h(Btn, { onClick: save, disabled: !view || busy || !Object.keys(changes).length || view.editingAvailable === false && profile }, '保存设置'),
+          h(Btn, { onClick: load, disabled: busy }, '重新读取')))
     }
 
     function ProfileOverview(props) {
@@ -5933,12 +6143,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }, [props.navigation, prefix, ready])
     }
     function metadataRows(data, keys) {
-      return h('dl', { className: 'ob-small' }, keys.map(key => h(Fragment, { key }, h('dt', null, key), h('dd', null, observedValue(data?.[key])))))
+      return h('dl', { className: 'ob-module-metadata ob-small' }, keys.map(key => h(Fragment, { key }, h('dt', null, key), h('dd', null, observedValue(data?.[key])))))
     }
     function CoreModuleHealth(props) {
       const api = useCogApi(props, '/modules/health?id=' + encodeURIComponent(props.moduleId))
       const health = safeArray(api.data?.items).find(row => row.moduleId === props.moduleId)
-      return h(Panel, { title: '核心健康', description: '核心缓存快照；未观察的计数不等于零。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新健康') },
+      return h(Panel, { className: 'ob-module-scope', title: '核心健康', description: '核心缓存快照；未观察的计数不等于零。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新健康') },
         api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
         !health ? h('p', null, api.loading ? '加载健康…' : '健康不可用') : h(Fragment, null,
           metadataRows(health, ['lifecycle', 'phase', 'health', 'reasonCode', 'runtimeGeneration', 'telemetryGeneration', 'observedAt']),
@@ -6014,23 +6224,26 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         } catch (err) { if (guard.current.active) setError(String(err.message || '动作不可用')) }
         finally { guard.current.busy = false; if (guard.current.active) setBusy(false) }
       }
-      const content = h('div', { className: 'ob-stack' },
+      const content = h('div', { className: 'ob-stack ob-module-scope' },
         api.error || error ? h(Banner, { tone: 'err', message: error || api.error }) : null,
-        h('div', { className: 'ob-row' }, safeArray(api.data?.items).filter(row => Object.hasOwn(ACTION_LABELS, row.actionId) && (!props.actionIds || props.actionIds.includes(row.actionId))).map(row => h('span', { key: row.actionId },
-          h(Btn, { small: true, disabled: busy || Boolean(operation && !operationTerminal(operation)) || !row.available, onClick: () => run(row.actionId) }, ACTION_LABELS[row.actionId]),
-          !row.available ? h('span', { className: 'ob-small ob-muted' }, ' ' + observedValue(row.reasonCode)) : null,
-        )), h(Btn, { small: true, disabled: busy, onClick: api.reload }, '刷新动作')),
+        h('div', { className: 'ob-module-actions' }, safeArray(api.data?.items).filter(row => Object.hasOwn(ACTION_LABELS, row.actionId) && (!props.actionIds || props.actionIds.includes(row.actionId))).map(row => {
+          const reasonId = 'ob-module-action-' + props.moduleId + '-' + row.actionId + '-reason'
+          return h('div', { key: row.actionId, className: 'ob-module-action' },
+            h(Btn, { small: true, 'aria-describedby': !row.available ? reasonId : undefined, disabled: busy || Boolean(operation && !operationTerminal(operation)) || !row.available, onClick: () => run(row.actionId) }, ACTION_LABELS[row.actionId]),
+            !row.available ? h('p', { id: reasonId, className: 'ob-module-action-reason ob-small ob-muted' }, observedValue(row.reasonCode)) : null,
+          )
+        }), h(Btn, { small: true, disabled: busy, onClick: api.reload }, '刷新动作')),
         operation ? h('div', { role: 'status', 'aria-live': 'polite' },
           h('p', null, 'operation：' + operation.status + ' · ' + operation.phase + (operation.code ? ' · ' + operation.code : '')),
           operation.status === 'STOP_PENDING' ? h('p', null, 'STOP_PENDING：仍在排空，尚未完成；继续观察同一操作。') : null,
           !busy && !operationTerminal(operation) ? h(Btn, { small: true, onClick: () => run(null, true) }, '继续观察操作') : null,
         ) : null,
       )
-      return props.compact ? content : h(Panel, { title: '核心动作', description: '动作与可用性来自核心；接纳后轮询至终态，忙碌、跳过或失败不表示成功。' }, content)
+      return props.compact ? content : h(Panel, { className: 'ob-module-scope', title: '核心动作', description: '动作与可用性来自核心；接纳后轮询至终态，忙碌、跳过或失败不表示成功。' }, content)
     }
     function ModuleFeatureLinks(props) {
       if (!props.item.builtin || props.item.source !== 'builtin') return null
-      return h('section', { 'aria-label': '功能入口', className: 'ob-row' },
+      return h('section', { 'aria-label': '功能入口', className: 'ob-module-actions' },
         safeArray(MODULE_DESTINATIONS[props.item.id]).map(link => h(Fragment, { key: link.label }, destinationButton(props, link.label, link.target))),
         destinationButton(props, '配置', { tab: 'modules', moduleId: props.item.id, anchor: 'config' }),
         destinationButton(props, '闭环', { tab: 'cognition', section: 'loop' }),
@@ -8147,7 +8360,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     const previewNumber = (value, min, max) => Number.isInteger(value) && value >= min && value <= max ? value : null
     const previewSwitch = (value) => value === null ? '未加载' : value ? '开启' : '关闭'
     const previewValue = (value, unit = '') => value === null ? '未加载' : value + unit
-    const previewBody = (summary, lines) => h('div', { className: 'ob-stack', 'aria-label': '内置模块只读预览' },
+    const previewBody = (summary, lines) => h('div', { className: 'ob-module-preview', 'aria-label': '内置模块只读预览' },
       h('p', { className: 'ob-muted ob-small' }, summary.text),
       lines.map((line, index) => h('p', { key: index, className: 'ob-small' }, line)),
     )
@@ -8297,7 +8510,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ref: frame, title: '隔离 WebUI · ' + String(item.id),
         src: '/onebot-qq/module-ui/' + encodeURIComponent(item.id) + '/' + encodeURIComponent(item.generation) + '/' + entry.slice('webui/'.length),
         sandbox: 'allow-scripts', referrerPolicy: 'no-referrer',
-        style: { width: '100%', height: height + 'px', border: 0 },
+        style: { width: '100%', minWidth: 0, maxWidth: '100%', height: height + 'px', border: 0 },
         onLoad: () => {
           cleanup.current?.()
           if (!mounted.current || !frame.current) return
@@ -8498,9 +8711,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         h(Badge, { tone: item.status === 'loaded' ? 'ok' : ['error', 'blocked'].includes(item.status) ? 'err' : 'muted' }, String(item.status || 'unknown')),
         h(Badge, { tone: item.enabled ? 'brand' : 'muted' }, item.enabled ? '已启用' : '已停用'),
       )
-      const moduleActions = (item) => h('div', { className: 'ob-row' },
+      const moduleActions = (item) => h('div', { className: 'ob-module-actions' },
         item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
-        h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+        h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', 'aria-describedby': !item.canToggle && !item.builtin ? 'ob-module-toggle-' + item.id + '-reason' : undefined, busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
       )
       const statusSummary = (item, surface) => h('section', { key: surface.id, 'aria-label': surface.hook, className: 'ob-stack' },
         h('p', { className: 'ob-small' }, String(item.description || item.name || item.id)),
@@ -8516,11 +8729,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             key: item.id + ':' + spec.path, spec, value: editor.values[spec.path], disabled: Boolean(busy) || configReadOnly(item),
             onChange: (value) => { if (!busy && !configReadOnly(item)) setEditor((current) => ({ ...current, values: { ...current.values, [spec.path]: value } })) },
           })),
-          h('div', { className: 'ob-row' },
-            h(Btn, { small: true, busy: busy === item.id + ':save', disabled: Boolean(busy) || !editor.schema || configReadOnly(item), onClick: saveModuleConfig }, '保存配置'),
-            h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '重新加载配置'),
-            h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => { setEditor(null); setConfigError('') } }, '取消'),
-          ),
         ) : h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '加载配置'),
       )
       const legacyConfigSurface = (item, surface) => h('section', { key: surface.id, className: 'ob-stack', 'aria-label': '模块配置' },
@@ -8579,34 +8787,47 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         )
       }
 
-      if (loading && !items.length) return h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 }))
+      if (loading && !items.length) return h('div', { className: 'ob-module-list ob-module-scope' }, h('div', { className: 'ob-module-grid' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 })))
       if (detailId) {
         const item = items.find((item) => item.id === detailId)
         const ui = item ? uiFor(item) : null
-        return h('section', { id: 'ob-module-detail', className: 'ob-stack', 'aria-label': '模块详情' },
-          h('div', { className: 'ob-row' },
+        return h('section', { id: 'ob-module-detail', className: 'ob-stack ob-module-scope', 'aria-label': '模块详情' },
+          h('div', { className: 'ob-module-toolbar', role: 'group', 'aria-label': '模块详情工具栏' },
             h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { if (props.ownerIntegration) props.goTo?.({ area: 'extensions', section: 'modules' }); else { setDetailId(''); setEditor(null); setConfigError('') } } }, '返回模块列表'),
             h(Btn, { kind: 'secondary', disabled: Boolean(busy) || loading, onClick: refresh }, '刷新详情'),
           ),
           error ? h(Banner, { tone: 'err', message: error }) : null,
           uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
           cardOperationStatus,
-          item ? h(Panel, { title: String(item.name || item.id), description: String(item.description || item.id), actions: item.builtin ? null : moduleActions(item) },
-            badges(item),
+          item ? h(Fragment, null,
+            h(Panel, { key: item.id + ':summary', className: 'ob-module-summary', title: String(item.name || item.id), description: String(item.description || item.id), footer: item.builtin ? null : moduleActions(item) },
+              badges(item),
+              metadataRows(item, ['id', 'version', 'generation', 'uiRevision', 'requires', 'permissions']),
+              !item.canToggle && !item.builtin ? h('p', { id: 'ob-module-toggle-' + item.id + '-reason', className: 'ob-module-action-reason ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
+              item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
+              item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
+            ),
             h(CoreModuleHealth, { ...props, key: item.id + ':' + item.generation + ':health:' + healthRevision, moduleId: item.id }),
             h(CoreModuleActions, { ...props, key: item.id + ':actions', moduleId: item.id, onSettled: refresh }),
             h(ModuleFeatureLinks, { ...props, item }),
             item.id === 'builtin-reminders' && item.builtin && item.source === 'builtin' ? h('section', { id: 'ob-module-reminders' }, h(ReminderData, props)) : null,
-            item.error ? h('p', { className: 'ob-field-error' }, String(item.error)) : null,
-            item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
             !ui || !ui.surfaces.length ? h('p', { className: 'ob-muted ob-small' }, 'UI 描述不可用或未声明，显示核心模块信息。')
-              : ui.surfaces.map((surface) => h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : 'surface-' + surface.id) }, renderSurface(item, ui, surface))),
+              : ui.surfaces.map((surface) => {
+                  const content = renderSurface(item, ui, surface)
+                  const ownsPanel = content.type === MediaFeaturesPanel
+                  return h('div', { key: surface.id, id: 'ob-module-' + (surface.hook === 'module.config' ? 'config' : surface.hook === 'module.panel' ? 'panel' : 'surface-' + surface.id) }, ownsPanel ? content : h(Panel, null, content))
+                }),
+            hasConfigUi(item, ui) && editor?.id === item.id ? h('div', { className: 'ob-module-savebar', role: 'group', 'aria-label': '模块配置保存工具栏' },
+              h(Btn, { small: true, busy: busy === item.id + ':save', disabled: Boolean(busy) || !editor.schema || configReadOnly(item), onClick: saveModuleConfig }, '保存配置'),
+              h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '重新加载配置'),
+              h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => { setEditor(null); setConfigError('') } }, '取消'),
+            ) : null,
           ) : h(Banner, { tone: 'muted', message: '模块已不在目录中，请返回列表。' }),
         )
       }
       return h(
         'div',
-        { className: 'ob-stack' },
+        { className: 'ob-stack ob-module-scope' },
         h(Panel, { title: '模块目录', description: '内置模块随插件发布；外部模块是操作员安装的同进程代码。permissions 不是沙箱，请先审核外部代码。', actions: h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: loading, disabled: Boolean(busy) || loading, onClick: refresh }, '刷新') },
           h('div', { className: 'ob-row' }, h(Badge, { tone: 'muted' }, '内置 ' + items.filter((item) => item.builtin).length), h(Badge, { tone: 'muted' }, '外部 ' + items.filter((item) => !item.builtin).length)),
         ),
@@ -8614,21 +8835,21 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         uiError ? h(Banner, { tone: 'muted', message: uiError }) : null,
         cardOperationStatus,
         items.length
-          ? h('div', { className: 'ob-grid two' }, items.map((item) => {
+          ? h('div', { className: 'ob-module-list' }, h('div', { className: 'ob-module-grid' }, items.map((item) => {
               const permissions = safeArray(item.permissions)
               const tone = item.status === 'loaded' ? 'ok' : (item.status === 'error' || item.status === 'blocked') ? 'err' : 'muted'
               const ui = uiFor(item)
               return h('article', {
-                key: item.id, 'aria-label': '模块卡片 · ' + String(item.name || item.id),
+                key: item.id, className: 'ob-module-card', 'aria-label': '模块卡片 · ' + String(item.name || item.id),
                 onClick: (event) => { if (!event.target.closest('button, a, input, select, textarea')) openDetail(item) },
               }, h(Panel, {
                 title: String(item.name || item.id),
                 description: String(item.description || item.id),
-                actions: h('div', { className: 'ob-row' },
+                footer: h('div', { className: 'ob-module-actions' },
                   h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '详情'),
                   hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui) ? h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openDetail(item) }, '配置') : null,
                   item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
-                  h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+                  h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', 'aria-describedby': !item.canToggle && !item.builtin ? 'ob-module-toggle-' + item.id + '-reason' : undefined, busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
                 ),
               },
                 h('div', { className: 'ob-row' },
@@ -8639,12 +8860,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 ),
                 permissions.length ? h('div', { className: 'ob-row', style: { marginTop: '12px' } }, permissions.map((permission) => h(Badge, { key: permission, tone: 'muted' }, permission))) : h('p', { className: 'ob-muted ob-small', style: { marginTop: '12px' } }, '未申请权限'),
                 safeArray(item.requires).length ? h('p', { className: 'ob-muted ob-small' }, '依赖：' + item.requires.join('、')) : null,
-                !item.canToggle && !item.builtin ? h('p', { className: 'ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
+                !item.canToggle && !item.builtin ? h('p', { id: 'ob-module-toggle-' + item.id + '-reason', className: 'ob-module-action-reason ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
                 item.error ? h('p', { className: 'ob-field-error', style: { marginTop: '12px' } }, String(item.error)) : null,
                 item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
                 ui?.surfaces.filter((surface) => surface.hook === 'module.card').map((surface) => renderSurface(item, ui, surface)),
               ))
-            }))
+            })))
           : h(Panel, null, h(EmptyState, {
               icon: 'layout',
               title: '还没有模块',
@@ -9080,7 +9301,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             'div',
             { className: 'ob-shell ob-area-shell' },
             h(NavigationMenu, { navigation, goTo, configInfo }),
-            loadingShell
+            h('div', { id: 'ob-navigation-destination', tabIndex: -1, 'aria-label': headerInfo.eyebrow + ' · ' + headerInfo.title }, loadingShell
               ? loadingShell
               : h(
                   'div',
@@ -9120,7 +9341,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                     },
                     h('div', { key: navigation.area + ':' + navigation.section, className: pageTransitionClass(contentTransitionFor(tab, uiPrefs.pageTransition)) }, body),
                   ),
-                ),
+                )),
           ),
           h(Toast, { message: toastMessage }),
         ),
