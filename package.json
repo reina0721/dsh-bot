@@ -1,6 +1,6 @@
 {
   "name": "dsh-bot",
-  "version": "0.11.17",
+  "version": "0.11.18",
   "description": "QQ integration, persistent personas and cognitive services for DeepSeek Harness, with a web management panel.",
   "license": "MIT",
   "private": true,

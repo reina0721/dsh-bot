@@ -1,4 +1,4 @@
-# 实现状态（v0.11.17 发布后，M7-v 工作区）
+# 实现状态（v0.11.18 发布后，M7-v 工作区）
 
 AstrBot alignment 当前基线（C01–C08 `81304d2`，C09 离线验收，I/T/L）：六区/旧别名、settings ownership、staged profile 迁移/API/UI、隔离模拟图和零真实发送 Chat、执行 broker/Agent 会话边界已实现并有测试。profile 运行解析仍 legacy；本机 bwrap 缺失/cgroup 委派 EROFS，真实 Linux containment 未认证；macOS 仅 discovery，无 egress/真实模型 preview/Windows execution。安全 preset 由宿主补齐，真实 ready Agent 与浏览器未验证，不标 V。提交链、检查结果和包证据见 [C09 验收](../architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)。版本保持 0.11.15；下列其它 C01–C08 链和计数为既有历史阶段。
 
