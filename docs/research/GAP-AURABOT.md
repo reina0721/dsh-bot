@@ -2,7 +2,7 @@
 
 > 快照：2026-11-06（Asia/Shanghai）。
 > Aurabot：`aureth-labs/dsh-aurabot-qq`，`dd1911f`，v1.2.0，MIT。
-> dsh-bot：`reina0721/dsh-bot`，`d2da394`，v0.11.19，MIT。
+> dsh-bot：`reina0721/dsh-bot`，`d2da394`，v0.11.20，MIT。
 > 本文是差距清单 + 里程碑计划；**不把设计当成已实现**。状态以「代码 + 测试 + 受控真机验证」为准。
 
 ## 0. 一句话结论
@@ -333,7 +333,7 @@ QQ → 网关 → events → access（主人/白名单/档位）
 
 用户明确选择「接受当前 parity 并收束」。当前矩阵为 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47；8 项豁免见 §8.1。
 
-这是**范围决定**，不是实现证据：不将剩余 47 项继续作为发布门槛，也不宣称全量 parity 或全量实机验收。发布版本为 v0.11.19，live 保留部分真机验收证据；M7-v 仅手动身份 registry，无跨平台 adapter/自动合并/路由。
+这是**范围决定**，不是实现证据：不将剩余 47 项继续作为发布门槛，也不宣称全量 parity 或全量实机验收。发布版本为 v0.11.20，live 保留部分真机验收证据；M7-v 仅手动身份 registry，无跨平台 adapter/自动合并/路由。
 
 ## 9. 复现与维护
 
@@ -470,4 +470,4 @@ pipeline 保留原处理为 `processTurn`；仅启用且 private、有 action �
 
 主人 `/identity` 最多列 20 条，`/identity link platform externalId personId [label]` 登记/重链，`/identity unlink platform externalId` 删除；owner/禁用列表/出站访问先于服务调用，操作员和陌生人私聊/群聊静默。错误为固定安全提示，不回显原始服务异常。记录跨重启/人格切换保留，不检查 personId 存在、不创建/修改/合并人物，也不接入既有身份解析/自动关联或消息路由。没有新配置/依赖、网络调用、HTTP/API/面板或 Telegram/Discord/Matrix adapter，默认消息行为不变。
 
-证据：[identities.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/identities.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[cognition-integration.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，均为离线本地存储/fake QQ，涵盖校验/密钥/容量/唯一性/筛选/计数、权限/错误、无人物修改及重启/人格切换。#32 none → partial（手动 registry 基础），仍无跨平台 adapter、自动合并、账号所有权验证或消息路由，真实跨平台未验证；当前 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 矩阵行逐字不变。v0.11.19 已发布/live，M7-v 未发布/部署。
+证据：[identities.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/identities.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[cognition-integration.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，均为离线本地存储/fake QQ，涵盖校验/密钥/容量/唯一性/筛选/计数、权限/错误、无人物修改及重启/人格切换。#32 none → partial（手动 registry 基础），仍无跨平台 adapter、自动合并、账号所有权验证或消息路由，真实跨平台未验证；当前 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 矩阵行逐字不变。v0.11.20 已发布/live，M7-v 未发布/部署。
