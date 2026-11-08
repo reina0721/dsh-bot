@@ -156,7 +156,7 @@ function runtimeEnv(t, { cfg = config(), silent = false, broker: providedBroker,
     emit(id, { type: 'turn/end' })
   }
   const runtime = createAgentRuntime({ ctx, dataRoot: root, getConfig: () => cfg, getPersona: () => persona, executionSandbox: broker, delivery })
-  t.after(() => { runtime.dispose(); rmSync(root, { recursive: true, force: true }) })
+  t.after(() => { runtime.dispose(); try { rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }) } catch {} })
   return { runtime, cfg, broker, persona, agents, created, finish, ctx, root, controller }
 }
 const compose = (e, turn = owner) => e.runtime.compose({ turn, user: 'hello' })
