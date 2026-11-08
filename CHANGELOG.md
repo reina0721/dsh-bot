@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- UI phase 1+2：桌面内部侧栏支持 240px 展开 / 72px 图标栏，正文收回宽度；首次显示前读取独立浏览器偏好，搜索展开聚焦、六区高亮、键盘/悬停提示与减少动态效果。移动端增加持续可用的顶部导航与分区选择器、单实例原生 dialog 抽屉、可见可用控件焦点循环、面板/文档滚动锁定及样式/位置恢复；关闭、选择、断点和卸载统一清理。保留六区、旧别名、URL/history 和恰好两项 DSH 注册。模块布局/保存栏 phase 3/4 未实施；新增 storage/matchMedia/dialog/focus/scroll Node shim 回归，真实浏览器验收仍待完成。版本不变，无推送、部署、tag 或 release。
+
 - 激活 profile 运行时：认知、模型/命令、轮次、人格与后台任务统一解析 active profile；在途轮次捕获配置及数据人格，后续轮次应用保存/切换结果，System 安全策略与模块绑定保持实时读取。
 - C02 切换刷新未编辑快照的真实 legacy 行为，保留明确 overrides，事务迁移/重启幂等；旧人格编辑/reset/演化同步 revision。profile 不可用或迁移失败整份回退 legacy 并禁用编辑，保留稳定错误与脱敏。
 - 设置 API 报告 profile/applied；UI 移除 staged/旧编辑模式，显示应用状态、冲突和重新读取。legacy `/config` 与 `/model` 写 active profile；实际跨 owner 的 `/quiet`、`/active` 明确拒绝且零写入。新增运行行为、异步路由/人设捕获、数据隔离、迁移/CAS/回退/UI 回归。无版本变更、推送、部署、tag 或 release。

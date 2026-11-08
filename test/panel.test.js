@@ -2930,26 +2930,415 @@ test('C03 owner destinations partition every editable config field; module edito
   assert.equal(treeNodes(model).some(node => node.props?.['aria-label'] === '模型路由模式'), false)
 })
 
-test('C05 wide grouped rail, narrow drawer, search selection and mounted offline sandbox', () => {
-  const targets = [], props = { navigation: { area: 'profiles', section: 'turn' }, goTo: target => targets.push(target), configInfo: { groups: CONFIG_GROUPS } }
-  const render = mountNode({ type: panel.NavigationMenu, props })
-  let tree = render()
-  assert.equal(treeNodes(tree).filter(node => node.type === 'h2').length, 6)
-  assert.equal(field(tree, '六区导航').type, 'nav')
-  assert.equal(control(tree, '导航与搜索').props['aria-expanded'], false)
-  control(tree, '导航与搜索').props.onClick(); tree = render()
-  assert.equal(control(tree, '导航与搜索').props['aria-expanded'], true)
-  assert.ok(control(tree, '关闭导航'))
-  field(tree, '搜索页面、旧名称或设置路径').props.onChange({ target: { value: 'cognition.reply.split' } })
-  tree = render()
-  treeNodes(tree).find(node => node.type === 'button' && node.children?.includes('长回复分条')).props.onClick()
-  assert.deepEqual(targets.at(-1), contractGo('cognition.reply.split'))
-  assert.equal(control(render(), '导航与搜索').props['aria-expanded'], false)
-  for (const text of ['@media (max-width:900px)', '.ob-navigation.is-open', '.ob-nav-backdrop', 'grid-template-columns:240px minmax(0,1fr)']) assert.ok(panel.PANEL_CSS.includes(text))
-  const sandbox = panel.AreaContent({ navigation: { area: 'chat', section: 'sandbox' } })
-  assert.equal(sandbox.type, panel.SandboxChat)
-  assert.equal(panel.TABS.length, 6)
+// Navigation DOM shim: layout effects run after refs attach, with dependency cleanup.
+// It exercises handlers/lifecycles; native top-layer rendering still needs a browser.
+function navigationHarness({ mobile = false, stored, storageThrows = false, props: overrides = {} } = {}) {
+  const saved = { document: globalThis.document, effect: reactShim.useLayoutEffect }
+  const windowKeys = ['localStorage', 'matchMedia', 'innerWidth', 'innerHeight', 'scrollX', 'scrollY', 'scrollTo', 'getComputedStyle']
+  const windowSaved = Object.fromEntries(windowKeys.map(key => [key, Object.getOwnPropertyDescriptor(window, key)]))
+  const values = new Map(stored === undefined ? [] : [['dsh-bot:navigation:desktop:v1', stored]])
+  const writes = [], listeners = new Set(), focusLog = [], scrollLog = [], targets = []
+  const media = { matches: mobile, addEventListener: (name, fn) => { assert.equal(name, 'change'); listeners.add(fn) }, removeEventListener: (name, fn) => listeners.delete(fn) }
+  const style = (initial = '') => {
+    let data = {}
+    const camel = key => key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+    const proxy = new Proxy({}, {
+      get: (_, key) => key === 'cssText' ? Object.entries(data).map(([name, value]) => name.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase()) + ': ' + value + ';').join(' ') : data[key] || '',
+      set: (_, key, value) => {
+        if (key === 'cssText') data = Object.fromEntries(value.split(';').filter(row => row.includes(':')).map(row => { const at = row.indexOf(':'); return [camel(row.slice(0, at).trim()), row.slice(at + 1).trim()] }))
+        else if (value === '') delete data[key]
+        else data[key] = value
+        return true
+      },
+    })
+    proxy.cssText = initial
+    return proxy
+  }
+  let documentMock
+  const matches = (node, selector) => {
+    if (selector === ':disabled') return Boolean(node.disabled || node.disabledFieldset)
+    if (selector === '[hidden],[inert],[aria-hidden="true"]') return node.props.hidden || node.props.inert || node.props['aria-hidden'] === 'true'
+    if (selector === '[data-desktop-toggle]') return node.props['data-desktop-toggle']
+    if (selector.startsWith('#')) return node.props.id === selector.slice(1)
+    if (selector.startsWith('.')) return (node.props.className || '').split(' ').includes(selector.slice(1))
+    return selector.split(',').some(tag => tag === node.type || (tag === 'a[href]' && node.type === 'a' && node.props.href) || (tag === '[tabindex]' && node.props.tabIndex !== undefined))
+  }
+  const descendants = node => node.children.flatMap(child => [child, ...descendants(child)])
+  const element = (type, props = {}) => ({
+    type, props, children: [], parent: null, isConnected: true, open: false, showCount: 0, closeCount: 0,
+    style: style(), scrollTop: 0, scrollLeft: 0, clientWidth: 300, offsetWidth: 315,
+    get tabIndex() { return this.props.tabIndex ?? (['button', 'input', 'select', 'textarea', 'a'].includes(this.type) ? 0 : -1) },
+    get disabled() { return this.props.disabled },
+    matches(selector) { return matches(this, selector) },
+    closest(selector) { for (let node = this; node; node = node.parent) if (matches(node, selector)) return node; return null },
+    querySelectorAll(selector) { return descendants(this).filter(node => matches(node, selector)) },
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null },
+    getClientRects() {
+      for (let node = this; node; node = node.parent) {
+        if (!node.isConnected || node.props.hidden || (node.type === 'dialog' && !node.open)) return []
+        if (!media.matches && /ob-mobile-(topbar|sections)/.test(node.props.className || '')) return []
+      }
+      return [{}]
+    },
+    getBoundingClientRect() { return { top: 60, bottom: 800, left: 0, right: 300 } },
+    focus() { if (this.isConnected) { documentMock.activeElement = this; focusLog.push(this) } },
+    showModal() { assert.equal(this.open, false); this.open = true; this.showCount++ },
+    close() { this.open = false; this.closeCount++; this.props.onClose?.({ currentTarget: this }) },
+  })
+  const html = element('html'), body = element('body'), root = element('div', { className: 'ob-root' })
+  html.style = style('overflow: auto; scroll-behavior: smooth;'); html.clientWidth = 780
+  body.style = style('position: relative; padding-right: 7px;')
+  root.style = style('overflow: auto; padding-right: 9px;'); root.scrollTop = 317; root.scrollLeft = 3
+  body.parent = html; html.children = [body]; root.parent = body; body.children = [root]
+  const destination = element('div', { id: 'ob-navigation-destination', tabIndex: -1 })
+  destination.parent = root
+  documentMock = { documentElement: html, body, activeElement: null, querySelector: selector => html.querySelector(selector) }
+  globalThis.document = documentMock
+  window.localStorage = { getItem: key => { if (storageThrows) throw Error('storage blocked'); return values.get(key) ?? null }, setItem: (key, value) => { if (storageThrows) throw Error('storage blocked'); writes.push([key, value]); values.set(key, value) } }
+  window.matchMedia = query => { assert.equal(query, '(max-width:900px)'); return media }
+  window.innerWidth = 800; window.innerHeight = 900; window.scrollX = 4; window.scrollY = 611
+  window.scrollTo = value => { scrollLog.push(value); window.scrollX = value.left; window.scrollY = value.top }
+  window.getComputedStyle = node => ({ paddingRight: node.style.paddingRight, borderLeftWidth: '0px', borderRightWidth: '0px', visibility: node.style.visibility || 'visible' })
+  const session = { values: [], index: 0 }, scheduled = [], effects = new Set()
+  reactShim.useLayoutEffect = (run, deps) => {
+    const state = shimState(() => ({ deps: undefined, cleanup: null, mounted: false }))[0]
+    if (!state.mounted || !deps || deps.some((dep, index) => !Object.is(dep, state.deps?.[index]))) scheduled.push(() => {
+      state.cleanup?.(); state.cleanup = run(); state.deps = deps; state.mounted = true; effects.add(state)
+    })
+  }
+  const instance = registration.factory(requireShim)
+  const props = { navigation: { area: 'profiles', section: 'turn' }, goTo: target => targets.push(target), configInfo: { groups: CONFIG_GROUPS }, ...overrides }
+  let tree, nodes = new Map()
+  const attach = (node, parent, path, next) => {
+    if (Array.isArray(node)) { node.forEach((child, i) => attach(child, parent, path + '.' + i, next)); return }
+    if (!node || typeof node !== 'object') return
+    if (typeof node.type !== 'string') { attach(node.children, parent, path + '.component', next); return }
+    const key = path + ':' + node.type
+    const dom = nodes.get(key) || element(node.type)
+    dom.props = node.props || {}; dom.parent = parent; dom.children = []; dom.isConnected = true
+    parent.children.push(dom); next.set(key, dom)
+    if (dom.props.ref) dom.props.ref.current = dom
+    attach(node.children, dom, path, next)
+  }
+  const render = () => {
+    session.index = 0; hookSession = session
+    try { tree = instance.NavigationMenu(props) } finally { hookSession = null }
+    const next = new Map(); root.children = []
+    attach(tree, root, 'nav', next); root.children.push(destination)
+    for (const [key, dom] of nodes) if (!next.has(key)) { dom.isConnected = false; if (dom.props.ref?.current === dom) dom.props.ref.current = null }
+    nodes = next
+    for (const run of scheduled.splice(0)) run()
+    return tree
+  }
+  const get = selector => root.querySelector(selector)
+  const byLabel = label => descendants(root).filter(node => node.props['aria-label'] === label).sort((a, b) => Number(a.type === 'section') - Number(b.type === 'section'))[0]
+  const click = label => { const node = byLabel(label); assert.ok(node, label); node.props.onClick({ currentTarget: node }); return render() }
+  const unmount = () => {
+    for (const dom of nodes.values()) dom.isConnected = false
+    for (const state of effects) { state.cleanup?.(); state.cleanup = null }
+    effects.clear()
+  }
+  return { render, props, get, byLabel, click, root, html, body, destination, media, values, writes, targets, focusLog, scrollLog, listeners,
+    get tree() { return tree }, get active() { return documentMock.activeElement },
+    resize(value) { media.matches = value; for (const fn of listeners) fn({ matches: value }); return render() },
+    unmount,
+    restore() { unmount(); reactShim.useLayoutEffect = saved.effect; globalThis.document = saved.document; for (const key of windowKeys) { if (windowSaved[key]) Object.defineProperty(window, key, windowSaved[key]); else delete window[key] } },
+  }
+}
+
+test('C05 six explicit area controls, current section, search alias selection and offline sandbox', () => {
+  const h = navigationHarness()
+  try {
+    const tree = h.render()
+    assert.equal(field(tree, '六区导航').type, 'nav')
+    assert.deepEqual(treeNodes(tree).filter(node => node.props?.['data-area']).map(node => node.props['data-area']), NAVIGATION_REGISTRY.map(area => area.id))
+    assert.equal(h.get('.ob-nav-dialog'), null)
+    assert.equal(h.byLabel('Profiles').props['aria-current'], 'true')
+    assert.equal(treeNodes(tree).find(node => node.props?.['data-section'] === 'profiles:turn').props['aria-current'], 'page')
+    const search = h.byLabel('搜索页面、旧名称或设置路径')
+    search.props.onChange({ target: { value: 'cognition.reply.split' } }); h.render()
+    control(h.tree, '长回复分条').props.onClick(); h.render()
+    assert.deepEqual(h.targets.at(-1), contractGo('cognition.reply.split'))
+    assert.equal(h.byLabel('搜索页面、旧名称或设置路径').props.value, '')
+    assert.equal(panel.AreaContent({ navigation: { area: 'chat', section: 'sandbox' } }).type, panel.SandboxChat)
+    assert.equal(panel.TABS.length, 6)
+  } finally { h.restore() }
 })
+
+test('desktop navigation lazy preference, invalid/blocked storage, 72px rail controls and tab exclusion', () => {
+  for (const [stored, storageThrows, expected] of [[undefined, false, 'expanded'], ['expanded', false, 'expanded'], ['collapsed', false, 'collapsed'], ['invalid', false, 'expanded'], ['collapsed', true, 'expanded']]) {
+    const h = navigationHarness({ stored, storageThrows })
+    try {
+      let tree = h.render()
+      assert.equal(h.get('.ob-navigation-host').props['data-desktop'], expected, 'first render uses stored preference')
+      if (expected === 'expanded') h.click('折叠导航')
+      tree = h.render()
+      assert.equal(h.byLabel('展开导航').props['aria-expanded'], false)
+      assert.equal(h.byLabel('展开导航').props['aria-controls'], 'ob-nav-sections')
+      assert.equal(treeNodes(tree).filter(node => node.props?.['data-area']).length, 6)
+      assert.equal(h.byLabel('搜索页面、旧名称或设置路径'), undefined)
+      const sections = treeNodes(tree).filter(node => node.props?.className === 'ob-nav-sections')
+      assert.equal(sections.length, 6)
+      assert.ok(sections.every(section => section.props.hidden && treeNodes(section).filter(node => node.type === 'button').every(node => node.props.tabIndex === -1)))
+      assert.equal(h.byLabel('Profiles').props['aria-current'], 'true')
+      assert.equal(h.targets.length, 0, 'collapse changes neither route nor page state')
+      if (!storageThrows) assert.equal(h.values.get('dsh-bot:navigation:desktop:v1'), 'collapsed')
+      h.click('展开导航')
+      assert.equal(h.byLabel('折叠导航').props['aria-expanded'], true)
+      assert.ok(treeNodes(h.tree).filter(node => node.props?.['data-section']).every(node => node.props.tabIndex === undefined))
+      if (!storageThrows) assert.equal(h.values.get('dsh-bot:navigation:desktop:v1'), 'expanded')
+    } finally { h.restore() }
+  }
+})
+
+test('collapsed keyboard/hover tooltips and search expand before focus; preference survives remount', () => {
+  let persisted
+  const h = navigationHarness({ stored: 'collapsed' })
+  try {
+    h.render()
+    for (const label of [...NAVIGATION_REGISTRY.map(area => area.label), '展开导航', '搜索导航']) {
+      const button = h.byLabel(label)
+      assert.equal(button.type, 'button')
+      button.props.onFocus({ currentTarget: button }); h.render()
+      assert.equal(h.get('#ob-nav-tooltip').props.role, 'tooltip')
+      assert.equal(h.byLabel(label).props['aria-describedby'], 'ob-nav-tooltip')
+      assert.equal(treeNodes(h.tree).find(node => node.props?.role === 'tooltip').children[0], label)
+      h.byLabel(label).props.onBlur(); h.render()
+      assert.equal(h.get('#ob-nav-tooltip'), null)
+      h.byLabel(label).props.onMouseEnter({ currentTarget: button }); h.render()
+      assert.ok(h.get('#ob-nav-tooltip'))
+      h.byLabel(label).props.onMouseLeave({ currentTarget: button }); h.render()
+      assert.equal(h.get('#ob-nav-tooltip'), null)
+    }
+    h.byLabel('搜索导航').props.onFocus({ currentTarget: h.byLabel('搜索导航') }); h.render()
+    h.get('.ob-navigation-host').props.onKeyDown({ key: 'Escape' }); h.render()
+    assert.equal(h.get('#ob-nav-tooltip'), null)
+    h.click('搜索导航')
+    assert.equal(h.get('.ob-navigation-host').props['data-desktop'], 'expanded')
+    assert.equal(h.active, h.byLabel('搜索页面、旧名称或设置路径'))
+    assert.equal(h.targets.length, 0)
+    h.click('折叠导航'); persisted = h.values.get('dsh-bot:navigation:desktop:v1')
+  } finally { h.restore() }
+  const reloaded = navigationHarness({ stored: persisted })
+  try { reloaded.render(); assert.ok(reloaded.byLabel('展开导航')) } finally { reloaded.restore() }
+})
+
+test('desktop storage getter failure still defaults expanded and toggles without navigating', () => {
+  const h = navigationHarness()
+  try {
+    Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw Error('getter blocked') } })
+    h.render(); assert.ok(h.byLabel('折叠导航'))
+    assert.doesNotThrow(() => h.click('折叠导航'))
+    assert.ok(h.byLabel('展开导航')); assert.deepEqual(h.targets, [])
+  } finally { h.restore() }
+})
+
+test('desktop collapse and breakpoint preserve mounted destination identity, root draft and URL', () => {
+  const originalLocation = window.location
+  window.location = { href: 'https://example.test/console?keep=1#onebot-qq' }
+  const session = { values: [], index: 0 }
+  const renderPage = () => {
+    session.index = 0; hookSession = session
+    try { return panel.OneBotPage() } finally { hookSession = null }
+  }
+  const page = tree => treeNodes(tree).find(node => node.type === panel.AreaContent)
+  let h
+  try {
+    renderPage()
+    session.values[0] = 'profiles'; session.values[2] = { config: DEFAULTS, groups: CONFIG_GROUPS }
+    session.values[3] = { ...DEFAULTS, ui: { ...DEFAULTS.ui, accent: 'green' } }
+    session.values[4] = false; session.values[6] = 'temporary gateway error'
+    session.values[13] = { area: 'profiles', section: 'reply' }
+    const before = renderPage(), body = page(before)
+    const nav = treeNodes(before).find(node => node.type === panel.NavigationMenu)
+    const destination = treeNodes(before).find(node => node.props?.id === 'ob-navigation-destination')
+    h = navigationHarness({ props: nav.props }); h.render()
+    h.click('折叠导航'); h.click('展开导航'); h.resize(true); h.click('导航与搜索'); h.resize(false)
+    const after = renderPage(), nextBody = page(after)
+    assert.equal(nextBody.type, body.type); assert.equal(nextBody.props.draft, body.props.draft)
+    assert.equal(nextBody.props.navigation, body.props.navigation)
+    assert.equal(nextBody.props.dirty, true)
+    assert.equal(treeNodes(after).find(node => node.props?.id === 'ob-navigation-destination').type, destination.type)
+    assert.equal(window.location.href, 'https://example.test/console?keep=1#onebot-qq')
+    assert.ok(treeNodes(after).some(node => node.props?.message === 'temporary gateway error'))
+    assert.ok(treeNodes(after).some(node => node.type === panel.NavigationMenu), 'navigation stays outside the error/loading branch')
+  } finally { h?.restore(); window.location = originalLocation }
+})
+
+test('mobile modal locks root/document, compensates scrollbars, focuses search and restores exact styles/scroll', () => {
+  const h = navigationHarness({ mobile: true, stored: 'collapsed' })
+  try {
+    h.render()
+    const before = [h.html, h.body, h.root].map(node => node.style.cssText)
+    assert.equal(h.get('#ob-navigation-dialog').open, false)
+    assert.equal(h.byLabel('导航与搜索').props['aria-haspopup'], 'dialog')
+    h.click('导航与搜索')
+    const dialog = h.get('#ob-navigation-dialog')
+    assert.equal(dialog.type, 'dialog'); assert.equal(dialog.open, true); assert.equal(dialog.showCount, 1)
+    assert.equal(h.root.querySelectorAll('nav').length, 1)
+    assert.equal(h.byLabel('导航与搜索').props['aria-expanded'], true)
+    assert.equal(h.active, h.byLabel('搜索页面、旧名称或设置路径'))
+    assert.ok([h.html, h.body, h.root].every(node => node.style.overflow === 'hidden'))
+    assert.equal(h.body.style.position, 'fixed'); assert.equal(h.body.style.top, '-611px'); assert.equal(h.body.style.left, '-4px')
+    assert.equal(h.body.style.boxSizing, 'border-box', 'scrollbar padding stays inside the fixed body width')
+    assert.equal(h.body.style.paddingRight, '27px'); assert.equal(h.root.style.paddingRight, '24px')
+    assert.equal(h.byLabel('展开导航'), undefined, 'mobile ignores the desktop rail preference')
+    assert.ok(treeNodes(h.tree).filter(node => node.props?.['data-section']).every(node => node.props.tabIndex === undefined))
+    h.root.scrollTop = 0; h.root.scrollLeft = 0; window.scrollY = 0
+    h.click('关闭导航')
+    assert.deepEqual([h.html, h.body, h.root].map(node => node.style.cssText), before)
+    assert.equal(h.root.scrollTop, 317); assert.equal(h.root.scrollLeft, 3)
+    assert.deepEqual(h.scrollLog.at(-1), { left: 4, top: 611, behavior: 'instant' })
+    assert.equal(h.active, h.byLabel('导航与搜索'))
+    assert.equal(h.values.get('dsh-bot:navigation:desktop:v1'), 'collapsed')
+  } finally { h.restore() }
+})
+
+test('mobile Tab trap filters hidden, inert, disabled and negative tabindex controls, including empty dialog', () => {
+  const h = navigationHarness({ mobile: true })
+  try {
+    h.render(); h.click('导航与搜索')
+    const dialog = h.get('#ob-navigation-dialog'), first = h.byLabel('六区导航').querySelector('button')
+    const controls = dialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')
+    const last = controls.at(-1)
+    const tab = (target, shiftKey = false) => {
+      let prevented = false
+      dialog.props.onKeyDown({ key: 'Tab', target, currentTarget: dialog, shiftKey, preventDefault: () => { prevented = true } })
+      return prevented
+    }
+    assert.equal(tab(last), true); assert.equal(h.active, first)
+    assert.equal(tab(first, true), true); assert.equal(h.active, last)
+    assert.equal(tab(controls[1]), false)
+    assert.equal(tab(dialog), true); assert.equal(h.active, first)
+    const enabled = controls.slice(0, -6).at(-1)
+    controls.at(-1).props.disabled = true
+    controls.at(-2).props.hidden = true
+    controls.at(-3).props.tabIndex = -1
+    controls.at(-4).props.inert = true
+    controls.at(-5).disabledFieldset = true
+    controls.at(-6).style.visibility = 'hidden'
+    assert.equal(tab(first, true), true); assert.equal(h.active, enabled)
+    for (const node of controls) node.props.disabled = true
+    assert.equal(tab(first), true); assert.equal(h.active, dialog)
+    let prevented = false
+    dialog.props.onKeyDown({ key: 'ArrowDown', currentTarget: dialog, preventDefault: () => { prevented = true } })
+    assert.equal(prevented, false)
+  } finally { h.restore() }
+})
+
+test('mobile Escape/native close/backdrop/selection/breakpoint/unmount all clean up modal and scroll lock', () => {
+  for (const path of ['escape', 'native', 'backdrop', 'selection', 'breakpoint', 'unmount']) {
+    const h = navigationHarness({ mobile: true, stored: 'collapsed' })
+    try {
+      h.render(); const styles = [h.html, h.body, h.root].map(node => node.style.cssText)
+      h.click('导航与搜索')
+      const dialog = h.get('#ob-navigation-dialog')
+      if (path === 'escape') {
+        let prevented = false
+        dialog.props.onCancel({ preventDefault: () => { prevented = true } }); assert.equal(prevented, true); h.render()
+      } else if (path === 'native') { dialog.close(); h.render() }
+      else if (path === 'backdrop') {
+        // Interior dialog padding and bubbling child clicks must not dismiss it.
+        dialog.props.onClick({ currentTarget: dialog, target: dialog, clientX: 100, clientY: 100 }); h.render(); assert.equal(dialog.open, true)
+        dialog.props.onClick({ currentTarget: dialog, target: h.byLabel('六区导航'), clientX: 700, clientY: 100 }); h.render(); assert.equal(dialog.open, true)
+        dialog.props.onClick({ currentTarget: dialog, target: dialog, clientX: 700, clientY: 100 }); h.render()
+      } else if (path === 'selection') {
+        const button = treeNodes(h.tree).find(node => node.props?.['data-section'] === 'system:appearance')
+        button.props.onClick(); h.props.navigation = { area: 'system', section: 'appearance' }; h.render()
+        assert.deepEqual(h.targets, [{ area: 'system', section: 'appearance' }])
+        assert.equal(h.active, h.destination)
+      } else if (path === 'breakpoint') {
+        h.resize(false)
+        assert.equal(h.get('#ob-navigation-dialog'), null)
+        assert.equal(h.get('.ob-navigation-host').props['data-desktop'], 'collapsed')
+        assert.equal(h.active, h.byLabel('展开导航'))
+        h.resize(true)
+        assert.equal(h.get('#ob-navigation-dialog').open, false)
+        assert.equal(h.byLabel('导航与搜索').props['aria-expanded'], false)
+      } else h.unmount()
+      assert.equal(dialog.open, false, path)
+      assert.deepEqual([h.html, h.body, h.root].map(node => node.style.cssText), styles, path)
+      assert.equal(h.root.scrollTop, 317, path)
+      assert.equal(h.values.get('dsh-bot:navigation:desktop:v1'), 'collapsed', path)
+      if (['escape', 'native', 'backdrop'].includes(path)) {
+        assert.equal(h.active, h.byLabel('导航与搜索'), path)
+        // Reopening after native close must create a modal again, without accumulating locks.
+        h.click('导航与搜索'); assert.equal(h.get('#ob-navigation-dialog').open, true)
+        h.click('关闭导航'); assert.deepEqual([h.html, h.body, h.root].map(node => node.style.cssText), styles)
+      }
+      h.unmount(); assert.equal(h.listeners.size, 0)
+    } finally { h.restore() }
+  }
+})
+
+test('mobile search aliases/deep links and labelled section selector share canonical routes and module list/current state', () => {
+  const h = navigationHarness({ mobile: true })
+  try {
+    for (const area of NAVIGATION_REGISTRY) {
+      h.props.navigation = { area: area.id, section: area.sections[0].id }; h.render()
+      const selector = h.get('#ob-mobile-section')
+      assert.equal(selector.type, 'select'); assert.equal(selector.props['aria-label'], '当前区域分区')
+      assert.equal(treeNodes(h.tree).find(node => node.type === 'label' && node.props?.htmlFor === 'ob-mobile-section').children[0], '分区')
+      assert.deepEqual(selector.children.map(node => node.props.value), area.sections.filter(section => section.id !== 'module' && !(area.id === 'profiles' && section.id === 'settings')).map(section => section.id))
+      for (const option of selector.children) {
+        selector.props.onChange({ target: { value: option.props.value } }); h.render()
+        assert.deepEqual(h.targets.at(-1), contractGoTo({ area: area.id, section: option.props.value }))
+        assert.equal(h.active, h.destination)
+      }
+    }
+    h.props.navigation = contractGoTo({ tab: 'modules', moduleId: 'builtin-learning', anchor: 'config' }); h.render()
+    const selector = h.get('#ob-mobile-section')
+    assert.equal(selector.props.value, 'module')
+    assert.deepEqual(selector.children.map(node => node.props.value), ['modules', 'module'])
+    assert.equal(treeNodes(h.tree).find(node => node.props?.['data-section'] === 'extensions:modules').props['aria-current'], 'page')
+    assert.equal(treeNodes(h.tree).find(node => node.type === 'option' && node.props?.value === 'module').children[0], '当前模块 · builtin-learning')
+    const count = h.targets.length
+    selector.props.onChange({ target: { value: 'module' } }); h.render(); assert.equal(h.targets.length, count)
+    selector.props.onChange({ target: { value: 'modules' } }); h.render()
+    assert.deepEqual(h.targets.at(-1), { area: 'extensions', section: 'modules' })
+    h.props.navigation = { area: 'profiles', section: 'settings' }; h.render()
+    assert.equal(h.get('#ob-mobile-section').props.value, 'settings')
+    assert.ok(h.get('#ob-mobile-section').children.some(node => node.props.value === 'settings' && node.props.disabled), 'hidden canonical deep link still displays its current section')
+    for (const alias of ['cognition.reply.split', 'cog-core', 'builtin-learning', 'settings']) {
+      h.click('导航与搜索')
+      h.byLabel('搜索页面、旧名称或设置路径').props.onChange({ target: { value: alias } }); h.render()
+      const row = panel.searchNavigation(alias, { ...panel.SECTION_LABELS })[0]
+      assert.ok(row, alias)
+      const result = h.get('.ob-nav-results').querySelector('button')
+      result.props.onClick(); h.render()
+      assert.deepEqual(h.targets.at(-1), row.target)
+      assert.equal(h.active, h.destination)
+    }
+  } finally { h.restore() }
+})
+
+test('navigation remains a content sibling in loading/error shell and uses source-level responsive CSS contracts', () => {
+  const tree = panel.OneBotPage(), nodes = treeNodes(tree)
+  const shell = nodes.find(node => node.props?.className === 'ob-shell ob-area-shell')
+  assert.equal(shell.children[0].type, panel.NavigationMenu)
+  assert.equal(shell.children[1].props.id, 'ob-navigation-destination')
+  assert.equal(shell.children[1].props.tabIndex, -1)
+  assert.equal(shell.children[1].type, 'div')
+  const rules = [...panel.PANEL_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  const rule = selector => { const found = rules.find(row => row[1].trim() === selector); assert.ok(found, selector); return found[2] }
+  assert.match(rule('.ob-area-shell'), /grid-template-columns:240px minmax\(0,1fr\)/)
+  assert.match(rule(".ob-area-shell:has(> .ob-navigation-host[data-desktop='collapsed'])"), /grid-template-columns:72px minmax\(0,1fr\)/)
+  assert.match(rule('.ob-navigation-host'), /position:sticky/)
+  assert.match(rule('.ob-mobile-topbar'), /position:sticky;top:0;display:flex/)
+  assert.match(rule('.ob-nav-dialog'), /width:min\(320px,85vw\)/)
+  assert.match(rule('.ob-nav-dialog'), /height:100vh;height:100dvh/)
+  assert.match(rule('.ob-nav-dialog .ob-navigation'), /overflow-y:auto/)
+  assert.match(rule('.ob-nav-dialog .ob-navigation'), /safe-area-inset-bottom/)
+  assert.match(rule('.ob-nav-tools'), /position:sticky;top:0/)
+  assert.match(rule('.ob-nav-sections[hidden]'), /display:none/)
+  assert.match(rule('.ob-nav-rail-control'), /width:44px;height:44px/)
+  assert.match(rule('.ob-root input,.ob-root select,.ob-root textarea'), /font-size:16px/)
+  assert.match(rule('.ob-root .ob-grid,.ob-root .ob-grid.two,.ob-root .ob-stat-grid,.ob-root .ob-models-grid,.ob-root .ob-split,.ob-root .ob-settings,.ob-root .ob-sandbox-grid'), /grid-template-columns:minmax\(0,1fr\)/)
+  assert.match(rule('.ob-page,.ob-content,.ob-area-shell > *'), /min-width:0/)
+  assert.match(rule('.ob-root pre'), /white-space:pre-wrap;overflow-wrap:anywhere/)
+  assert.match(panel.MOTION_CSS, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.ob-root \.ob-navigation-host \*::after\{animation:none!important;transition:none!important\}/)
+})
+
 
 function ownerHarness(props) {
   const session = { values: [], index: 0 }, effects = [], original = reactShim.useEffect

@@ -1609,6 +1609,9 @@ body[data-ds-dark-theme] .ob-root[data-contrast='high']{
     transition-duration:0.01ms!important;
   }
   .ob-root:not([data-motion='full']) .ob-reveal[data-reveal='pending']{opacity:1}
+  .ob-root .ob-navigation-host *,
+  .ob-root .ob-navigation-host *::before,
+  .ob-root .ob-navigation-host *::after{animation:none!important;transition:none!important}
 }
 `
 
@@ -2107,21 +2110,50 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       @media (max-width:900px) { .ob-sandbox-grid { grid-template-columns:minmax(0,1fr); } }
 
 .ob-area-shell{display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;align-items:start}
-.ob-navigation{position:sticky;top:16px;max-height:calc(100dvh - 32px);overflow-y:auto;padding:16px 8px;background:var(--ob-surface);border-right:1px solid var(--ob-border)}
+.ob-area-shell:has(> .ob-navigation-host[data-desktop='collapsed']){grid-template-columns:72px minmax(0,1fr)}
+.ob-navigation-host{position:sticky;top:16px;min-width:0}
+.ob-navigation{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;padding:8px;background:var(--ob-surface);border-right:1px solid var(--ob-border)}
+.ob-nav-tools{position:sticky;top:0;z-index:1;display:flex;flex-direction:column;gap:8px;padding:8px 0;background:var(--ob-surface)}
 .ob-nav-group{display:flex;flex-direction:column;gap:4px;margin:16px 0}
-.ob-nav-group h2{font-size:var(--ob-text-small);color:var(--ob-ink-muted);margin:8px}
-.ob-navigation button{font:inherit;color:var(--ob-ink);background:transparent;border:0;border-radius:var(--ob-radius-control);padding:8px 12px;text-align:left;cursor:pointer}
+.ob-navigation button{min-width:44px;min-height:44px;font:inherit;color:var(--ob-ink);background:transparent;border:0;border-radius:var(--ob-radius-control);padding:8px 12px;text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.ob-nav-area{display:flex;align-items:center;gap:8px;width:100%}
+.ob-nav-area svg{flex:none}
+.ob-nav-area[aria-current=true]{color:var(--ob-brand);background:var(--ob-brand-soft)}
+.ob-nav-sections{display:flex;flex-direction:column;gap:4px}
+.ob-nav-sections[hidden]{display:none}
 .ob-navigation button[aria-current=page]{background:var(--ob-brand-soft);color:var(--ob-brand)}
 .ob-navigation button:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px}
 .ob-nav-results{display:flex;flex-direction:column;overflow-wrap:anywhere}
-.ob-nav-toggle,.ob-nav-close,.ob-nav-backdrop{display:none}
+.ob-nav-rail-control{display:flex;justify-content:center;align-items:center;width:44px;height:44px}
+.ob-navigation-host[data-desktop='collapsed'] .ob-nav-group{margin:8px 0}
+.ob-navigation-host[data-desktop='collapsed'] .ob-nav-area{width:44px;height:44px;padding:10px}
+.ob-nav-tip{position:fixed;z-index:110;max-width:240px;padding:6px 10px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface-raised);color:var(--ob-ink);box-shadow:var(--ob-shadow-card);pointer-events:none}
+.ob-mobile-topbar,.ob-mobile-sections{display:none}
+.ob-page,.ob-content,.ob-area-shell > *{min-width:0}
 @media (max-width:900px){
   .ob-area-shell{display:block}
-  .ob-nav-toggle{display:inline-flex;margin-top:12px}
-  .ob-navigation{display:none;position:fixed;inset:0 auto 0 0;width:min(320px,85vw);max-height:100dvh;z-index:101;box-sizing:border-box;background:var(--ob-canvas);padding:16px;overscroll-behavior:contain}
-  .ob-navigation.is-open{display:block}
-  .ob-nav-backdrop{display:block;position:fixed;inset:0;z-index:100;border:0;background:var(--ob-scrim)}
-  .ob-navigation .ob-nav-close{display:block}
+  .ob-navigation-host{top:0;z-index:30;background:var(--ob-canvas)}
+  .ob-mobile-topbar{position:sticky;top:0;display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top,0px)) 0 8px;background:var(--ob-canvas)}
+  .ob-mobile-location{min-width:0;overflow-wrap:anywhere;font-size:var(--ob-text-small)}
+  .ob-mobile-location span{display:block}
+  .ob-mobile-sections{display:flex;align-items:center;gap:8px;padding-bottom:8px}
+  .ob-mobile-sections label{flex:none}
+  .ob-nav-dialog{position:fixed;inset:0 auto 0 0;margin:0;width:min(320px,85vw);max-width:85vw;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;padding:0;border:0;background:var(--ob-surface);color:var(--ob-ink);overscroll-behavior:contain;overflow:hidden}
+  .ob-nav-dialog::backdrop{background:var(--ob-scrim)}
+  .ob-nav-dialog .ob-navigation{height:100%;max-height:100%;overflow-y:auto;overscroll-behavior:contain;padding:env(safe-area-inset-top,0px) max(12px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+  .ob-nav-dialog .ob-nav-tools{top:env(safe-area-inset-top,0px)}
+  .ob-nav-dialog .ob-nav-group{margin:16px 0}
+  .ob-nav-dialog .ob-nav-area{width:100%;height:auto;padding:8px 12px}
+  .ob-root .ob-shell{padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+  .ob-root{padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
+  .ob-root input,.ob-root select,.ob-root textarea{font-size:16px}
+  .ob-root button,.ob-root input:not([type=checkbox]):not([type=radio]),.ob-root select{min-height:44px}
+  .ob-root button{min-width:44px;max-width:100%;white-space:normal}
+  .ob-root .ob-grid,.ob-root .ob-grid.two,.ob-root .ob-stat-grid,.ob-root .ob-models-grid,.ob-root .ob-split,.ob-root .ob-settings,.ob-root .ob-sandbox-grid{grid-template-columns:minmax(0,1fr)}
+  .ob-header,.ob-panel-head,.ob-row,.ob-spread{flex-wrap:wrap;min-width:0}
+  .ob-root .ob-page,.ob-root .ob-content,.ob-root .ob-panel{overflow-wrap:anywhere}
+  .ob-root pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+  .ob-root img,.ob-root video,.ob-root canvas{max-width:100%}
 }
 @media (pointer:coarse){
   .ob-input,.ob-select,.ob-textarea,.ob-tags input{font-size:16px}
@@ -3328,37 +3360,166 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         && field.canonical.area === target.area && field.canonical.section === target.section
         && (field.canonical.moduleId || '') === (target.moduleId || ''))
     }
+    const DESKTOP_NAVIGATION_KEY = 'dsh-bot:navigation:desktop:v1'
+    const MOBILE_NAVIGATION_QUERY = '(max-width:900px)'
+    const AREA_ICONS = { overview: 'overview', chat: 'message', profiles: 'brain', extensions: 'layout', data: 'logs', system: 'config' }
+    function readDesktopNavigation() {
+      try { return window.localStorage.getItem(DESKTOP_NAVIGATION_KEY) === 'collapsed' ? 'collapsed' : 'expanded' }
+      catch { return 'expanded' }
+    }
+    function navigationSections(area) {
+      return (NAVIGATION_REGISTRY.find(row => row.id === area)?.sections || [])
+        .filter(section => section.id !== 'module' && !(area === 'profiles' && section.id === 'settings'))
+    }
+    function lockNavigationScroll(root) {
+      const elements = [...new Set([document.documentElement, document.body, root].filter(Boolean))]
+      const snapshots = elements.map(element => ({ element, css: element.style.cssText, top: element.scrollTop, left: element.scrollLeft }))
+      const x = window.scrollX, y = window.scrollY
+      const scrollbar = Math.max(0, window.innerWidth - document.documentElement.clientWidth)
+      const rootScrollbar = root ? Math.max(0, root.offsetWidth - root.clientWidth -
+        (parseFloat(window.getComputedStyle(root).borderLeftWidth) || 0) - (parseFloat(window.getComputedStyle(root).borderRightWidth) || 0)) : 0
+      for (const element of elements) element.style.overflow = 'hidden'
+      if (root) root.style.paddingRight = (parseFloat(window.getComputedStyle(root).paddingRight) || 0) + rootScrollbar + 'px'
+      document.body.style.position = 'fixed'
+      document.body.style.top = -y + 'px'
+      document.body.style.left = -x + 'px'
+      document.body.style.width = '100%'
+      document.body.style.boxSizing = 'border-box'
+      document.body.style.paddingRight = (parseFloat(window.getComputedStyle(document.body).paddingRight) || 0) + scrollbar + 'px'
+      return () => {
+        for (const { element, css, top, left } of snapshots) { element.style.cssText = css; element.scrollTop = top; element.scrollLeft = left }
+        const behavior = document.documentElement.style.scrollBehavior
+        document.documentElement.style.scrollBehavior = 'auto'
+        window.scrollTo({ left: x, top: y, behavior: 'instant' })
+        document.documentElement.style.scrollBehavior = behavior
+      }
+    }
+    function trapNavigationFocus(event) {
+      if (event.key !== 'Tab') return
+      const dialog = event.currentTarget
+      const controls = [...dialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')]
+        .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && !node.closest('[hidden],[inert],[aria-hidden="true"]')
+          && node.getClientRects().length && !['hidden', 'collapse'].includes(window.getComputedStyle(node).visibility))
+      const first = controls[0], last = controls[controls.length - 1]
+      if (!first) { event.preventDefault(); dialog.focus(); return }
+      if (event.shiftKey && (event.target === first || !controls.includes(event.target))) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && (event.target === last || !controls.includes(event.target))) { event.preventDefault(); first.focus() }
+    }
     function NavigationMenu({ navigation, goTo, configInfo }) {
-      const [open, setOpen] = useState(false), [query, setQuery] = useState('')
+      // Lazy reads precede the first paint; desktop preference never follows mobile state.
+      const [desktop, setDesktop] = useState(readDesktopNavigation)
+      const [mobile, setMobile] = useState(() => Boolean(window.matchMedia?.(MOBILE_NAVIGATION_QUERY).matches))
+      const [open, setOpen] = useState(false), [query, setQuery] = useState(''), [tip, setTip] = useState(null)
+      const hostRef = useRef(null), dialogRef = useRef(null), triggerRef = useRef(null), searchRef = useRef(null)
+      const searchPending = useRef(false), destinationPending = useRef(false)
+      const collapsed = !mobile && desktop === 'collapsed'
       const labels = { ...LEGACY_NAV_LABELS, ...SECTION_LABELS }
       for (const group of buildFieldSpecs(configInfo?.groups)) { labels['group:' + group.id] = group.title; for (const field of group.fields) labels[field.path] = field.label }
-      useEffect(() => {
-        if (open && typeof document !== 'undefined') document.getElementById('ob-navigation')?.querySelector('input')?.focus()
-      }, [open])
-      const select = target => { goTo(target); setOpen(false); setQuery('') }
-      const links = NAVIGATION_REGISTRY.map(area => h('section', { key: area.id, className: 'ob-nav-group' },
-        h('h2', null, area.label),
-        area.sections.filter(section => section.id !== 'module' && !(area.id === 'profiles' && section.id === 'settings')).map(section =>
-          h('button', { key: section.id, type: 'button', 'aria-current': navigation.area === area.id && navigation.section === section.id ? 'page' : undefined,
-            onClick: () => select({ area: area.id, section: section.id }) }, SECTION_LABELS[section.id] || section.id))))
-      return h(Fragment, null,
-        h('button', { className: 'ob-nav-toggle ob-btn', type: 'button', 'aria-expanded': open, 'aria-controls': 'ob-navigation', onClick: () => setOpen(!open) }, '导航与搜索'),
-        open ? h('button', { className: 'ob-nav-backdrop', 'aria-label': '关闭导航', onClick: () => setOpen(false) }) : null,
-        h('nav', { id: 'ob-navigation', className: cx('ob-navigation', open && 'is-open'), 'aria-label': '六区导航',
-          onKeyDown: event => {
-            if (event.key === 'Escape') { setOpen(false); if (typeof document !== 'undefined') document.querySelector('.ob-nav-toggle')?.focus() }
-            if (event.key === 'Tab' && open) {
-              const controls = [...event.currentTarget.querySelectorAll('button,input')].filter(node => node.getClientRects().length)
-              const first = controls[0], last = controls[controls.length - 1]
-              if (event.shiftKey && event.target === first) { event.preventDefault(); last?.focus() }
-              else if (!event.shiftKey && event.target === last) { event.preventDefault(); first?.focus() }
-            }
-          } },
-          h('button', { type: 'button', className: 'ob-nav-close ob-btn', onClick: () => setOpen(false) }, '关闭导航'),
-          h('input', { type: 'search', className: 'ob-input', 'aria-label': '搜索页面、旧名称或设置路径', value: query, onChange: event => setQuery(event.target.value) }),
-          query.trim() ? h('div', { className: 'ob-nav-results', 'aria-live': 'polite' },
-            searchNavigation(query, labels).map((row, index) => h('button', { type: 'button', key: index, onClick: () => select(row.target) }, row.label)),
-            searchNavigation(query, labels).length ? null : h('p', null, '没有匹配的页面或设置')) : links))
+      const changeDesktop = value => {
+        setDesktop(value); setTip(null)
+        try { window.localStorage.setItem(DESKTOP_NAVIGATION_KEY, value) } catch { /* Session preference still works. */ }
+      }
+      const close = () => { setOpen(false); setQuery(''); setTip(null) }
+      useLayoutEffect(() => {
+        const media = window.matchMedia?.(MOBILE_NAVIGATION_QUERY)
+        if (!media) return
+        const change = () => { setMobile(media.matches); close() }
+        // Also reconcile a resize between render and effect attachment.
+        if (media.matches !== mobile) change()
+        if (media.addEventListener) media.addEventListener('change', change)
+        else media.addListener?.(change)
+        return () => { if (media.removeEventListener) media.removeEventListener('change', change); else media.removeListener?.(change) }
+      }, [])
+      useLayoutEffect(() => {
+        if (!mobile || !open) return
+        const dialog = dialogRef.current
+        if (!dialog) return
+        dialog.showModal()
+        const unlock = lockNavigationScroll(hostRef.current?.closest('.ob-root'))
+        searchRef.current?.focus({ preventScroll: true })
+        return () => {
+          // Restore before native close/focus handling; ignore the resulting delayed close event.
+          unlock()
+          if (dialog.open) dialog.close()
+          const trigger = triggerRef.current
+          if (trigger?.isConnected && trigger.getClientRects().length) trigger.focus({ preventScroll: true })
+          else hostRef.current?.querySelector('[data-desktop-toggle]')?.focus({ preventScroll: true })
+        }
+      }, [mobile, open])
+      useLayoutEffect(() => {
+        if (searchPending.current && !collapsed) { searchPending.current = false; searchRef.current?.focus({ preventScroll: true }) }
+        if (destinationPending.current && !open) {
+          const destination = hostRef.current?.closest('.ob-root')?.querySelector('#ob-navigation-destination')
+          if (destination) { destinationPending.current = false; destination.focus({ preventScroll: true }) }
+        }
+      })
+      const select = target => {
+        destinationPending.current = mobile
+        goTo(target); close()
+      }
+      const tooltipProps = (id, label) => ({
+        'aria-label': label,
+        'aria-describedby': tip?.id === id ? 'ob-nav-tooltip' : undefined,
+        onFocus: event => {
+          if (!collapsed) return
+          const rect = event.currentTarget.getBoundingClientRect()
+          setTip({ id, label, top: Math.max(8, Math.min(rect.top, window.innerHeight - 56)), left: rect.right + 8 })
+        },
+        onMouseEnter: event => {
+          if (!collapsed) return
+          const rect = event.currentTarget.getBoundingClientRect()
+          setTip({ id, label, top: Math.max(8, Math.min(rect.top, window.innerHeight - 56)), left: rect.right + 8 })
+        },
+        onBlur: () => setTip(null),
+        onMouseLeave: event => { if (document.activeElement !== event.currentTarget) setTip(null) },
+      })
+      const links = NAVIGATION_REGISTRY.map(area => h('section', { key: area.id, className: 'ob-nav-group', 'aria-label': area.label },
+        h('button', { ...tooltipProps(area.id, area.label), className: 'ob-nav-area', type: 'button',
+          'data-area': area.id, 'aria-current': navigation.area === area.id ? 'true' : undefined,
+          onClick: () => select({ area: area.id, section: navigationSections(area.id)[0].id }) },
+        h(Icon, { name: AREA_ICONS[area.id], size: 24 }), collapsed ? null : h('span', null, area.label)),
+        h('div', { className: 'ob-nav-sections', hidden: collapsed }, navigationSections(area.id).map(section =>
+          h('button', { key: section.id, type: 'button', tabIndex: collapsed ? -1 : undefined,
+            'data-section': area.id + ':' + section.id,
+            'aria-current': navigation.area === area.id && (navigation.section === section.id || (section.id === 'modules' && navigation.section === 'module')) ? 'page' : undefined,
+            onClick: () => select({ area: area.id, section: section.id }) }, SECTION_LABELS[section.id] || section.id)))))
+      const nav = h('nav', { id: 'ob-navigation', className: 'ob-navigation', 'aria-label': '六区导航' },
+        h('div', { className: 'ob-nav-tools' },
+          mobile ? h('button', { type: 'button', className: 'ob-nav-close ob-btn', 'aria-label': '关闭导航', onClick: close }, '关闭导航') :
+            h('button', { ...tooltipProps('expand', collapsed ? '展开导航' : '折叠导航'), type: 'button', 'data-desktop-toggle': true,
+              className: collapsed ? 'ob-nav-rail-control' : 'ob-btn', 'aria-expanded': !collapsed, 'aria-controls': 'ob-nav-sections',
+              onClick: () => changeDesktop(collapsed ? 'expanded' : 'collapsed') }, h(Icon, { name: 'layout', size: 24 }), collapsed ? null : '折叠导航'),
+          collapsed ? h('button', { ...tooltipProps('search', '搜索导航'), type: 'button', className: 'ob-nav-rail-control',
+            onClick: () => { searchPending.current = true; changeDesktop('expanded') } }, h(Icon, { name: 'search', size: 24 })) :
+            h('input', { ref: searchRef, type: 'search', className: 'ob-input', 'aria-label': '搜索页面、旧名称或设置路径', value: query, onChange: event => setQuery(event.target.value) })),
+        h('div', { id: 'ob-nav-sections' }, !collapsed && query.trim() ? h('div', { className: 'ob-nav-results', 'aria-live': 'polite' },
+          searchNavigation(query, labels).map((row, index) => h('button', { type: 'button', key: index, onClick: () => select(row.target) }, row.label)),
+          searchNavigation(query, labels).length ? null : h('p', null, '没有匹配的页面或设置')) : links))
+      return h('div', { ref: hostRef, className: 'ob-navigation-host', 'data-desktop': desktop,
+        onKeyDown: event => { if (event.key === 'Escape') setTip(null) } },
+        h('div', { className: 'ob-mobile-topbar', role: 'toolbar', 'aria-label': '移动导航' },
+          h('button', { ref: triggerRef, className: 'ob-nav-toggle ob-btn', type: 'button', 'aria-label': '导航与搜索',
+            'aria-expanded': mobile && open, 'aria-haspopup': 'dialog', 'aria-controls': 'ob-navigation-dialog', onClick: () => { if (mobile) setOpen(true) } }, '导航与搜索'),
+          h('div', { className: 'ob-mobile-location' }, h('span', null, NAVIGATION_REGISTRY.find(area => area.id === navigation.area)?.label),
+            h('span', null, navigation.section === 'module' ? '模块详情 · ' + navigation.moduleId : SECTION_LABELS[navigation.section] || navigation.section))),
+        h('div', { className: 'ob-mobile-sections', role: 'toolbar', 'aria-label': '当前区域分区' },
+          h('label', { htmlFor: 'ob-mobile-section' }, '分区'),
+          h('select', { id: 'ob-mobile-section', className: 'ob-select', 'aria-label': '当前区域分区', value: navigation.section,
+            onChange: event => { if (event.target.value !== 'module') select({ area: navigation.area, section: event.target.value }) } },
+          navigationSections(navigation.area).map(section => h('option', { key: section.id, value: section.id }, SECTION_LABELS[section.id] || section.id)),
+          navigation.section === 'module' ? h('option', { value: 'module' }, '当前模块 · ' + navigation.moduleId) :
+            !navigationSections(navigation.area).some(section => section.id === navigation.section)
+              ? h('option', { value: navigation.section, disabled: true }, '当前分区 · ' + (SECTION_LABELS[navigation.section] || navigation.section)) : null)),
+        mobile ? h('dialog', { ref: dialogRef, id: 'ob-navigation-dialog', className: 'ob-nav-dialog', tabIndex: -1, 'aria-label': '导航与搜索',
+          onCancel: event => { event.preventDefault(); close() },
+          onClose: event => { if (!event.currentTarget.open) close() },
+          onKeyDown: trapNavigationFocus,
+          onClick: event => {
+            if (event.target !== event.currentTarget) return
+            const rect = event.currentTarget.getBoundingClientRect()
+            if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close()
+          } }, nav) : nav,
+        collapsed && tip ? h('span', { id: 'ob-nav-tooltip', role: 'tooltip', className: 'ob-nav-tip', style: { top: tip.top, left: tip.left } }, tip.label) : null)
     }
 
     // One partition per destination. Profile edits use explicit IDs and CAS, without activation.
@@ -9080,7 +9241,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             'div',
             { className: 'ob-shell ob-area-shell' },
             h(NavigationMenu, { navigation, goTo, configInfo }),
-            loadingShell
+            h('div', { id: 'ob-navigation-destination', tabIndex: -1, 'aria-label': headerInfo.eyebrow + ' · ' + headerInfo.title }, loadingShell
               ? loadingShell
               : h(
                   'div',
@@ -9120,7 +9281,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                     },
                     h('div', { key: navigation.area + ':' + navigation.section, className: pageTransitionClass(contentTransitionFor(tab, uiPrefs.pageTransition)) }, body),
                   ),
-                ),
+                )),
           ),
           h(Toast, { message: toastMessage }),
         ),
