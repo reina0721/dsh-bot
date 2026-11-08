@@ -36,8 +36,11 @@ export function createAudit({ root, capacity = 512 }) {
         const h = await open(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
         try { await h.writeFile(JSON.stringify(next)); await h.sync() } finally { await h.close() }
         await rename(tmp, join(root, 'audit.json'))
-        const dir = await open(root, constants.O_RDONLY)
-        try { await dir.sync() } finally { await dir.close() }
+        // Directory fsync is not available on Windows and must not make audit writes fail.
+        if (process.platform !== 'win32') {
+          const dir = await open(root, constants.O_RDONLY)
+          try { await dir.sync() } finally { await dir.close() }
+        }
         rows = next
       } catch { fail('AUDIT_UNAVAILABLE') }
       finally { if (tmp) await rm(tmp, { force: true }).catch(() => {}) }

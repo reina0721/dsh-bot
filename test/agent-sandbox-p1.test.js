@@ -20,9 +20,17 @@ const context = { personaId: 'p1', principalId: '1', chatType: 'private', chatId
 const config = () => ({ sandbox: normalizeSandbox({ enabled: true }), access: { ownerQQ: '1', operators: ['2'] } })
 const stat = overrides => ({ isFile: () => true, uid: 0, mode: 0o100755, ...overrides })
 const missing = () => { throw Object.assign(Error('private host path'), { code: 'ENOENT' }) }
+async function removeRoot(root) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try { await rm(root, { recursive: true, force: true }); return } catch (error) {
+      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code) || attempt === 19) throw error
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+  }
+}
 async function rootFor(t) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-p1-'))
-  t.after(() => rm(root, { recursive: true, force: true }))
+  t.after(() => removeRoot(root))
   return root
 }
 
