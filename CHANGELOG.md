@@ -39,6 +39,15 @@
 
 - 成功 setup 的内置模块默认健康空闲；输入状态、回复、示例和调度引擎启动报告空闲，媒体操作记录成功/失败；外部未埋点模块仍为 unknown，停止仍为 stopped。新增真实七个内置模块激活与媒体遥测回归。
 
+## 0.11.16（2026-11-08，AstrBot 对齐：沙盒与 IA）
+
+- 六区导航（Overview / Chat & Sandbox / Profiles / Extensions / Data & Logs / System），全部旧 tab/cognition/config/anchor 别名兼容；DSH 仍两个注册。
+- 设置所有权契约、profile 设置与幂等迁移（运行 cutover 仍 staged）、owner-based 编辑入口。
+- 隔离 simulation service + 离线 Chat 沙盒，零真实发送；捕获全部 OneBot actions。
+- Agent execution broker、workspace、Linux bwrap 驱动、状态/jobs/audit 与 fail-closed 边界；本机无 bwrap/cgroup，执行不可用。
+- P1：macOS probe、egress unsupported、真实模型 preview 接口未启用。
+- 1218 项测试：1206 通过、12 跳过。
+
 ## 0.11.15（2026-11-08，闭环缺口补齐与沙盒）
 
 - 七个内置模块激活后默认健康空闲，媒体模块增加持续埋点，不再长期 unknown。
