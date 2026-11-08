@@ -1919,7 +1919,7 @@ test('ModulesPage WebUI: list → disabled detail → back, status text and unav
     assert.ok(!treeNodes(tree).some((node) => node.props?.title === '模块目录'))
     assert.equal(treeNodes(detail).some((node) => ['iframe', 'script', 'input'].includes(node.type) || node.type?.name === 'FieldRow'), false)
     assert.deepEqual(calls, [[panel.API_PREFIX + '/modules', 'GET'], [panel.API_PREFIX + '/modules/ui', 'GET']])
-    control(render(), '返回模块列表').props.onClick()
+    control(render(), '← 模块目录').props.onClick()
     assert.ok(!treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块详情'))
     assert.ok(treeNodes(render()).some((node) => node.props?.title === '模块目录'))
   } finally { globalThis.fetch = original }
@@ -2079,7 +2079,7 @@ for (const source of ['builtin', 'external']) test(`ModulesPage ${source} config
     assert.ok(!treeNodes(render()).some((node) => node.type?.name === 'FieldRow'))
     assert.ok(!savebarNodes(render()).some(node => node.props?.className === 'ob-module-savebar'))
     assert.ok(control(render(), '加载配置'))
-    control(render(), '返回模块列表').props.onClick()
+    control(render(), '← 模块目录').props.onClick()
     assert.ok(!treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块配置' || node.type?.name === 'FieldRow'))
   } finally { globalThis.fetch = original }
 })
@@ -2156,7 +2156,7 @@ test('ModulesPage WebUI: card background and detail button navigate; card/detail
   assert.match(JSON.stringify(detail), /外部声明式（无执行权限）|已启用|error/)
   assert.ok(treeNodes(detail).some((node) => node.type === 'p' && node.children.includes(text)))
   assert.ok(!treeNodes(detail).some((node) => ['img', 'script', 'iframe'].includes(node.type) || node.props?.dangerouslySetInnerHTML))
-  control(detail, '返回模块列表').props.onClick()
+  control(detail, '← 模块目录').props.onClick()
   await moduleControl(render(), '详情').props.onClick()
   assert.ok(treeNodes(render()).some((node) => node.props?.['aria-label'] === '模块详情'))
 })
@@ -2870,7 +2870,7 @@ test('C07 ordinary module detail survives directory/action refresh and reloads h
     tree = render()
     treeNodes(tree).find(node => node.type?.name === 'FieldRow').props.onChange('draft')
     const previousKey = treeNodes(tree).find(node => node.type === instance.CoreModuleHealth).props.key
-    await moduleControl(tree, '刷新详情').props.onClick()
+    await field(tree, '刷新详情').props.onClick()
     tree = render(); applyNavigation(); tree = render()
     assert.ok(treeNodes(tree).some(node => node.props?.['aria-label'] === '模块详情'))
     assert.notEqual(treeNodes(tree).find(node => node.type === instance.CoreModuleHealth).props.key, previousKey)
@@ -3056,7 +3056,9 @@ test('top command bar: six areas and only the current visible section chips shar
       }
     }
     h.props.navigation = contractGoTo({ tab: 'modules', moduleId: 'builtin-learning', anchor: 'config' }); h.render()
-    assert.equal(h.get('.ob-section-chip').props['aria-current'], 'page')
+    assert.equal(h.get('.ob-section-chip').props['aria-current'], undefined)
+    assert.equal(h.byLabel('分区').props.value, 'module')
+    assert.ok(treeNodes(h.tree).some(node => node.props?.['aria-current'] === 'page' && node.children?.includes('模块详情')))
     assert.equal(h.get('.ob-section-chip').props['data-section'], 'extensions:modules')
     assert.equal(h.get('.ob-command-status').props['aria-label'].includes('已连接'), true)
     assert.ok(treeNodes(h.tree).some(node => node.children?.includes('小葵'))); assert.ok(treeNodes(h.tree).some(node => node.children?.includes('v0.11.21')))
@@ -3623,7 +3625,7 @@ test('UI phase 3 module detail: summary, health, actions, links, reminders and s
     try { tree = panel.ModulesPage({}) } finally { stateOverrides = null }
     assert.equal(tree.props.id, 'ob-module-detail')
     const siblings = transparentChildren(tree.children)
-    assert.equal(siblings[0].props.className, 'ob-module-toolbar')
+    assert.equal(siblings[0].props.className, 'ob-module-detail-toolbar')
     const summary = siblings.find(node => node.props?.className === 'ob-module-summary')
     assert.ok(summary)
     assert.ok(!treeNodes(summary).some(node => [panel.CoreModuleHealth, panel.CoreModuleActions, panel.ModuleFeatureLinks].includes(node.type)))
@@ -3839,14 +3841,18 @@ function styleBlocks(source, header) {
   return blocks
 }
 
-test('top shell mobile CSS: horizontal tabs and chips, 44px targets, safe areas and existing module container threshold', () => {
+test('top shell mobile CSS: native selects, bounded rows, 44px targets, safe areas and existing module container threshold', () => {
   const mobile = styleBlocks(panel.PANEL_CSS, '@media (max-width:900px)').find(block => block.includes('.ob-commandbar-main{'))
   assert.ok(mobile)
   const rules = [...mobile.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
   const rule = selector => { const row = rules.find(row => row[1].trim() === selector); assert.ok(row, selector); return row[2] }
-  assert.match(rule('.ob-commandbar-main'), /min-height:48px/)
-  assert.match(rule('.ob-root .ob-area-tab,.ob-root .ob-section-chip'), /min-width:44px;min-height:44px;max-width:none;white-space:nowrap/)
-  assert.match(rule('.ob-sectionbar'), /flex-wrap:nowrap/)
+  assert.match(rule('.ob-commandbar-main'), /height:56px;min-height:56px;max-height:56px;flex-wrap:nowrap/)
+  assert.match(rule('.ob-root .ob-area-tabs,.ob-root .ob-sectionbar'), /display:none/)
+  assert.match(rule('.ob-command-select,.ob-section-select-row'), /display:flex;align-items:center/)
+  assert.match(rule('.ob-section-select-row'), /height:44px;max-height:44px/)
+  assert.match(rule('.ob-root .ob-command-select select,.ob-root .ob-section-select-row select'), /width:0;min-width:0;max-width:100%;height:44px;min-height:44px/)
+  assert.match(panel.PANEL_CSS, /\.ob-command-select,\.ob-section-select-row\{display:none\}/)
+  assert.match(panel.PANEL_CSS, /\.ob-commandbar\{[^{}]*padding-top:env\(safe-area-inset-top,0px\)/)
   const shell = rule('.ob-root .ob-shell')
   for (const edge of ['left', 'right']) assert.ok(shell.includes(`padding-${edge}:max(12px,env(safe-area-inset-${edge},0px))`), edge)
   assert.match(rule('.ob-root'), /padding-bottom:calc\(48px \+ env\(safe-area-inset-bottom,0px\)\)/)
@@ -3919,7 +3925,13 @@ test('UI phase B detail: named h1, secondary ID, closed whitelist technical info
   assert.equal(heading.props.id, 'ob-page-title'); assert.equal(heading.props.tabIndex, -1)
   assert.equal(nodes.filter(node => node.type === 'h1').length, 1)
   assert.equal(tree.children[0].props['aria-label'], '模块详情工具栏')
-  assert.deepEqual(treeNodes(tree.children[0]).filter(node => node.type?.name === 'Btn').map(node => node.children[0]), ['返回模块列表', '刷新详情'])
+  assert.equal(control(tree.children[0], '← 模块目录').type, 'a')
+  const refresh = field(tree.children[0], '刷新详情')
+  assert.equal(refresh.props.icon, 'refresh'); assert.equal(refresh.props.kind, 'ghost')
+  assert.equal(refresh.children.length, 0, 'refresh is icon-only')
+  const breadcrumb = field(tree, '面包屑')
+  assert.ok(moduleVisibleText(breadcrumb).includes('← 模块目录 / ' + item.name))
+  assert.equal(treeNodes(breadcrumb).find(node => node.props?.['aria-current'] === 'page').children[0], item.name)
   const summary = nodes.find(node => node.props?.className === 'ob-module-summary')
   const rendered = summary.type({ ...summary.props, children: summary.children })
   const visible = moduleVisibleText(rendered)
@@ -4041,7 +4053,7 @@ test('UI phase B module landing resets scroll and focuses after asynchronous det
     assert.equal(h.focusLog.length, 0)
     h.loaded([item]); assert.equal(h.root.scrollTop, 0)
     assert.deepEqual(h.focusLog, [{ options: { preventScroll: true }, title: item.name }])
-    assert.ok(control(h.tree, '返回模块列表')); assert.ok(control(h.tree, '刷新详情'))
+    assert.ok(control(h.tree, '← 模块目录')); assert.ok(field(h.tree, '刷新详情'))
     h.root.scrollTop = 900; h.render(); h.loading(true); h.loading(false)
     assert.equal(h.root.scrollTop, 900); assert.equal(h.focusLog.length, 1, 'refresh does not refocus')
     const health = treeNodes(h.tree).find(node => node.type === h.instance.CoreModuleHealth)
@@ -4049,7 +4061,7 @@ test('UI phase B module landing resets scroll and focuses after asynchronous det
     h.render(); assert.equal(h.root.scrollTop, 900); assert.equal(h.focusLog.length, 1)
     const technical = treeNodes(h.tree).find(node => node.type === 'details')
     assert.ok(JSON.stringify(technical).includes('live-runtime')); assert.ok(JSON.stringify(technical).includes('live-telemetry'))
-    control(h.tree, '返回模块列表').props.onClick(); h.render()
+    control(h.tree, '← 模块目录').props.onClick(); h.render()
     assert.equal(h.root.scrollTop, 0); assert.equal(h.focusLog.at(-1).title, '模块目录')
     h.root.scrollTop = 700
     await moduleControl(h.tree, '详情').props.onClick(); h.render()
@@ -4082,4 +4094,76 @@ test('UI phase B detail preserves enable recovery for enabled error/blocked modu
     stateOverrides = [{ items: [{ actionId: 'module.enable', available: true }] }, '', false]
     try { assert.equal(control(actions.type(actions.props), '启用').props.disabled, false) } finally { stateOverrides = null }
   }
+})
+
+test('UI phase C native area/section selects use canonical routes and describe module detail accurately', () => {
+  const h = commandBarHarness()
+  try {
+    for (const area of NAVIGATION_REGISTRY) {
+      h.props.navigation = { area: area.id, section: area.sections[0].id }
+      h.render()
+      const areaSelect = h.byLabel('区域')
+      assert.equal(areaSelect.type, 'select'); assert.equal(areaSelect.props.value, area.id)
+      assert.deepEqual(treeNodes(field(h.tree, '区域')).filter(node => node.type === 'option').map(node => node.props.value), NAVIGATION_REGISTRY.map(area => area.id))
+      areaSelect.props.onChange({ target: { value: area.id } })
+      assert.deepEqual(h.targets.at(-1), { area: area.id, section: area.sections[0].id })
+      const sections = area.sections.filter(section => section.id !== 'module' && !(area.id === 'profiles' && section.id === 'settings')), sectionSelect = h.byLabel('分区')
+      assert.equal(Boolean(sectionSelect), sections.length > 1, 'single-section mobile row is omitted')
+      if (!sectionSelect) continue
+      assert.equal(sectionSelect.type, 'select')
+      assert.deepEqual(treeNodes(field(h.tree, '分区')).filter(node => node.type === 'option').map(node => node.props.value), sections.map(section => section.id))
+      const section = sections.at(-1).id
+      sectionSelect.props.onChange({ target: { value: section } })
+      assert.deepEqual(h.targets.at(-1), { area: area.id, section })
+    }
+    h.props.navigation = { area: 'extensions', section: 'module', moduleId: 'builtin-learning' }
+    h.render()
+    assert.equal(h.byLabel('区域').props.value, 'extensions')
+    const sections = h.byLabel('分区')
+    assert.equal(sections.props.value, 'module')
+    assert.equal(treeNodes(field(h.tree, '分区')).filter(node => node.type === 'option').at(-1).children[0], '模块详情')
+    assert.equal(h.get('.ob-section-chip').props['aria-current'], undefined, 'directory is not the current route')
+    const count = h.targets.length
+    sections.props.onChange({ target: { value: 'module' } })
+    assert.equal(h.targets.length, count, 'current detail preserves the module ID')
+    sections.props.onChange({ target: { value: 'modules' } })
+    assert.deepEqual(h.targets.at(-1), { area: 'extensions', section: 'modules' })
+  } finally { h.restore() }
+})
+
+test('UI phase C breadcrumb returns through owner navigation, preserves host URL and respects busy state', () => {
+  const item = { id: 'builtin-learning', name: '学习编排', source: 'builtin', builtin: true, status: 'loaded', enabled: true, canToggle: true }
+  const oldLocation = window.location, targets = []
+  window.location = { href: 'https://example.test/console?host=keep#onebot-qq' }
+  try {
+    for (const busy of ['', 'builtin-learning:toggle']) {
+      stateOverrides = [[item], false, '', busy, null, '', null, '', item.id]
+      let tree
+      try { tree = panel.ModulesPage({ ownerIntegration: true, goTo: target => targets.push(target) }) } finally { stateOverrides = null }
+      const back = control(tree, '← 模块目录'), url = new URL(back.props.href, window.location.href)
+      assert.equal(url.pathname, '/console'); assert.equal(url.searchParams.get('host'), 'keep'); assert.equal(url.hash, '#onebot-qq')
+      assert.deepEqual(panel.readNavigationUrl(url.href), { area: 'extensions', section: 'modules' })
+      let prevented = false
+      const before = targets.length
+      back.props.onClick({ preventDefault() { prevented = true } })
+      assert.equal(prevented, true); assert.equal(back.props['aria-disabled'], Boolean(busy))
+      assert.equal(targets.length, before + (busy ? 0 : 1))
+      if (!busy) assert.deepEqual(targets.at(-1), { area: 'extensions', section: 'modules' })
+      assert.equal(field(tree, '刷新详情').props.disabled, Boolean(busy))
+    }
+  } finally { window.location = oldLocation }
+})
+
+test('UI phase C detail CSS keeps compact toolbar and 44px two-column mobile actions', () => {
+  const css = panel.PANEL_CSS
+  assert.match(css, /\.ob-module-detail-toolbar\{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px/)
+  assert.match(css, /\.ob-module-back\{[^{}]*min-height:44px/)
+  assert.match(css, /\.ob-module-detail-toolbar \.ob-btn\{flex:none;width:44px;height:44px;padding:0/)
+  assert.match(css, /\.ob-module-primary-actions > \.ob-btn\{flex:0 1 auto;height:44px;min-height:44px/)
+  assert.match(css, /\.ob-module-primary-actions > \.ob-btn.danger\{background:transparent;border-color:var\(--ob-danger\)/)
+  const mobile = styleBlocks(css, '@media (max-width:900px)').find(block => block.includes('.ob-module-primary-actions{'))
+  assert.match(mobile, /\.ob-module-primary-actions\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/)
+  assert.doesNotMatch(css, /\.ob-module-primary-actions[^{}]*\{[^{}]*(?:grid-column:.*span|width:100%)/)
+  assert.match(css, /\.ob-module-detail-page.ob-page\{padding-top:4px;gap:4px/)
+  assert.match(css, /\.ob-module-detail\{gap:8px/)
 })

@@ -1,17 +1,17 @@
 # 响应式顶部命令栏与模块 UI 验收契约
 
-UI rework phase A/B；phase A 基线 main `3d2eeb2`，phase B 在 `feat/ui-shell-rework` 的 `f1238a2` 后实现，版本保持 0.11.21。DSH 的全局侧栏和会话列表已经承担外层导航；插件使用顶部命令栏，正文不再被内部第三列占宽。使用入口见[用户手册](../USER-MANUAL.md#4-面板六区导航)，设置所有权与旧入口见 [ADR-020](../architecture/ADR-020-settings-ownership-navigation.md)。
+UI rework phase A/B/C；phase C 在 `feat/ui-shell-rework` 的 `c96c089` 后实现，沿用已更新的包版本 0.11.22，本阶段不改版本。DSH 的全局侧栏和会话列表已经承担外层导航；插件使用顶部命令栏，正文不再被内部第三列占宽。使用入口见[用户手册](../USER-MANUAL.md#4-面板六区导航)，设置所有权与旧入口见 [ADR-020](../architecture/ADR-020-settings-ownership-navigation.md)。
 
 ## 顶部壳层与正文宽度
 
 - `.ob-shell` 为单列，`width:100%;min-width:0;max-width:none`，正文填满 DSH 分配的面板宽度。已移除 240px 内部侧栏、72px 图标轨道、折叠开关和导航 localStorage 偏好。
-- `.ob-commandbar` 使用 `position:sticky;top:0` 和不透明背景。首行包含品牌「小葵」（沿用宿主注入名称）、带可访问状态名称的圆点、版本、六区按钮、搜索和刷新图标；`.ob-area-tabs` 空间不足时横向滚动。
-- 第二行 `.ob-sectionbar` 只显示当前区域的可见分区，保持单行横向滚动、当前分区高亮。Profiles/settings 兼容入口和模块详情不额外生成导航项；模块详情沿用 Extensions 的「模块目录」高亮。
+- `.ob-commandbar` 使用 `position:sticky;top:0` 和不透明背景。桌面首行包含品牌「小葵」（沿用宿主注入名称）、带可访问状态名称的圆点、版本、六区按钮、搜索和刷新图标；>900px 的 `.ob-area-tabs` 空间不足时横向滚动。
+- 桌面第二行 `.ob-sectionbar` 显示当前区域的可见分区，保持单行横向滚动、当前分区高亮。Profiles/settings 兼容入口不额外生成导航项；模块详情显示当前「模块详情」标签，「模块目录」保留为返回入口、不再标为当前页。
 - 导航位于 loading/error 正文分支之外；六区 registry、所有者过滤、旧别名、URL/history 不变。DSH 仍恰好注册 `main` 与 `sidebar.panellist` 两项，ID 均为 `onebot-qq`。
 
 ## 移动与命令搜索
 
-- ≤900px 使用相同命令栏和分区行；区域按钮和分区按钮至少 44×44px、文字不换行、横向溢出仅在各自导航行内滚动。正文紧接分区行。没有 hamburger、移动专属顶栏、分区 select 或导航 drawer。
+- ≤900px 隐藏桌面区域 tabs 和分区 chips，首行改用单个原生 `<select>`，可见标签及可访问名称均为「区域」；选项用完整简短中文名称。保留品牌/状态、搜索与刷新，隐藏版本文字，首行固定 56px，加命令栏顶部 safe-area。第二行使用标签「分区」的原生 select，固定 44px；只有一个分区时省略，模块详情额外提供当前「模块详情」选项与返回目录选项。控件至少 44px，select 字号 16px，无横向裁切 tabs、抽屉或 hamburger。
 - 搜索按钮及 Ctrl/Cmd+K 打开 `.ob-palette-overlay` 固定遮罩；`.ob-palette` 为带 `aria-modal` 和标题标签的 dialog 角色，输入为 combobox，结果为 listbox/options。使用普通固定 overlay，不依赖原生 dialog。
 - 打开时聚焦输入，↑↓循环选择结果，Enter 经现有 `goTo` 导航，Escape、关闭按钮或遮罩关闭并恢复原焦点。Tab/Shift+Tab 在输入与关闭按钮间循环；结果通过 active descendant 和方向键选择。浏览器历史切换也会关闭搜索，清理时由新页头保留焦点；卸载移除快捷键监听。
 - 默认列出页面/分区；搜索仅使用页面、分区、旧别名、模块和设置路径的元数据，不索引当前值、默认值或密钥。空结果可安全使用方向键/Enter。
@@ -29,7 +29,7 @@ UI rework phase A/B；phase A 基线 main `3d2eeb2`，phase B 在 `feat/ui-shell
 
 - `.ob-module-list` 是 `inline-size` 容器，专用 `.ob-module-grid` 默认单列；仅在视口 >900px **且容器 ≥760px** 时两列。DSH 外层侧栏占用宽度后，按目录实际宽度回落；不支持容器查询时保留单列。
 - 卡片同行拉伸等高，Panel/body 使用 flex，footer 用自动上边距贴底。标题区放名称/两行简短说明/状态圆点；正文为状态/版本芯片、最多三项权限和 `+N`，完整依赖与权限移至详情。详情（primary）、配置（secondary）、启停位于唯一 footer，按钮等高、可换行；≤900px 卡片动作最多两列，重载保留在详情。配置不可用时禁用并关联说明。卡片点击忽略按钮/链接/输入，保留按钮原有动作与禁用状态。
-- 详情页由 ModulesPage 渲染唯一 h1（模块名称、`#ob-page-title`），壳层不再重复通用「模块详情」页头。返回/刷新工具栏先于 h1，ID 以次要 code 呈现，状态芯片、配置与启停紧随其后。详情工具栏、摘要、健康、操作、功能链接、提醒和声明的 surfaces 为同级区块；保留 `ob-module-detail`、`ob-module-config`、`ob-module-panel`、`ob-module-reminders` 及 surface 锚点、React keys 和字段 ID。MediaFeaturesPanel 自带 Panel，不再包一层 Panel。
+- 详情页由 ModulesPage 渲染唯一 h1（模块名称、`#ob-page-title`），壳层不再重复通用「模块详情」页头。紧凑工具栏先于 h1：44px 文本链接「← 模块目录」、`模块目录 / <模块名>` 面包屑及右侧 44px 刷新图标。ID 以次要 code 呈现，状态芯片、实心配置与次要启停紧随其后；停用采用透明底危险边框。移动主动作固定两列、44px 高，影响说明合并为简短文字。详情页顶部 padding/gap 为 4px、区块 gap 为 8px，空闲进度条不占位；目标为命令栏之后 240px 内出现首张内容卡，长模块名/ID 允许换行。详情工具栏、摘要、健康、操作、功能链接、提醒和声明的 surfaces 为同级区块；保留 `ob-module-detail`、`ob-module-config`、`ob-module-panel`、`ob-module-reminders` 及 surface 锚点、React keys 和字段 ID。MediaFeaturesPanel 自带 Panel，不再包一层 Panel。
 - 摘要只显示说明、来源、版本和状态；默认关闭的原生 `<details>`「技术信息」白名单展示 id/generation/uiRevision/runtimeGeneration/telemetryGeneration/observedAt/requires/permissions。运行代次与观测时间由 CoreModuleHealth 的同一快照回传，无第二次健康请求，不枚举配置或密钥。长值为可选择的 code，空数组为「无」，null 为「未观察」。
 - 健康卡提供「运行正常 / 加载中 / 需要注意 / 已停止 / 错误」结论与短说明；未知不推断健康，blocked/draining 为需要注意。四项主要指标为 lifecycle/phase/health/reasonCode（中文标签）；lastError、代次、Provider/fallback、依赖、调度/引擎/遥测收进第二个默认关闭的 `<details>`「健康技术详情」，历史错误不改变当前观测结论。
 - 动作按「运行管理 / 手动任务」分组并提供影响说明。顶部启停沿用目录动作接纳/轮询，维护区保留重启/外部重载/手动任务；已启用但 error/blocked 时仍可用 enable 恢复。每项操作通过 `aria-describedby` 关联影响说明及服务端/忙碌禁用原因；确认、代次/人格凭证、requestId 恢复与终态判断不变。
@@ -46,13 +46,15 @@ UI rework phase A/B；phase A 基线 main `3d2eeb2`，phase B 在 `feat/ui-shell
 
 ## 自动化证据及边界
 
-`test/panel.test.js` 的 command bar harness 覆盖六区/当前分区、别名搜索、快捷键、方向键/Enter/Escape、模态标签、焦点恢复、监听清理、草稿与 URL 保持、go/goTo/历史滚动复位、loading 后标题聚焦、命令栏测量和显式锚点，以及单列/横向滚动/44px/安全区 CSS 契约。新增 phase B 权限上限/+N、三项 footer、默认可见摘要/技术白名单、健康结论/折叠诊断、分组动作/忙碌原因、异步与局部导航复位及移动标签/值行回归；保留模块结构、数字控件及保存/冲突回归。`test/navigation.test.js` 保持全量旧入口、设置路径及 URL/history 回归；`test/module-webui.test.js` 保持公开值、surfaces 与 component keys 契约。
+`test/panel.test.js` 的 command bar harness 覆盖六区/当前分区、别名搜索、快捷键、方向键/Enter/Escape、模态标签、焦点恢复、监听清理、草稿与 URL 保持、go/goTo/历史滚动复位、loading 后标题聚焦、命令栏测量和显式锚点，以及桌面单列/横向滚动、移动区域/分区原生 select、56px/44px 行高及安全区 CSS 契约。新增 phase B 权限上限/+N、三项 footer、默认可见摘要/技术白名单、健康结论/折叠诊断、分组动作/忙碌原因、异步与局部导航复位及移动标签/值行回归；phase C 补充 select 规范目的地、单分区省略、详情标签/目录非当前状态、面包屑 URL/忙碌返回和图标刷新回归；保留模块结构、数字控件及保存/冲突回归。`test/navigation.test.js` 保持全量旧入口、设置路径及 URL/history 回归；`test/module-webui.test.js` 保持公开值、surfaces 与 component keys 契约。
+
+本阶段另用独立 Chromium 加载由当前组件生成的静态布局 fixture，在 320/390/768/900/901/1440px 测量：移动首行 56px、分区 44px、主动作同排且 44px，区域最长选项文字可完整容纳，无壳层横向溢出；901/1440px 仍显示桌面 tabs/chips。390px 示例的首张卡位于命令栏底部之后约 211px（fixture 顶部约 312px）。这仅验证隔离组件的实际 CSS，不包含 DSH 宿主顶栏、真实异步数据、缩放或软键盘。
 
 `npm test` 执行 Node shim/静态 CSS 与服务测试，不执行浏览器布局。`npm run check:docs` 检查文档链接；`npm run check:parity` 检查能力矩阵；`npm run pack:release` 仅生成本地归档，`npm run check:package` 检查双格式文档逐字节一致、链接、客户端加载、恰好两项 DSH 注册及私有数据排除。测试文件不进入发行包。
 
-## 浏览器验收矩阵（phase A/B 全部 pending）
+## 浏览器验收矩阵（phase C 待 DSH 截图）
 
-DSH 已用真实 Chromium 提供旧版截图，确认第三列侧栏、图标轨道、移动导航占高，以及 phase B 的详情顶部裁切、原始技术字段铺开和列表权限/按钮墙问题。本次 Node shim/CSS 验证不构成真实布局、吸附、软键盘或读屏通过证据；phase A/B 的真实 DSH 截图由 DSH 后续捕获。历史环境的 libnspr 缺失记录不代表 DSH 当前浏览器状态。
+DSH 已在禁用缓存、安装新代码的真实 Chromium 中确认 1440px 单顶部命令栏/全宽正文及模块列表改善；390px 仍存在区域 tabs 裁切、导航和详情控件占高，以及详情误标「模块目录」。phase C 针对这些发现修正；宿主仍显示 v0.11.21 是缓存现象。本阶段 Node shim/CSS 契约不构成真实 DSH 布局、吸附、软键盘或读屏通过证据，新截图由 DSH 后续捕获。
 
 每行在 DSH 外层侧栏展开/收起、dark/light、100%/125%/200% zoom 下重复，执行 Tab/Shift+Tab/Enter/Space/Escape、Ctrl/Cmd+K 及前进/后退。记录实际 CSS 视口及目录容器宽度；移动行另测安全区及软键盘。
 
@@ -60,12 +62,12 @@ DSH 已用真实 Chromium 提供旧版截图，确认第三列侧栏、图标轨
 | --- | --- | --- |
 | 1440px | 单列填满宿主面板，无第三列；区域/分区横向滚动；目录 ≥760px 两列，否则单列 | pending：DSH 截图 |
 | 1024px | 相同顶部壳层，受宿主实际宽度约束；目录按容器阈值回落 | pending：DSH 截图 |
-| 768px | 相同命令栏、单行分区；模块单列、元数据标签/值行、折叠技术详情、底部保存栏 | pending：DSH 截图 |
-| 390px | 44px 横向区域/分区；正文立即开始；长文本/单位/动作无横向溢出 | pending：DSH 截图 |
+| 768px | 56px 区域 select 首行、44px 分区 select（单分区省略）；模块单列、元数据标签/值行、折叠技术详情、底部保存栏 | pending：DSH 截图 |
+| 390px | 区域 select 无裁切、首行 56px；分区 select 44px；详情面包屑/图标工具栏、两列 44px 主动作、首屏可见内容卡 | pending：DSH 截图 |
 
 后续真实浏览器逐项验收：
 
-1. 测量宿主可用宽度与正文宽度；滚动长页检查命令栏可达、当前区域/分区高亮及横向滚动，保留未保存草稿。
+1. 测量宿主可用宽度与正文宽度；滚动长页检查命令栏可达、桌面区域/分区高亮及横向滚动，移动 select 当前值与完整选项、900/901px 切换，保留未保存草稿。
 2. 检查搜索聚焦、↑↓/Enter/Escape、Tab/Shift+Tab、快捷键与关闭恢复；搜索设置路径、旧名称及模块。重复打开/关闭、离页，确认无重复 ID 或快捷键监听残留。
 3. 模块目录测试容器 759/760px 及视口 900/901px 边界、同行 footer、权限最多三项与 +N、两列动作、禁用原因、metadata 标签/值同行、两个默认关闭的技术详情、预览/iframe/数字单位。
 4. System、Profiles、模块文件配置分别编辑/保存/重读并制造 revision 冲突；检查唯一保存栏、禁用/忙碌、草稿保留及 legacy-core 即时保存。聚焦末字段并打开软键盘，检查控件互不遮挡。

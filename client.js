@@ -1780,12 +1780,23 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-module-technical{margin-block-start:12px;border-block-start:1px solid var(--ob-border);padding-block-start:8px}
 .ob-module-technical > summary{padding-block:8px;min-height:44px;cursor:pointer;font-weight:var(--ob-weight-heading)}
 .ob-module-technical[open] > summary{margin-block-end:8px}
-.ob-module-detail-header{display:flex;flex-direction:column;gap:10px}
+.ob-module-detail-page.ob-page{padding-top:4px;gap:4px}
+.ob-module-detail-page > .ob-progress[data-phase=idle]{display:none}
+.ob-module-detail{gap:8px}
+.ob-module-detail-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px}
+.ob-module-breadcrumb{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--ob-text-small);color:var(--ob-ink-muted)}
+.ob-module-back{display:inline-flex;align-items:center;min-height:44px;flex:none}
+.ob-module-back[aria-disabled=true]{opacity:.5;pointer-events:none}
+.ob-module-breadcrumb-current{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-module-detail-toolbar .ob-btn{flex:none;width:44px;height:44px;padding:0}
+.ob-module-detail-header{display:flex;flex-direction:column;gap:6px}
+.ob-module-consequences{font-size:var(--ob-text-small);line-height:1.4;color:var(--ob-ink-muted)}
 .ob-module-detail-header h1,.ob-module-detail-header p{margin:0}
 .ob-module-detail-header h1{font-size:var(--ob-text-title);line-height:1.3}
 .ob-module-detail-header .ob-module-id{color:var(--ob-ink-muted);font-size:var(--ob-text-small)}
 .ob-module-primary-actions{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px}
-.ob-module-primary-actions > .ob-btn{flex:0 1 auto}
+.ob-module-primary-actions > .ob-btn{flex:0 1 auto;height:44px;min-height:44px;padding:0 16px}
+.ob-module-primary-actions > .ob-btn.danger{background:transparent;border-color:var(--ob-danger);box-shadow:none}
 .ob-module-action-group{display:flex;flex-direction:column;gap:8px}
 .ob-module-action-group h3,.ob-module-action-group p{margin:0}
 .ob-module-action-group .ob-module-actions{align-items:stretch}
@@ -1801,7 +1812,7 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 @media (max-width:900px){
   .ob-module-grid{grid-template-columns:minmax(0,1fr)}
   .ob-module-metadata-row{grid-template-columns:minmax(0,7rem) minmax(0,1fr);gap:8px}
-  .ob-module-detail-header{gap:8px}
+  .ob-module-detail-header{gap:4px}
   .ob-module-primary-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   .ob-module-card .ob-module-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
   .ob-module-card .ob-module-actions > .ob-btn{width:100%}
@@ -2187,6 +2198,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-sectionbar{padding:4px 0;min-height:52px}
 .ob-area-tab,.ob-section-chip{flex:none;min-width:44px;min-height:44px;padding:8px 12px;border:0;border-radius:var(--ob-radius-control);background:transparent;color:var(--ob-ink-muted);font:inherit;white-space:nowrap;cursor:pointer}
 .ob-area-tab[aria-current=true],.ob-section-chip[aria-current=page]{background:var(--ob-brand-soft);color:var(--ob-brand)}
+.ob-command-select,.ob-section-select-row{display:none}
 .ob-command-actions{display:flex;align-items:center;gap:4px;flex:none}
 .ob-command-actions button{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:var(--ob-radius-control);background:transparent;color:var(--ob-ink);cursor:pointer}
 .ob-palette-overlay{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:clamp(12px,8vh,80px) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));background:var(--ob-scrim);overscroll-behavior:contain}
@@ -2205,12 +2217,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
   .ob-module-savebar,.ob-owner-savebar{position:sticky;bottom:0;z-index:20;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--ob-border);background:var(--ob-surface)}
   .ob-module-savebar > .ob-btn,.ob-owner-savebar > .ob-btn{flex:1 1 8rem;height:auto;min-height:44px;white-space:normal;overflow-wrap:anywhere}
   .ob-module-scope :is(input,select,textarea,[tabindex],.ob-banner),.ob-owner-settings :is([data-setting-path],input,select,textarea,[tabindex],.ob-banner){scroll-margin-block:calc(var(--ob-commandbar-height) + 12px) 12px}
-  .ob-commandbar-main{gap:4px;min-height:48px}
-  .ob-command-brand{gap:4px;max-width:34%}
-  .ob-command-version{font-size:10px}
+  .ob-commandbar-main{gap:8px;height:56px;min-height:56px;max-height:56px;flex-wrap:nowrap}
+  .ob-command-brand{gap:4px;max-width:64px}
+  .ob-command-version{display:none}
   .ob-command-actions{gap:0}
-  .ob-root .ob-area-tab,.ob-root .ob-section-chip{min-width:44px;min-height:44px;max-width:none;white-space:nowrap}
-  .ob-sectionbar{flex-wrap:nowrap}
+  .ob-root .ob-area-tabs,.ob-root .ob-sectionbar{display:none}
+  .ob-command-select,.ob-section-select-row{display:flex;align-items:center;gap:6px;min-width:0;margin:0;font-size:var(--ob-text-small);line-height:1}
+  .ob-command-select{flex:1}
+  .ob-section-select-row{height:44px;max-height:44px}
+  .ob-command-select > span,.ob-section-select-row > span{flex:none}
+  .ob-root .ob-command-select select,.ob-root .ob-section-select-row select{flex:1;width:0;min-width:0;max-width:100%;height:44px;min-height:44px;padding:0 24px 0 6px;border:0;border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink);font-size:16px}
   .ob-root .ob-shell{padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
   .ob-root{padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
   .ob-root input,.ob-root select,.ob-root textarea{font-size:16px}
@@ -3416,10 +3432,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       overview: '概览', messages: '消息与事件', sandbox: '离线 Sandbox', library: '人格库', general: '常规', persona: '人格表达',
       models: '模型', turn: '轮次与群聊参与', reply: '回复与通知', persons: '人物', relationships: '关系', memories: '记忆',
       timeline: '时间轴', emotion: '情绪', purpose: '目的', policy: '策略与决策', proactivity: '主动行为', loop: '闭环', learning: '学习',
-      skills: '技能', meta: '元认知', modules: '模块目录', media: '媒体', content: '内容', logs: '日志', events: '事件', backup: '备份',
+      skills: '技能', meta: '元认知', modules: '模块目录', module: '模块详情', media: '媒体', content: '内容', logs: '日志', events: '事件', backup: '备份',
       privacy: '隐私与保留', import: '导入', connection: '连接', timeouts: '超时与验证', appearance: '外观', security: '安全', access: '访问控制',
       runtime: '运行时', diagnostics: '诊断', about: '关于',
     }
+    const COMPACT_AREA_LABELS = { overview: '概览', chat: '聊天与沙盒', profiles: '人格', extensions: '模块', data: '数据与日志', system: '系统' }
     const TABS = NAVIGATION_REGISTRY.map(area => ({ id: area.id, label: area.label, icon: 'layout' }))
     function ownerFields(target) {
       return SETTINGS_FIELDS.filter(field => field.apply !== 'read-only' && field.storage === 'config.json'
@@ -3480,6 +3497,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           ;(event.target === searchRef.current ? closeRef : searchRef).current?.focus({ preventScroll: true })
         }
       }
+      const sections = navigationSections(navigation.area)
+      const isModuleDetail = navigation.area === 'extensions' && navigation.section === 'module'
       const state = stateLabel(gateway.state)
       const statusText = [state.text, gateway.login?.nickname, endpointModeLabel(gateway.endpoint?.mode), dirty ? '有未保存的改动' : ''].filter(Boolean).join(' · ')
       return h(Fragment, null,
@@ -3493,13 +3512,24 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               h('button', { key: area.id, type: 'button', className: 'ob-area-tab', 'data-area': area.id, 'aria-label': area.label,
                 'aria-current': navigation.area === area.id ? 'true' : undefined,
                 onClick: () => select({ area: area.id, section: navigationSections(area.id)[0].id }) }, area.label))),
+            h('label', { className: 'ob-command-select' }, h('span', null, '区域'),
+              h('select', { 'aria-label': '区域', value: navigation.area, onChange: event => {
+                const area = event.target.value
+                select({ area, section: navigationSections(area)[0].id })
+              } }, NAVIGATION_REGISTRY.map(area => h('option', { key: area.id, value: area.id }, COMPACT_AREA_LABELS[area.id])))),
             h('div', { className: 'ob-command-actions' },
               h('button', { type: 'button', 'aria-label': '打开搜索', title: '搜索（Ctrl/Cmd+K）', 'aria-haspopup': 'dialog', 'aria-expanded': open, 'aria-controls': 'ob-command-palette', onClick: () => setOpen(true) }, h(Icon, { name: 'search', size: 18 })),
               h('button', { type: 'button', 'aria-label': '刷新状态', title: '刷新状态', disabled: refreshing, onClick: () => refreshAll?.() }, h(Icon, { name: 'refresh', size: 18 })))),
-          h('nav', { className: 'ob-sectionbar', 'aria-label': '当前区域分区' }, navigationSections(navigation.area).map(section =>
+          h('nav', { className: 'ob-sectionbar', 'aria-label': '当前区域分区' }, sections.map(section =>
             h('button', { key: section.id, type: 'button', className: 'ob-section-chip', 'data-section': navigation.area + ':' + section.id,
-              'aria-current': navigation.section === section.id || (section.id === 'modules' && navigation.section === 'module') ? 'page' : undefined,
-              onClick: () => select({ area: navigation.area, section: section.id }) }, SECTION_LABELS[section.id] || section.id)))),
+              'aria-current': navigation.section === section.id ? 'page' : undefined,
+              onClick: () => select({ area: navigation.area, section: section.id }) }, SECTION_LABELS[section.id] || section.id)),
+            isModuleDetail ? h('span', { className: 'ob-section-chip', 'aria-current': 'page' }, '模块详情') : null),
+          sections.length > 1 || isModuleDetail ? h('label', { className: 'ob-section-select-row' }, h('span', null, '分区'),
+            h('select', { 'aria-label': '分区', value: navigation.section, onChange: event => {
+              if (event.target.value !== navigation.section) select({ area: navigation.area, section: event.target.value })
+            } }, sections.map(section => h('option', { key: section.id, value: section.id }, SECTION_LABELS[section.id] || section.id)),
+            isModuleDetail ? h('option', { value: 'module' }, '模块详情') : null)) : null),
         open ? h('div', { className: 'ob-palette-overlay', onClick: event => { if (event.target === event.currentTarget) close() } },
           h('div', { id: 'ob-command-palette', className: 'ob-palette', role: 'dialog', 'aria-modal': true, 'aria-labelledby': 'ob-palette-title', onKeyDown: keyDown },
             h('div', { className: 'ob-palette-head' }, h('h2', { id: 'ob-palette-title', className: 'ob-palette-title' }, '搜索页面与设置'),
@@ -8803,10 +8833,19 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         const ui = item ? uiFor(item) : null
         const primaryConfigReasonId = 'ob-module-primary-config-' + detailId + '-reason'
         const primaryToggleReasonId = 'ob-module-primary-toggle-' + detailId + '-reason'
-        return h('section', { ref: landingRef, id: 'ob-module-detail', className: 'ob-stack ob-module-scope', 'aria-label': '模块详情' },
-          h('div', { className: 'ob-module-toolbar', role: 'group', 'aria-label': '模块详情工具栏' },
-            h(Btn, { kind: 'secondary', disabled: Boolean(busy), onClick: () => { if (props.ownerIntegration) props.goTo?.({ area: 'extensions', section: 'modules' }); else { setDetailId(''); setEditor(null); setConfigError('') } } }, '返回模块列表'),
-            h(Btn, { kind: 'secondary', disabled: Boolean(busy) || loading, onClick: refresh }, '刷新详情'),
+        const backToList = event => {
+          event?.preventDefault()
+          if (busy) return
+          if (props.ownerIntegration) props.goTo?.({ area: 'extensions', section: 'modules' })
+          else { setDetailId(''); setEditor(null); setConfigError('') }
+        }
+        return h('section', { ref: landingRef, id: 'ob-module-detail', className: 'ob-stack ob-module-scope ob-module-detail', 'aria-label': '模块详情' },
+          h('div', { className: 'ob-module-detail-toolbar', role: 'group', 'aria-label': '模块详情工具栏' },
+            h('nav', { className: 'ob-module-breadcrumb', 'aria-label': '面包屑' },
+              h('a', { className: 'ob-module-back', href: navigationUrl(window.location?.href || 'http://localhost/', { area: 'extensions', section: 'modules' }), 'aria-disabled': Boolean(busy), tabIndex: busy ? -1 : undefined, onClick: backToList }, '← 模块目录'),
+              h('span', { 'aria-hidden': true }, '/'),
+              h('span', { className: 'ob-module-breadcrumb-current', 'aria-current': 'page', title: String(item?.name || '模块详情') }, String(item?.name || '模块详情'))),
+            h(Btn, { kind: 'ghost', icon: 'refresh', title: '刷新', 'aria-label': '刷新详情', disabled: Boolean(busy) || loading, onClick: refresh }),
           ),
           h('header', { className: 'ob-module-detail-header' },
             h('h1', { id: 'ob-page-title', tabIndex: -1, className: 'ob-display' }, String(item?.name || '模块详情')),
@@ -8820,8 +8859,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 } }, '配置'),
                 h(Btn, { kind: item.enabled ? 'danger' : 'secondary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || Boolean(cardOperation && !operationTerminal(cardOperation)) || !item.canToggle, 'aria-describedby': primaryToggleReasonId, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
               ),
-              h('p', { id: primaryConfigReasonId, className: 'ob-small ob-muted' }, !(hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui)) ? '此模块暂无可用配置界面。' : busy ? '正在处理操作，请稍候。' : '配置保存沿用当前模块的生效规则；未运行时只读。'),
-              h('p', { id: primaryToggleReasonId, className: 'ob-small ob-muted' }, !item.canToggle ? (!item.builtin ? '请编辑外部清单并重载后启停。' : '当前状态不允许启停。') : busy || (cardOperation && !operationTerminal(cardOperation)) ? '操作正在处理中，请等待完成或继续观察。' : item.enabled ? '停用将停止模块与关联任务，并影响依赖模块。' : '启用后将恢复符合条件的调度，可能调用模型或发送消息。'),
+              h('p', { className: 'ob-module-consequences' },
+                h('span', { id: primaryConfigReasonId }, !(hasConfigUi(item, ui) || hasLegacyConfigUi(item, ui)) ? '暂无配置。' : busy ? '正在处理操作。' : '未运行时配置只读。'), ' ',
+                h('span', { id: primaryToggleReasonId }, !item.canToggle ? (!item.builtin ? '启停需修改清单并重载。' : '当前不可启停。') : busy || (cardOperation && !operationTerminal(cardOperation)) ? '操作正在处理中。' : item.enabled ? '停用会停止任务并影响依赖。' : '启用可恢复调度、调用模型或发送消息。')),
             ) : null,
           ),
           error ? h(Banner, { tone: 'err', message: error }) : null,
@@ -9362,7 +9402,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               ? loadingShell
               : h(
                   'div',
-                  { className: 'ob-page' },
+                  { className: cx('ob-page', navigation.area === 'extensions' && navigation.moduleId && 'ob-module-detail-page') },
                   error
                     ? h(Banner, {
                         tone: 'err',
