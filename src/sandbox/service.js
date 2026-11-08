@@ -2,20 +2,21 @@ import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { open, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { assertDriver, fail, reasonCode } from './driver-contract.js'
-import { digest, deriveScope, effectivePolicy, normalizeSandbox, policyGeneration, validateJob } from './policy.js'
+import { assertDriver, enforcementStatus, fail, reasonCode } from './driver-contract.js'
+import { digest, deriveScope, effectivePolicy, NETWORK_POLICY, normalizeSandbox, policyGeneration, validateJob } from './policy.js'
 import { createWorkspace, privateDirectory } from './workspace.js'
 import { createAudit } from './audit.js'
 import { fileWorker } from './file-worker.js'
 
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'interrupted'])
-const SAFE_ERRORS = new Set(['INVALID_SANDBOX_INPUT', 'POLICY_CHANGED', 'POLICY_DENIED', 'SCOPE_UNAVAILABLE', 'SANDBOX_DISABLED', 'SANDBOX_UNAVAILABLE', 'SANDBOX_DRAINING', 'SANDBOX_BUSY', 'JOB_NOT_FOUND', 'ARTIFACT_NOT_FOUND', 'IDEMPOTENCY_CONFLICT', 'AUDIT_UNAVAILABLE', 'WORKSPACE_PATH_INVALID', 'WORKSPACE_UNSAFE', 'WORKSPACE_QUOTA', 'PROBE_BUSY', 'DRIVER_FAILED'])
+const SAFE_ERRORS = new Set(['INVALID_SANDBOX_INPUT', 'NETWORK_POLICY_UNSUPPORTED', 'POLICY_CHANGED', 'POLICY_DENIED', 'SCOPE_UNAVAILABLE', 'SANDBOX_DISABLED', 'SANDBOX_UNAVAILABLE', 'SANDBOX_DRAINING', 'SANDBOX_BUSY', 'JOB_NOT_FOUND', 'ARTIFACT_NOT_FOUND', 'IDEMPOTENCY_CONFLICT', 'AUDIT_UNAVAILABLE', 'WORKSPACE_PATH_INVALID', 'WORKSPACE_UNSAFE', 'WORKSPACE_QUOTA', 'PROBE_BUSY', 'DRIVER_FAILED'])
 export const publicError = e => SAFE_ERRORS.has(e?.code) ? e.code : e?.code === 'ENOENT' ? 'ARTIFACT_NOT_FOUND' : 'SANDBOX_UNAVAILABLE'
 export function createSandboxService({ root, getConfig, driver, audit = createAudit({ root: join(root, 'audit') }), workspace = createWorkspace({ root: join(root, 'workspace') }), now = Date.now }) {
   assertDriver(driver)
   const jobs = new Map(), controllers = new Map()
   let chain = Promise.resolve(), running = 0, stopping = false, auditFailed = false, probePromise, probedGeneration = null, lastProbe = -Infinity
   let readiness = 'disabled', reason = 'DISABLED'
+  let driverCapabilities = null
   const serial = work => { const next = chain.catch(() => {}).then(work); chain = next; return next }
   const init = privateDirectory(root).then(() => audit.load()).then(async rows => {
     for (const row of rows) if (/^job_[a-f0-9-]{36}$/.test(row.id)) {
@@ -41,8 +42,8 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
     const cfg = normalizeSandbox(getConfig()?.sandbox), generation = policyGeneration(getConfig())
     if (stopping) { readiness = 'draining'; reason = 'DRAINING' }
     else if (auditFailed) { readiness = 'failed'; reason = 'AUDIT_UNAVAILABLE' }
-    else if (!cfg.enabled) { readiness = 'disabled'; reason = 'DISABLED'; probedGeneration = null }
-    else if (probedGeneration !== generation) { readiness = 'checking'; reason = 'CHECKING' }
+    else if (!cfg.enabled) { readiness = 'disabled'; reason = 'DISABLED'; probedGeneration = null; driverCapabilities = null }
+    else if (probedGeneration !== generation) { readiness = 'checking'; reason = 'CHECKING'; driverCapabilities = null }
     for (const [id, ctl] of controllers) if (stopping || !cfg.enabled || jobs.get(id)?.policyGeneration !== generation || auditFailed || (readiness === 'failed' && jobs.get(id)?.kind === 'execute')) ctl.abort()
     return cfg
   }
@@ -134,7 +135,7 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
     async status(context) {
       await init; refresh()
       const { effective } = policy(context)
-      return { ok: true, state: readiness, reason, driver: driver.name, network: false, policyGeneration: effective.generation, capabilities: effective.capabilities,
+      return { ok: true, state: readiness, reason, driver: driver.name, network: false, networkPolicy: { ...NETWORK_POLICY }, driverCapabilities: structuredClone(driverCapabilities), policyGeneration: effective.generation, capabilities: effective.capabilities,
         workspaceAvailable: effective.capabilities.includes('workspace') && !stopping && !auditFailed,
         running, queued: pending.size, limits: effective.limits }
     },
@@ -144,12 +145,13 @@ export function createSandboxService({ root, getConfig, driver, audit = createAu
       if (!cfg.enabled || stopping || auditFailed) return { state: readiness, reason }
       if (probePromise) return probePromise
       if (running || (force && now() - lastProbe < 60000)) fail('PROBE_BUSY')
-      lastProbe = now(); readiness = 'checking'; reason = 'CHECKING'
+      lastProbe = now(); readiness = 'checking'; reason = 'CHECKING'; driverCapabilities = null
       const generation = policyGeneration(getConfig())
       probePromise = (async () => {
         try {
           const result = await driver.probe()
           if (policyGeneration(getConfig()) !== generation || stopping) { refresh(); return { state: readiness, reason } }
+          if (result?.enforcement) driverCapabilities = { enforcement: enforcementStatus(result.enforcement), ...(typeof result.seatbeltAvailable === 'boolean' ? { seatbeltAvailable: result.seatbeltAvailable } : {}) }
           probedGeneration = generation; readiness = result?.ready === true ? 'ready' : 'unavailable'; reason = result?.ready === true ? 'READY' : reasonCode(result?.reason)
         } catch { probedGeneration = generation; readiness = 'unavailable'; reason = 'PROBE_FAILED' }
         finally { probePromise = null }

@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- C08（仅 P1 能力边界，基线 C07 `a6740fd`）：新增 macOS Seatbelt discovery driver，auto 在 macOS 选择 local-macos；只检查固定 `/usr/bin/sandbox-exec` 的安全属性/可执行性，公开未证明的 enforcement 能力。即使二进制可用，仍因 RESOURCE_LIMITS_UNPROVEN 拒绝全部脚本执行，不启动 host shell，不声称 Seatbelt containment 已验证。
+- 受控 egress 明确不支持：策略/status 返回 NETWORK_POLICY_UNSUPPORTED；配置只接受 network=false，作业任何 network 字段均拒绝（管理作业 API 为 HTTP 400），无 host-network fallback。角色矩阵不变，普通用户默认授权仍关闭。
+- 真实模型 Chat preview 仅增加 JSDoc 类型契约与 REAL_MODEL_PREVIEW_UNAVAILABLE 状态；规定逐请求管理员许可、独立 preview 用量/预算和 capture-only transport，尚未接入 live adapter/凭据或自动调用。原因、后续接口与证据见 [ADR-022 P1 状态](docs/architecture/ADR-022-agent-execution-broker.md#c08-p1-能力状态与契约)。新增能力感知、macOS fake probe、拒绝执行/网络/preview 和打包回归；fake probe 不证明 OS enforcement。无新依赖、OS 包、版本变更、推送、部署、tag 或发布。
+
 - C07：新增六个 Agent sandbox 工具，严格 job/相对路径输入，每次调用检查 broker ready、服务端角色/群策略及人格/策略代次；有界输出与固定错误码。Python 保持不可用，action 仅 C06 file.delete，无新 P1 能力。
 - live broker 经 host/assembly/cognition 注入 runtime；会话绑定环境、人格/发送者/聊天/preset/策略代次和 runtime/session 实例。超时/撤权/卸载先撤销工具、取消作业、尝试 abort 并退休会话；迟到 admission、输出、事件与 QQ 动作不再接纳，oneshot 文本不转执行。原三个 QQ 工具行为保留。
 - 沙盒模式独立安全 preset，缺失时安全失败/oneshot 回退，无 generic fs/web/exec fallback。当前 host driver unavailable，实际不挂 sandbox 工具；preset 配置缺口记录于 [ADR-022](docs/architecture/ADR-022-agent-execution-broker.md#c07-preset-缺口不改-live-patch)，`cordis.patch.yml` / `.archify/` 未修改。新增工具/runtime/装配回归；fake ready 证据不代表真实 containment。版本不变，仅本地校验、打包及提交。

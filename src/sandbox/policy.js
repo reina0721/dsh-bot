@@ -5,17 +5,19 @@ import { fail } from './driver-contract.js'
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value
 export const digest = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(canonical(value))).digest('hex')
+export const NETWORK_POLICY = Object.freeze({ supported: false, enabled: false, reason: 'NETWORK_POLICY_UNSUPPORTED' })
 export const SANDBOX_DEFAULTS = Object.freeze({
   enabled: false, driver: 'auto', network: false,
   limits: { concurrency: 2, jobs: 128, timeoutMs: 10000, outputBytes: 65536, memoryMiB: 128, processes: 32 },
   policy: { ownerPrivate: ['workspace', 'execute'], operatorPrivate: [], otherPrivate: [], group: [] },
 })
 export function normalizeSandbox(raw = {}) {
+  if (raw?.network !== undefined && raw.network !== false) fail('NETWORK_POLICY_UNSUPPORTED')
   const limit = (key, min, max) => Number.isInteger(raw?.limits?.[key]) ? Math.max(min, Math.min(max, raw.limits[key])) : SANDBOX_DEFAULTS.limits[key]
   const capabilities = key => Array.isArray(raw?.policy?.[key])
     ? ['workspace', 'execute'].filter(c => raw.policy[key].includes(c)) : [...SANDBOX_DEFAULTS.policy[key]]
   return {
-    enabled: raw?.enabled === true, driver: ['auto', 'local-linux', 'unavailable'].includes(raw?.driver) ? raw.driver : 'auto', network: false,
+    enabled: raw?.enabled === true, driver: ['auto', 'local-linux', 'local-macos', 'unavailable'].includes(raw?.driver) ? raw.driver : 'auto', network: false,
     limits: { concurrency: limit('concurrency', 1, 4), jobs: limit('jobs', 1, 128), timeoutMs: limit('timeoutMs', 100, 30000), outputBytes: limit('outputBytes', 1024, 65536), memoryMiB: limit('memoryMiB', 32, 256), processes: limit('processes', 4, 64) },
     policy: Object.fromEntries(Object.keys(SANDBOX_DEFAULTS.policy).map(key => [key, capabilities(key)])),
   }
@@ -34,10 +36,11 @@ export function effectivePolicy(config, scope) {
   const settings = normalizeSandbox(config?.sandbox)
   const row = scope.chatType === 'group' ? 'group' : `${scope.role}Private`
   const capabilities = settings.enabled ? settings.policy[row] || [] : []
-  return { ...settings, capabilities, generation: policyGeneration(config) }
+  return { ...settings, networkPolicy: { ...NETWORK_POLICY }, capabilities, generation: policyGeneration(config) }
 }
 export function validateJob(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.kind !== 'string') fail('INVALID_SANDBOX_INPUT')
+  if (Object.hasOwn(input, 'network')) fail('NETWORK_POLICY_UNSUPPORTED')
   const fields = {
     execute: ['kind', 'requestId', 'policyGeneration', 'code'],
     'file.write': ['kind', 'requestId', 'policyGeneration', 'path', 'content'],

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { REAL_MODEL_PREVIEW_STATUS } from '../simulation/preview-contract.js'
 
 export const SANDBOX_CHAT_LIMITS = Object.freeze({ bodyBytes: 16 * 1024, requestsPerMinute: 120, pending: 8, operations: 1000 })
 const fail = code => { throw new Error(code) }
@@ -7,7 +8,7 @@ const fields = (value, keys) => {
 }
 const validId = id => typeof id === 'string' && /^sim_[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)
 const empty = () => ({ transcript: [], captures: [], capturedActions: [], receipts: [], deliveryReceipts: [], loops: [], stages: [] })
-export const sandboxChatEnvelope = (value = {}, requestId = `req_${randomUUID()}`) => ({ ...empty(), ...value, environment: 'simulation', realSends: 0, requestId })
+export const sandboxChatEnvelope = (value = {}, requestId = `req_${randomUUID()}`) => ({ ...empty(), ...value, environment: 'simulation', realSends: 0, realModelPreview: { ...REAL_MODEL_PREVIEW_STATUS }, requestId })
 
 // Capability boundary: only an isolated service and an identity reader. No live
 // gateway, config, store, loop observer, runtime, or network capability enters here.

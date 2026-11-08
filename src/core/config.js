@@ -656,11 +656,11 @@ export const CONFIG_GROUPS = [
     ],
   },
   {
-    id: 'sandbox', title: 'Agent 执行沙盒', description: 'C06 broker；默认关闭，网络始终关闭；不接入 Agent 工具。',
+    id: 'sandbox', title: 'Agent 执行沙盒', description: '默认关闭；Agent 工具需 broker ready 与安全 preset；网络不支持，macOS 仅探测。',
     fields: [
       { path: 'sandbox.enabled', label: '启用 broker', type: 'switch', default: false },
-      { path: 'sandbox.driver', label: '隔离驱动', type: 'select', default: 'auto', options: ['auto', 'local-linux', 'unavailable'].map(value => ({ value, label: value })) },
-      { path: 'sandbox.network', label: '网络（固定关闭）', type: 'switch', default: false, help: 'C06 始终规范化为 false。' },
+      { path: 'sandbox.driver', label: '隔离驱动', type: 'select', default: 'auto', options: ['auto', 'local-linux', 'local-macos', 'unavailable'].map(value => ({ value, label: value })) },
+      { path: 'sandbox.network', label: '网络（不支持）', type: 'switch', default: false, help: 'NETWORK_POLICY_UNSUPPORTED：仅接受 false，无 host network 回退。' },
       ...Object.entries(SANDBOX_DEFAULTS.limits).map(([key, value]) => ({ path: `sandbox.limits.${key}`, label: key, type: 'number', default: value })),
       ...Object.entries(SANDBOX_DEFAULTS.policy).map(([key, value]) => ({ path: `sandbox.policy.${key}`, label: key, type: 'string-list', default: value, help: '允许 workspace / execute；operator/group 默认无能力。' })),
     ],

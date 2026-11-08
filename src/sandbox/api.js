@@ -33,7 +33,7 @@ export function createSandboxApi({ service, currentPersonaId, now = Date.now }) 
         } finally { inFlight-- }
       } catch (e) {
         const code = publicError(e)
-        const status = code === 'INVALID_SANDBOX_INPUT' || code.startsWith('WORKSPACE_') ? 400 : ['JOB_NOT_FOUND', 'ARTIFACT_NOT_FOUND'].includes(code) ? 404
+        const status = ['INVALID_SANDBOX_INPUT', 'NETWORK_POLICY_UNSUPPORTED'].includes(code) || code.startsWith('WORKSPACE_') ? 400 : ['JOB_NOT_FOUND', 'ARTIFACT_NOT_FOUND'].includes(code) ? 404
           : code === 'POLICY_DENIED' ? 403 : ['POLICY_CHANGED', 'IDEMPOTENCY_CONFLICT'].includes(code) ? 409 : ['SANDBOX_BUSY', 'PROBE_BUSY'].includes(code) ? 429 : 503
         return { status, body: { ok: false, code, message: code } }
       }

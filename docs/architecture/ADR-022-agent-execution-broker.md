@@ -1,7 +1,7 @@
-# ADR-022：Agent execution broker（AstrBot alignment C06 / C07）
+# ADR-022：Agent execution broker（AstrBot alignment C06 / C07 / C08）
 
-- 状态：C06 broker 与 C07 Agent 工具/会话隔离已实现；C07 基线 C06 `b90f731`，默认关闭。
-- 范围：执行接纳、工作区文件能力、Linux bwrap 驱动、管理 API、持久审计及 C07 运行时接线。
+- 状态：C06 broker 与 C07 Agent 工具/会话隔离已实现；C08 基于 C07 `a6740fd` 增加 P1 能力 seam，默认关闭，未开放新执行/网络/真实模型能力。
+- 范围：执行接纳、工作区文件能力、Linux bwrap 驱动、管理 API、持久审计、C07 运行时接线及 C08 macOS discovery / egress 拒绝 / preview 契约。
 - preset 配置缺口尚待宿主补齐；受保护的 `cordis.patch.yml` 与 `.archify/` 保持原样。离线 Chat sandbox 保持原服务与 API。
 
 ## 信任边界与策略
@@ -99,3 +99,44 @@ host 在 assembleServices 前建立唯一 executionSandbox，经 assembly → co
 两者必须排除 `@deepseek-ai/dsh-tool-fs`、`@deepseek-ai/dsh-tool-fs-search`、`@deepseek-ai/dsh-tool-web` 及任何通用 shell/exec/宿主文件/网络插件或继承。旧 `dsh-bot-private` 目前仍声明 fs/web，仅属于未启用 sandbox 的 legacy 路径，不能作为沙盒隔离证据。安全 preset 缺失时创建失败，返回固定 RUNTIME_FAILED 并允许 oneshot 文本回退；不尝试 legacy preset，不挂通用工具作为 fallback。
 
 C07 未安装 bwrap/Python 或修改 cgroup、版本、live preset/patch。当前宿主无可用执行驱动，实际路由不挂 sandbox 工具；真实 ready Agent 与 preset/DSH 集成仍待宿主具备上述条件后验证。`test/runtime-sandbox-tools.test.js` 用 fake ready broker / fake driver 与真实 broker 文件能力验证工具、策略、路径、输出界限、scope/代次、timeout/cancel/dispose、迟到 admission/action/event、无 generic fallback、QQ 兼容及真实 cognition 装配。fake ready 证据不证明 OS containment，真实 Linux 探针仍按上文单独报告。
+
+## C08 P1 能力状态与契约
+
+| 能力 | 当前状态 / 固定原因 | 边界 |
+| --- | --- | --- |
+| macOS Seatbelt | discovery only；可用二进制仍为 unavailable / RESOURCE_LIMITS_UNPROVEN | 不启动用户代码或 Seatbelt profile，无 host shell 回退 |
+| controlled egress | unsupported / NETWORK_POLICY_UNSUPPORTED | 网络配置/作业请求拒绝，无共享宿主网络实现 |
+| real-model Chat preview | contract-only / REAL_MODEL_PREVIEW_UNAVAILABLE | 仅类型/状态/文档，无 live adapter 或自动调用 |
+| 普通用户授权 | 默认关闭，角色矩阵不变 | 沿用 C06/C07 服务端 owner/operator/other/group 策略，无新增 grant API |
+
+### macOS discovery 与资源证明
+
+`src/sandbox/drivers/local-macos.js` 只在 darwin 检查固定 `/usr/bin/sandbox-exec`，用 lstat 拒绝 symlink/非普通文件、非 root 所有、setuid/setgid 和 group/world 可写文件，再检查 X_OK。缺失返回 SEATBELT_MISSING，不安全/不可执行/检查异常返回 SEATBELT_UNSAFE，错误投影不泄露路径。即使检查成功，也只报告 `seatbeltAvailable:true`，不会执行所谓 containment smoke test。
+
+probe 的 `enforcement` 明确报告 filesystem/network/memory/processes/cpu/processTree 全 false。二进制存在不能证明 profile 的文件/网络边界，更不能证明每个作业的内存/进程数/CPU 限制及整个进程树的可靠回收。当前无这些证明和对应 runner，因此 execute 在 probe 前后均拒绝 DRIVER_UNAVAILABLE；broker 报 unavailable 并拒绝 SANDBOX_UNAVAILABLE。工作区受限文件操作仍走独立 broker 检查。没有用 Node 超时、kill 单 PID、ulimit 或普通 host 子进程冒充等价隔离。
+
+bootstrap 的 auto 在 Linux 选择原 local-linux，在 macOS 选择 local-macos，其它平台 unavailable；显式选择不被其它平台驱动替代。status 增加经过固定字段投影的 `driverCapabilities`，仅保留 boolean enforcement 和可选 seatbeltAvailable；无探针结果/策略改变时为 null。Linux 驱动的探针及隔离机制不变，null 不构成关于其 enforcement 的新证据。
+
+### 网络请求必须拒绝
+
+`policy.js` 的有效策略与 broker status 都报告 `networkPolicy:{supported:false,enabled:false,reason:"NETWORK_POLICY_UNSUPPORTED"}`；`network:false` 保持兼容。normalizeSandbox/normalizeConfig 只接受缺省或 false，true、host 字符串和对象均抛出固定错误，保存不会静默降级。旧配置若设 true，必须显式改为 false 后加载。
+
+validateJob 在接纳/审计/driver 执行前拒绝任何 network 字段，包括 false；管理 jobs/create 公开固定码并返回 HTTP 400。当前没有 allowlist、代理、DNS/重定向策略或凭据过滤实现，不能把受控 egress 宣称为支持。Linux 原 `--unshare-all` 的 network namespace 不变，不加入 share-net、host network、网络 helper 或通用网络工具回退；macOS 不执行代码。
+
+### 真实模型 preview 的后续接口（尚未实现）
+
+当前 simulation 的 createGraph 固定 createFixtureModel/createFixtureRuntime，使用虚拟 scheduler 并自动推进聚合/提醒。没有逐请求 live 网络授权边界或独立 preview 用量账本。直接注入 live registry 会把后台阶段/重试/计时器也变为真实模型调用，无法满足一次显式许可只覆盖一次请求的约束。本次采用允许的 contract/status-only 范围，保持 capture transport、fixture 图与 live 图的既有边界，不接入凭据或 live models。
+
+`src/simulation/preview-contract.js` 用 JSDoc 定义 RealModelPreviewRequest / RealModelPreviewUsage / RealModelPreviewAdapter；这是后续接口约束，不是可运行 gate。Chat HTTP envelope 明确 `realModelPreview:{available:false,reason:"REAL_MODEL_PREVIEW_UNAVAILABLE",implementation:"contract-only"}`；不存在 preview 路由或配置开关，现有严格 schema 继续拒绝 preview/approved/model/身份注入。create/event/advance/reset 不自动启用真实模型，fixture 路径也不回退 live。
+
+未来实现必须满足以下条件，未满足前保持 unavailable：
+
+1. 管理认证适配器从服务端生成单次许可，绑定 requestId、当前 persona/session/generation 和管理员 allowlist 中的 modelId；不能信任客户端 role/approved 或任意 endpoint/密钥。每次请求重新确认，不继承给 timers/retries/普通用户或下一事件；过期/撤销/重复请求在 I/O 前拒绝。
+2. 独立 preview 用量账本与预算，发送前预留有界 token/并发/费用额度；失败、取消、超时及迟到 provider usage 必须归档，既不污染 live usage，也不假称 fixture 免费用量等于真实计费。没有自动重试/fallback 或后台 live 调用。
+3. 仅有界 prompt/输出、AbortSignal/墙钟限制、明确的模型网络调用；动作始终 capture-only，不注入真实 gateway、QQ、通用工具、live store 或 Agent session。其模型网络授权是独立管理员能力，不能开放 execution sandbox 网络；不能声称真实模型推理离线。
+
+### C08 验证证据与未验证项
+
+`test/agent-sandbox-p1.test.js` 的 fake filesystem probe 覆盖固定路径、权限/所有者/特殊文件/缺失/异常、始终拒绝执行、状态能力投影和策略失效；fake ready 只用于证明 network 请求无论 readiness 都不能 admission。真实 simulation 测试验证 preview 请求被拒绝、fixture 模型与 capture 状态保留；网络诊断通道未观测到 I/O。普通用户/操作员/群默认无能力的矩阵有回归。
+
+真实 macOS discovery 测试按平台报告并显式 skip Seatbelt containment/resource enforcement，不用 fake 结果充当隔离证据。本次 Linux 环境 macOS 返回 UNSUPPORTED_PLATFORM；Linux 仍缺 bwrap、cgroup 委派只读，原七项真实隔离检查 skip、执行拒绝。**未证明本机 Linux 或 macOS enforcement，未调用真实模型或验证计费。** 不安装 OS 包/第三方 driver，不修改安全 preset 缺口、受保护文件、依赖或版本。

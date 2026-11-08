@@ -712,15 +712,15 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 仅当前聊天命令回复，无步骤执行、动作绑定、审批集成或后台 LLM/自主执行器；离线 fake LLM 测试，真实模型/QQ 未验证。GAP #38 仍 partial；矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。
 
 
-## Agent 执行 broker（C06）
+## Agent 执行 broker（C06 / C07 / C08）
 
-System → Security 的 `sandbox` 设置与离线 Chat sandbox 独立；默认关闭，不改 runtime/preset，也不注册 Agent 工具。完整安全边界、API、审计和恢复见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。
+System → Security 的 `sandbox` 设置与离线 Chat sandbox 独立；默认关闭。C07 只在 broker ready 且会话授权时挂载 Agent 工具，要求宿主另行提供安全 preset；C08 仅增加 P1 能力边界。完整安全边界、API、审计和恢复见 [ADR-022](architecture/ADR-022-agent-execution-broker.md)。
 
 | 配置路径 | 默认值 | 范围 / 含义 |
 | --- | --- | --- |
 | `sandbox.enabled` | false | 显式启用；disabled 拒绝所有作业 |
-| `sandbox.driver` | auto | auto / local-linux / unavailable；auto 仅在 Linux 选择 bwrap，其它平台 unavailable |
-| `sandbox.network` | false | 固定关闭，true 也规范化为 false |
+| `sandbox.driver` | auto | auto / local-linux / local-macos / unavailable；auto 在 Linux 选择 bwrap，在 macOS 选择 Seatbelt discovery，其它平台 unavailable；显式驱动不跨平台回退 |
+| `sandbox.network` | false | 仅接受 false；true 或其它值在配置规范化/保存时抛出 NETWORK_POLICY_UNSUPPORTED，原先使用 true 的配置须改为 false；受控 egress 不支持 |
 | `sandbox.limits.concurrency` | 2 | 1–4；含文件作业，单作用域另加 workspace lock |
 | `sandbox.limits.jobs` | 128 | 1–128；活动作业不可淘汰 |
 | `sandbox.limits.timeoutMs` | 10000 | 100–30000 ms；执行墙钟超时 |
@@ -733,5 +733,11 @@ System → Security 的 `sandbox` 设置与离线 Chat sandbox 独立；默认�
 | `sandbox.policy.group` | [] | 所有群聊默认无能力 |
 
 workspace 硬上限 64 MiB / 1024 entries，路径由 persona/principal/chat/session 服务端摘要派生，不接受宿主目录配置。启用后先读 GET `/sandbox/status` 的 `policyGeneration`，再 POST `/sandbox/probe`；Linux 缺 bwrap 或可写且支持 memory/pids/cpu/kill 的 cgroup v2 委派时 unavailable，execute 拒绝。独立安全的 file 操作仍可用。
+
+macOS 仅探测固定 `/usr/bin/sandbox-exec`：缺失/不安全分别返回 SEATBELT_MISSING / SEATBELT_UNSAFE；可用仍返回 unavailable / RESOURCE_LIMITS_UNPROVEN。`driverCapabilities.seatbeltAvailable` 只代表二进制存在且通过文件检查；`enforcement` 的 filesystem/network/memory/processes/cpu/processTree 全为 false，不启动 Seatbelt profile 或用户代码。内存/进程/CPU 限额及完整进程树清理没有证明，执行始终不可用。未报告该能力字段的驱动、尚未探测或策略变化时 `driverCapabilities` 为 null；不是 Linux enforcement 的新声明。
+
+有效策略与 status 的 `networkPolicy` 为 `{supported:false,enabled:false,reason:"NETWORK_POLICY_UNSUPPORTED"}`，顶层 `network` 仍为 false。作业输入的任何 `network` 字段（包括 false、host 或 allowlist 对象）均以 NETWORK_POLICY_UNSUPPORTED 拒绝，管理 jobs/create 返回 HTTP 400；没有受控 egress 实现或共享宿主网络的回退。普通用户默认无授权，C08 不改既有角色/群聊矩阵，也不新增普通用户 grant 能力。
+
+离线 Chat API envelope 的 `realModelPreview` 为 `{available:false,reason:"REAL_MODEL_PREVIEW_UNAVAILABLE",implementation:"contract-only"}`。目前没有 preview 启用配置、live model adapter、调用端点或独立计费实现；提交 preview/approved/model 等未知字段仍被拒绝，create/event/advance/reset 不调用真实模型。[P1 契约](architecture/ADR-022-agent-execution-broker.md#c08-p1-能力状态与契约)要求未来逐请求管理员许可、独立 preview 用量/预算、捕获 transport 与取消/迟到响应记账，不能复用 live 会话或通过 sandbox.network 放行。
 
 POST `/sandbox/jobs/create` 示例：`{"kind":"file.write","requestId":"demo-1","policyGeneration":"<status 中的摘要>","path":"notes.txt","content":"hello"}`；执行 kind 为 execute 且仅增 `code`，read/delete 用 path，list 无附加字段。请求不能传身份、环境、挂载或路径根。job detail/artifact/cancel 只接受服务返回的不透明 ID；artifact 是有界 base64 JSON。策略变更后使用新代次，不能重放旧策略绕过授权。管理 HTTP 身份来自 DSH 管理认证边界；固定 management/private principal，当前人格分区。

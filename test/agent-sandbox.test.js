@@ -44,7 +44,8 @@ async function harness(t, options = {}) {
 
 test('C06 schema: opt-in, fixed network off, capped limits and server-derived owner/private policy', () => {
   assert.equal(defaultConfig().sandbox.enabled, false)
-  const { config } = normalizeConfig({ sandbox: { enabled: true, network: true, limits: { concurrency: 999, jobs: 999, memoryMiB: 999 } } })
+  assert.throws(() => normalizeConfig({ sandbox: { network: true } }), /NETWORK_POLICY_UNSUPPORTED/)
+  const { config } = normalizeConfig({ sandbox: { enabled: true, limits: { concurrency: 999, jobs: 999, memoryMiB: 999 } } })
   assert.equal(config.sandbox.network, false); assert.equal(config.sandbox.limits.concurrency, 4); assert.equal(config.sandbox.limits.jobs, 128); assert.equal(config.sandbox.limits.memoryMiB, 256)
   const cfg = { ...config, access: { ownerQQ: '1', operators: ['2'] } }
   assert.deepEqual(effectivePolicy(cfg, deriveScope(cfg, context)).capabilities, ['workspace', 'execute'])
