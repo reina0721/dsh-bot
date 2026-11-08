@@ -281,7 +281,10 @@ export function createPersonaService({ store, getConfig, clock, settingsHooks = 
   function records() {
     try {
       return store.list('persona', { limit: 1000 })
-        .map((item) => sanitizePersona(item, cfg()))
+        .map((item) => {
+          const current = sanitizePersona(item, cfg())
+          return settingsHooks.read?.(current) || current
+        })
         .sort((a, b) => (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0) || a.id.localeCompare(b.id))
     } catch (error) {
       return []
@@ -292,7 +295,9 @@ export function createPersonaService({ store, getConfig, clock, settingsHooks = 
     const wanted = sanitizePersonaId(id, '')
     if (!wanted) return null
     const existing = store.get('persona', wanted)
-    return existing ? sanitizePersona(existing, cfg()) : null
+    if (!existing) return null
+    const current = sanitizePersona(existing, cfg())
+    return settingsHooks.read?.(current) || current
   }
 
   function ensureActiveId() {
@@ -337,7 +342,10 @@ export function createPersonaService({ store, getConfig, clock, settingsHooks = 
       createdAt: Number(next?.createdAt) || Number(previous?.createdAt) || now,
       updatedAt: now,
     }, cfg())
-    store.put('persona', id, { ...persona, reason, at: now })
+    store.tx(() => {
+      settingsHooks.saved?.(previous, persona)
+      store.put('persona', id, { ...persona, reason, at: now })
+    })
     return store.get('persona', id)
   }
 
@@ -418,7 +426,10 @@ export function createPersonaService({ store, getConfig, clock, settingsHooks = 
     return { ok: true, activeId: readActiveId(), persona: getById(readActiveId()), personas: list() }
   }
 
-  function get() { return ensure() }
+  function get() {
+    const current = getById(settingsHooks.currentId?.()) || ensure()
+    return settingsHooks.runtimeRead?.(current) || current
+  }
 
   function edit(patch, personaId = '') {
     const active = ensureActiveId()
@@ -443,14 +454,20 @@ export function createPersonaService({ store, getConfig, clock, settingsHooks = 
       updatedAt: now,
       history: [{ at: now, changes: [], reason: 'reset' }],
     }, cfg())
-    store.put('persona', id, { ...persona, reason: 'reset', at: now })
+    store.tx(() => {
+      settingsHooks.saved?.(current, persona)
+      store.put('persona', id, { ...persona, reason: 'reset', at: now })
+    })
     return persona
   }
 
   function maybeEvolve(evidence, elapsedDays = 1) {
-    const before = ensure()
-    const next = evolvePersona(before, evidence, { config: cfg(), elapsedDays, now: clock.now() })
-    if (next.version !== before.version) store.put('persona', before.id, next)
+    const before = get()
+    const next = evolvePersona(before, evidence, { config: settingsHooks.config?.()?.cognition || cfg(), elapsedDays, now: clock.now() })
+    if (next.version !== before.version) store.tx(() => {
+      settingsHooks.saved?.(before, next)
+      store.put('persona', before.id, next)
+    })
     store.put('state', 'persona.lastEvolutionAt', { at: clock.now(), elapsedDays })
     return next
   }

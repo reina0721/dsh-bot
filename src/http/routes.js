@@ -144,7 +144,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }
 
   const statusPayload = () => {
-    const cfg = getConfig()
+    const cfg = cognition?.services?.settings?.resolveConfig() || getConfig()
     return {
       ok: true,
       apiVersion: API_VERSION,

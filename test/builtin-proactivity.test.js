@@ -143,8 +143,10 @@ test('core constructs no engine/timer; facade/HTTP safe when absent, /active can
   assert.ok(!delays.includes(300000)); assert.ok(!delays.includes(600000))
   assert.equal(cognition.proactivityStats().reason, 'MODULE_DISABLED')
   assert.deepEqual(await cognition.runProactivity(), { ok: false, reason: 'MODULE_DISABLED' })
-  await cognition.services.commands.handle({ text: '/active', senderId: '10001', chatType: 'private', chatId: '10001', isOwner: true })
-  assert.equal(config.cognition.proactivity.enabled, true)
+  const result = await cognition.services.commands.handle({ text: '/active', senderId: '10001', chatType: 'private', chatId: '10001', isOwner: true })
+  assert.equal(result.handled, true)
+  assert.equal(config.cognition.proactivity.enabled, false)
+  assert.equal(cognition.services.settings.resolveConfig().cognition.turn.groupReplyMode, 'addressed')
   assert.equal(providers.get('proactivity'), null)
   const get = (await fake.call('/onebot-qq/api/cognition/proactivity', undefined, { method: 'GET' })).json
   const run = (await fake.call('/onebot-qq/api/cognition/proactivity/run', {}, { method: 'POST' })).json

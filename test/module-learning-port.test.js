@@ -4,7 +4,7 @@ import { harness, deferred } from './helpers/learning.js'
 
 test('port exposes only bounded methods; new-event auto enqueue only; private policy and disabled states', t => {
   const h = harness(t, { autoResearch: true })
-  assert.deepEqual(Object.keys(h.port), ['onUnknownDetected', 'enqueueAuto', 'pending', 'claim', 'sources', 'collectFromSource', 'extractClaim', 'complete', 'fail', 'release', 'retry'])
+  assert.deepEqual(Object.keys(h.port), ['withRuntime', 'onUnknownDetected', 'enqueueAuto', 'pending', 'claim', 'sources', 'collectFromSource', 'extractClaim', 'complete', 'fail', 'release', 'retry'])
   h.detect('old'); h.engine.start(); assert.equal(h.store.count('learning_task'), 0)
   h.detect('new'); assert.equal(h.store.count('learning_task'), 1)
   assert.equal(h.store.list('learning_task')[0].plan.length, 3)

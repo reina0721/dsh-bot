@@ -1,23 +1,23 @@
 # 配置说明（CONFIG）
 
-C09 当前状态见 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)：311 个字段按唯一 owner 编辑，profile 迁移/API/UI 已实现但保存仍 staged、运行仍 legacy；System/module 保持原生效规则。broker 默认关闭，本机 bwrap 缺失且 cgroup 委派只读，execute fail closed；macOS 仅 probe，无 egress、真实模型 preview 或 Windows 执行。C09 无配置/迁移/版本变更。
+C09 历史验收见 [AstrBot 对齐验收](architecture/ASTRBOT-ALIGNMENT-ACCEPTANCE.md)：311 个字段按唯一 owner 编辑，profile 迁移/API/UI 后已完成运行时切换，保存影响后续使用；System/module 保持原生效规则。broker 默认关闭，本机 bwrap 缺失且 cgroup 委派只读，execute fail closed；macOS 仅 probe，无 egress、真实模型 preview 或 Windows 执行。C09 无配置/迁移/版本变更。
 
 本文列出 `dsh-bot` 的**全部配置项**：路径、类型、默认值、取值范围、作用，以及配置文件位置、
 保存/热应用规则和环境变量。配置项来源是 `src/core/config.js` 的 `DEFAULTS`（默认值）与
 `CONFIG_GROUPS`（面板字段表）；面板表单完全按 `CONFIG_GROUPS` 数据驱动渲染。
 
-**C02 后端设置契约已实现，运行仍为 legacy，C03 六区 UI 已适配。** profile 设置保存在现有认知 records store，保存只产生 staged override；System/模块继续使用原存储与运行行为。`GET /config` 展示 active profile 的 staged 值，`GET /status` 的 config 展示 legacy 运行配置。不要把两者混为同一个运行快照。未修改的旧 UI 不携带 revision/personaId，保存会明确拒绝；当前六区表单按 owner/revision 保存。完整门控、迁移/失败及接口契约见 [ADR-020 C02](architecture/ADR-020-settings-ownership-navigation.md#c02-实现与运行门控)。
+**Profile 运行已启用。** 迁移成功时 `runtimeMode:'profile'`、`profileEditsApply:'applied'`。原配置提供 System/全局策略、模块绑定和 legacy fallback，激活人格的 profile overrides 决定认知启停、模型选择、轮次、人设、记忆/情绪/策略等。`GET /config`、`GET /status` 的 config 展示当前有效 profile（凭据脱敏）；`/settings/view?scope=profile&id=…` 展示指定人格的有效设置，不激活人格。profile 保存影响后续轮次/任务，在途轮次固定人格与配置；System 安全策略和模块设置仍实时读取。未修改的旧 UI 不携带 revision/personaId，保存明确拒绝。完整迁移/回退契约见 [ADR-020](architecture/ADR-020-settings-ownership-navigation.md#profile-运行时切换)。
 
 后端接口统一前缀 `/onebot-qq/api`：`/settings/schema`、`/settings/view?scope=system|profile|module:<id>`（profile 另传 `id`）、`/settings/patch`，以及 `/profiles`、`/profiles/config?id=…`、`/profiles/config/save`。保存格式是 `{scope,id?,revision,patch:{完整字段路径:值}}`（profiles save 固定 profile），一个请求只允许一个 owner；过期 revision、跨 owner 和未知/只读字段拒绝。profile revision 为持久递增整数，System/legacy module 为内容摘要，module-file 沿用模块 revision。
 
-迁移为每个既有人格保存有效 profile 行为与不可变原始来源 snapshot/hash，显式值优先，不复制系统凭据、宿主路径或全局模型额度。失败事务回滚，profile editingAvailable:false，原运行继续。重启幂等，新人格独立初始化，复制继承 staged 设置，检查 inactive 人格不激活，删除清理 profile/snapshot，普通认知数据复制不复制设置。
+迁移为每个既有人格保存有效 profile 行为与不可变原始来源 snapshot/hash，显式值优先，不复制系统凭据、宿主路径或全局模型额度。失败事务回滚，profile editingAvailable:false，原运行继续。重启幂等，新人格独立初始化，复制继承 profile 设置，检查 inactive 人格不激活，删除清理 profile/snapshot，普通认知数据复制不复制设置。
 
-secret/secret-reference patch 使用 `{op:'keep'}` / `{op:'set',value:'…'}` / `{op:'clear'}`；新 view 只返回 masked/present，不返回凭据或环境变量内容。旧 config 中 token 为 `***`，回传 mask 保留值。旧 `/config/save` 必须提交 GET 返回的 `{config,personaId,revision}`，只路由发生变化的字段至唯一 owner；多个模块也不能合并保存。`/config/reset` 返回 SETTINGS_MULTI_OWNER，需逐 owner 保存。规范化 issues 只返回稳定 code，不回显输入。以下全量保存/热应用说明描述 legacy 内部存储机制，受此处的 C02 API 限制。
+secret/secret-reference patch 使用 `{op:'keep'}` / `{op:'set',value:'…'}` / `{op:'clear'}`；新 view 只返回 masked/present，不返回凭据或环境变量内容。旧 config 中 token 为 `***`，回传 mask 保留值。旧 `/config/save` 必须提交 GET 返回的 `{config,personaId,revision}`，只路由发生变化的字段至唯一 owner；多个模块也不能合并保存。`/config/reset` 返回 SETTINGS_MULTI_OWNER，需逐 owner 保存。规范化 issues 只返回稳定 code，不回显输入。已有 C02 未改的快照叶子在首次切换刷新为真实 legacy 行为，明确 staged overrides 则开始生效；runtimeVersion:1 防止重启重复重采样。旧人格编辑/reset/演化同步 profile revision。迁移或 profile 不可用时整份回退 legacy 并关闭 profile 编辑，不执行部分 overrides；错误不含底层异常。`/model` 命令映射当前 profile 并校验 revision。以下全量保存/热应用说明描述 legacy 内部存储机制，受此处单 owner API 限制。
 
 模块 WebUI Phase 1 只增加配置归属元数据（[ADR-014](architecture/ADR-014-module-webui.md)），不新增配置值或迁移编辑器。reply-delivery、typing、reminders 的 UI binding 为 `legacy-core`、available:false，继续使用原 cognition.reply/typing/reminders 存储 key 与配置页；sample 为 `module-file`、available:true，仍用原模块行内编辑与独立配置文件。UI schemaVersion:1 是描述契约元数据，不改变全局配置版本或配置值 revision。`GET /onebot-qq/api/modules/ui` 不读取或返回配置值、字段表、默认值或路径；外部声明无法开启配置编辑。未来配置 UI 归属模块页时仍须保留现有存储 key。
 
 > 结论先行：**没有任何写死的算法参数**。重连退避、超时、重试、核验缓冲、事件过滤、缓冲容量、
-> 日志级别、面板刷新间隔……都可以在 `config.json` 修改；System/模块保存仍按原规则热应用，profile API 保存为 staged，六区面板按 owner/revision 保存。
+> 日志级别、面板刷新间隔……都可以在 `config.json` 修改；System/模块保存仍按原规则热应用，profile API 保存应用于后续使用，六区面板按 owner/revision 保存。
 
 ### 手动身份登记（M7-v，无新增配置字段）
 
@@ -25,7 +25,7 @@ secret/secret-reference patch 使用 `{op:'keep'}` / `{op:'set',value:'…'}` / 
 
 媒体功能现归默认启用的 `builtin-media-features`；六个原键 `content.bilibili.enabled/timeoutMs/maxResults`、`media.stickers.enabled/maxCount/maxBytes` 在「模块 → 媒体功能」详情编辑，元数据 `module:'builtin-media-features'`，仍使用原全局 config.json 和默认值，无迁移。模块停用则 `/bili`、`/sticker` 与相关 HTTP 操作关闭，无 core 回退；`/media/status` 继续报告可用性。媒体/图片父开关留核心，只以布尔状态投影给模块；表情包库管理需要模块、媒体总开关与表情包开关开启，图片开关仅额外约束发送。Bilibili 操作 UI 位于模块详情，贴纸管理保留媒体页并按 provider 授权。详见 [ADR-015](architecture/ADR-015-builtin-media-features.md)。
 
-主动行为归默认启用的 `builtin-proactivity`，业务开关仍默认关闭。七个原键 `cognition.proactivity.enabled/quietStart/quietEnd/maxPrivatePerDay/maxGroupPerDay/minFamiliarity/backoffHours` 标记 `module:'builtin-proactivity'`，在模块详情通过 legacy-core 编辑并沿用全局 config.json 保存；停用/未 loaded 时只读，系统设置不重复展示。纯预览无副作用，无 panel 或新 DSH 入口。模块停用后不运行 timer/手动任务且无 fallback，原统计/运行路由返回安全 disabled 状态。`/quiet`、`/active` 仍修改原配置，但不能启用停用模块。仅私聊，maxGroupPerDay 保留但不发送；日额度是滚动 24 小时 decision 数，包括 dry-run 和失败。无默认值或数据迁移，详见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
+主动行为归默认启用的 `builtin-proactivity`，业务开关仍默认关闭。七个原键 `cognition.proactivity.enabled/quietStart/quietEnd/maxPrivatePerDay/maxGroupPerDay/minFamiliarity/backoffHours` 标记 `module:'builtin-proactivity'`，在模块详情通过 legacy-core 编辑并沿用全局 config.json 保存；停用/未 loaded 时只读，系统设置不重复展示。纯预览无副作用，无 panel 或新 DSH 入口。模块停用后不运行 timer/手动任务且无 fallback，原统计/运行路由返回安全 disabled 状态。`/quiet`、`/active` 如实际同时修改 profile 群聊模式与 module 主动开关，会以 SETTINGS_MULTI_OWNER 拒绝且零写入；请分别保存 Profiles Turn 与 Extensions proactivity，仍不能启用停用模块。仅私聊，maxGroupPerDay 保留但不发送；日额度是滚动 24 小时 decision 数，包括 dry-run 和失败。无默认值或数据迁移，详见 [ADR-016](architecture/ADR-016-builtin-proactivity.md)。
 
 学习编排归默认启用的第七个内置模块 `builtin-learning`，独占 learning provider、新 unknown → 自动任务计划/入队、pending/run、来源迭代和 timer（约 30 秒首次/完成后 60 秒，每 tick 一个 due pending）。核心删除自动入队/runner/timer，仅保留检测/知识读取、来源、数据、提炼、LLM/预算和同步事务；停用无 fallback，旧 lease 迟到不能发布，未知检测和已有知识仍可读，重新启用不追溯入队。runLearning/cancel/retry 只委托当前 provider，缺失返回 MODULE_DISABLED。
 

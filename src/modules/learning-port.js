@@ -219,5 +219,5 @@ export function createLearningPort({ getConfig, store, services = {}, getState =
     if (typeof taskId !== 'string' || taskId.length > 256) throw Error('INVALID_TASK')
     return taskReceipt(services.knowledge.retry(taskId))
   }
-  return Object.freeze({ onUnknownDetected, enqueueAuto, pending, claim, sources, collectFromSource, extractClaim, complete, fail, release, retry })
+  return Object.freeze({ withRuntime: work => services.settings ? services.settings.withRuntime(work, { fresh: true }) : work(), onUnknownDetected, enqueueAuto, pending, claim, sources, collectFromSource, extractClaim, complete, fail, release, retry })
 }

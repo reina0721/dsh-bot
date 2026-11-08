@@ -1,11 +1,13 @@
 import { test } from 'node:test'
+import { createProactivityPort } from '../src/modules/proactivity-port.js'
+import { createProactivityEngine } from '../src/modules/builtin/proactivity/engine.js'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createStore } from '../src/cognition/store.js'
 import { createPersonaService } from '../src/cognition/persona.js'
-import { scopedPersonaKind, dropPersonaData } from '../src/cognition/persona-scope.js'
+import { scopedPersonaKind, dropPersonaData, createPersonaScopedStore } from '../src/cognition/persona-scope.js'
 import { defaultConfig, normalizeConfig, getPath, refreshSecrets } from '../src/core/config.js'
 import { SETTINGS_FIELDS } from '../src/core/settings-schema.js'
 import { createProfileSettings, PROFILE_MIGRATION_KEY, snapshotProfile } from '../src/core/profile-settings.js'
@@ -18,6 +20,11 @@ function setup(store = createStore({ file: ':memory:' }), input = defaultConfig(
   const setConfig = next => { config = normalizeConfig(next).config; refreshSecrets(config); return { config, issues: [] } }
   refreshSecrets(config)
   const persona = createPersonaService({ store, getConfig, clock, settingsHooks: {
+    config: () => settings?.resolveConfig() || getConfig(),
+    currentId: () => settings?.runtimePersonaId(),
+    read: value => settings?.personaView(value) || value,
+    runtimeRead: value => settings?.runtimePersona(value) || value,
+    saved: (previous, next) => settings?.personaSaved(previous, next),
     created: (id, from) => { if (settings?.status().editingAvailable) settings.initialize(id, from) },
   } })
   persona.ensure()
@@ -95,7 +102,8 @@ for (const backend of ['sqlite', 'json']) {
     assert.deepEqual(profileRecord(store, other.id), before)
     assert.deepEqual(store.get(scopedPersonaKind(other.id, 'profile_settings_snapshot'), 'c02'), source)
     assert.equal(profileView(h.settings, other.id).values['cognition.timezone'], 'Asia/Tokyo')
-    assert.equal(h.getConfig().cognition.enabled, true, 'legacy runtime stays unchanged')
+    assert.equal(h.getConfig().cognition.enabled, true, 'legacy file is preserved')
+    assert.equal(h.settings.resolveConfig().cognition.enabled, false, 'restarted runtime uses persisted profile')
   })
 }
 
@@ -108,6 +116,7 @@ test('C02 migration failures roll back all rows and marker, retain legacy runtim
   } }
   const h = setup(wrapped)
   const other = h.persona.create({ name: 'other', activate: false }).persona
+  h.persona.edit({ profile: { identity: 'legacy persona record' } })
   const before = structuredClone(h.getConfig())
   assert.deepEqual(h.settings.migrate().migration, { ok: false, code: 'SETTINGS_MIGRATION_UNAVAILABLE' })
   for (const id of ['self', other.id]) {
@@ -119,6 +128,8 @@ test('C02 migration failures roll back all rows and marker, retain legacy runtim
   assert.equal(h.settings.capture().runtimeMode, 'legacy')
   assert.equal(h.settings.legacyView().editingAvailable, false)
   assert.deepEqual(h.getConfig(), before)
+  assert.deepEqual(h.settings.resolveConfig(), before, 'legacy runtime keeps raw config and separate persona records')
+  assert.equal(h.persona.get().profile.identity, 'legacy persona record')
   assert.doesNotMatch(JSON.stringify(h.settings.status()), /sk-MIGRATION_SECRET/)
   failing = false
   assert.equal(h.settings.migrate().editingAvailable, true)
@@ -139,7 +150,7 @@ test('C02 profile patch checks every field ownership, rejects unknown/read-only/
   assert.deepEqual(profileRecord(h.store), initial)
 })
 
-test('C02 revision conflicts, scope-only updates and inspection never activate; capture remains immutable and staged', t => {
+test('C02 revision conflicts, scope-only updates and inspection never activate; capture remains immutable and applied', t => {
   const h = setup(); t.after(() => h.store.close()); h.settings.migrate()
   const other = h.persona.create({ name: 'other', activate: false }).persona
   const generation = h.persona.scopeGeneration()
@@ -149,12 +160,12 @@ test('C02 revision conflicts, scope-only updates and inspection never activate; 
   assert.throws(() => h.settings.patch({ scope: 'profile', id: other.id, patch: { 'cognition.enabled': false } }), code('SETTINGS_CONFLICT'))
   const saved = h.settings.patch({ scope: 'profile', id: other.id, revision: initial.revision, patch: { 'cognition.enabled': false, 'cognition.timezone': 'UTC' } })
   assert.equal(saved.revision, initial.revision + 1)
-  assert.equal(saved.profileEditsApply, 'staged')
+  assert.equal(saved.profileEditsApply, 'applied')
   assert.throws(() => h.settings.patch({ scope: 'profile', id: other.id, revision: initial.revision, patch: { 'cognition.enabled': true } }), code('SETTINGS_CONFLICT'))
   assert.equal(h.persona.activeId(), 'self'); assert.equal(h.persona.scopeGeneration(), generation)
   assert.equal(capture.candidate.cognition.enabled, true)
   assert.equal(h.settings.capture(other.id).candidate.cognition.enabled, false)
-  assert.equal(h.settings.capture(other.id).effective.cognition.enabled, true)
+  assert.equal(h.settings.capture(other.id).effective.cognition.enabled, false)
   assert.equal(h.getConfig().cognition.enabled, true)
   assert.equal(profileView(h.settings).values['cognition.enabled'], true)
   const sys = h.settings.view({ scope: 'system' })
@@ -230,4 +241,200 @@ test('C02 profile create/duplicate/delete lifecycle keeps independent config and
   assert.equal(profileRecord(h.store, duplicate.id), null)
   assert.equal(h.persona.activeId(), 'self')
   assert.throws(() => profileView(h.settings, duplicate.id), code('PERSONA_NOT_FOUND'))
+})
+
+
+test('profile runtime pins persona settings across awaits; system/module reads stay live and nested captures do not apply twice', async t => {
+  const h = setup(); t.after(() => h.store.close()); h.settings.migrate()
+  const s = h.settings
+  const other = h.persona.create({ name: 'other', activate: false }).persona
+  save(s, { 'cognition.timezone': 'UTC', 'cognition.persona.profile.identity': 'first identity' })
+  save(s, { 'cognition.timezone': 'Asia/Tokyo' }, other.id)
+  let entered, release
+  const enteredPromise = new Promise(resolve => { entered = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  const work = s.withRuntime(async captured => {
+    const revision = captured.profileRevision
+    entered(); await gate
+    assert.equal(s.runtimePersonaId(), 'self')
+    assert.equal(s.resolveConfig().cognition.timezone, 'UTC')
+    assert.equal(h.persona.get().profile.identity, 'first identity')
+    assert.equal(s.resolveConfig().ui.motion, 'reduced')
+    assert.equal(s.resolveConfig().cognition.typing.enabled, true)
+    assert.equal(s.resolveConfig().access.ownerQQ, '123456')
+    await s.withRuntime(inner => { assert.equal(inner.profileRevision, revision) })
+    assert.throws(() => s.saveRuntimeConfig(s.resolveConfig()), code('SETTINGS_CONFLICT'))
+  })
+  await enteredPromise
+  save(s, { 'cognition.timezone': 'Europe/Paris', 'cognition.persona.profile.identity': 'new identity' })
+  h.setConfig({ ...h.getConfig(), ui: { motion: 'reduced' }, access: { ownerQQ: '123456' }, cognition: { ...h.getConfig().cognition, typing: { enabled: true } } })
+  h.persona.activate(other.id)
+  assert.equal(s.resolveConfig().cognition.timezone, 'Asia/Tokyo')
+  release(); await work
+  assert.equal(profileView(s).values['cognition.timezone'], 'Europe/Paris')
+  h.persona.activate('self')
+  assert.equal(h.persona.get().profile.identity, 'new identity')
+  assert.equal(s.resolveConfig().cognition.timezone, 'Europe/Paris')
+})
+
+test('profile runtime legacy persona edit/reset/evolution share one revision and roll back together on write failure', t => {
+  const base = createStore({ file: ':memory:' }); t.after(() => base.close())
+  let failing = false
+  const store = { ...base, put(kind, ...args) {
+    if (failing && kind.endsWith(':profile_settings')) throw Error('PRIVATE_WRITE_FAILURE')
+    return base.put(kind, ...args)
+  } }
+  const h = setup(store); const s = h.settings; s.migrate()
+  const before = profileView(s)
+  h.persona.edit({ traits: { humor: 0.7 }, profile: { displayName: 'edited' } })
+  assert.equal(profileView(s).revision, before.revision + 1)
+  assert.equal(s.resolveConfig().cognition.persona.traits.humor, 0.7)
+  assert.equal(s.capture().effective.cognition.persona.profile.displayName, 'edited')
+  assert.throws(() => s.patch({ scope: 'profile', id: 'self', revision: before.revision, patch: { 'cognition.timezone': 'UTC' } }), code('SETTINGS_CONFLICT'))
+  const edited = profileRecord(store)
+  h.persona.edit({ traits: { humor: 0.7 } })
+  assert.equal(profileView(s).revision, edited.revision, 'same value is not applied again')
+  failing = true
+  assert.throws(() => h.persona.edit({ traits: { humor: 0.8 } }), /PRIVATE_WRITE_FAILURE/)
+  assert.deepEqual(profileRecord(store), edited)
+  assert.equal(h.persona.get().traits.humor, 0.7)
+  failing = false
+  h.persona.maybeEvolve({ humor: 1 })
+  assert.equal(profileView(s).revision, edited.revision + 1)
+  assert.equal(profileView(s).values['cognition.persona.traits.humor'], h.persona.get().traits.humor)
+  h.persona.reset()
+  assert.equal(profileView(s).revision, edited.revision + 2)
+  assert.equal(s.resolveConfig().cognition.persona.traits.humor, h.persona.get().traits.humor)
+})
+
+test('profile runtime config commands use CAS, reject mixed owners before writing, and fall back as a whole', t => {
+  const h = setup(); t.after(() => h.store.close()); const s = h.settings; s.migrate()
+  const before = structuredClone(h.getConfig())
+  const next = s.resolveConfig(); next.cognition.modelRouting.privateDefault = 'provider/model'
+  s.saveRuntimeConfig(next)
+  assert.equal(s.resolveConfig().cognition.modelRouting.privateDefault, 'provider/model')
+  assert.deepEqual(h.getConfig(), before)
+  const other = h.persona.create({ name: 'other', activate: false }).persona
+  s.withRuntime(() => {
+    h.persona.activate(other.id); h.persona.activate('self')
+    const stale = s.resolveConfig(); stale.cognition.timezone = 'UTC'
+    assert.throws(() => s.saveRuntimeConfig(stale), code('SETTINGS_CONFLICT'))
+  })
+  const revision = profileView(s).revision
+  const mixed = s.resolveConfig(); mixed.cognition.paused = true; mixed.cognition.typing.enabled = true
+  assert.throws(() => s.saveRuntimeConfig(mixed), code('SETTINGS_MULTI_OWNER'))
+  assert.equal(profileView(s).revision, revision)
+  assert.deepEqual(h.getConfig(), before)
+  s.withRuntime(() => {
+    save(s, { 'cognition.timezone': 'UTC' })
+    const stale = s.resolveConfig(); stale.cognition.timezone = 'Asia/Tokyo'
+    assert.throws(() => s.saveRuntimeConfig(stale), code('SETTINGS_CONFLICT'))
+  })
+  // Corrupt a different owner into the profile: no system override may execute.
+  const record = profileRecord(h.store)
+  h.store.put(scopedPersonaKind('self', 'profile_settings'), 'config', { ...record, values: { ...record.values, 'ui.motion': 'reduced' } })
+  assert.equal(s.resolveConfig().cognition.modelRouting.privateDefault, before.cognition.modelRouting.privateDefault)
+  assert.equal(s.resolveConfig().ui.motion, before.ui.motion)
+  assert.equal(s.status().runtimeMode, 'legacy')
+  assert.equal(s.status().profileEditsApply, 'staged')
+  assert.throws(() => profileView(s), code('SETTINGS_MIGRATION_UNAVAILABLE'))
+  const legacy = s.resolveConfig(); legacy.cognition.timezone = 'UTC'
+  s.saveRuntimeConfig(legacy)
+  assert.equal(h.getConfig().cognition.timezone, 'UTC')
+})
+
+
+test('C02-to-runtime migration refreshes untouched snapshots from actual legacy behavior, keeps deliberate overrides and is idempotent', t => {
+  const h = setup(); t.after(() => h.store.close()); h.settings.migrate()
+  const original = profileRecord(h.store)
+  const source = h.store.get(scopedPersonaKind('self', 'profile_settings_snapshot'), 'c02')
+  const { runtimeVersion, ...c02 } = original
+  h.store.put(scopedPersonaKind('self', 'profile_settings'), 'config', { ...c02, values: { ...c02.values, 'cognition.timezone': 'Asia/Tokyo' } })
+  const rawPersona = h.store.get('persona', 'self')
+  h.store.put('persona', 'self', { ...rawPersona, traits: { ...rawPersona.traits, humor: 0.83 }, profile: { ...rawPersona.profile, identity: 'later legacy identity' } })
+  h.setConfig({ ...h.getConfig(), cognition: { ...h.getConfig().cognition, dryRun: true, timezone: 'UTC' } })
+  const restarted = setup(h.store, h.getConfig())
+  assert.equal(restarted.settings.migrate().runtimeMode, 'profile')
+  const effective = restarted.settings.resolveConfig()
+  assert.equal(effective.cognition.persona.traits.humor, 0.83)
+  assert.equal(effective.cognition.persona.profile.identity, 'later legacy identity')
+  assert.equal(effective.cognition.dryRun, true)
+  assert.equal(effective.cognition.timezone, 'Asia/Tokyo', 'deliberately edited C02 override is applied')
+  const after = profileRecord(h.store)
+  assert.equal(after.revision, c02.revision + 1)
+  assert.equal(after.runtimeVersion, 1)
+  restarted.settings.migrate()
+  assert.deepEqual(profileRecord(h.store), after)
+  assert.deepEqual(h.store.get(scopedPersonaKind('self', 'profile_settings_snapshot'), 'c02'), source)
+})
+
+
+test('profile task entry captures fresh settings even from an old timer context; async module dependencies use that capture', async t => {
+  const h = setup(); t.after(() => h.store.close()); const s = h.settings; s.migrate()
+  h.setConfig({ ...h.getConfig(), cognition: { ...h.getConfig().cognition, proactivity: { enabled: true, quietStart: 0, quietEnd: 0 } } })
+  const store = createPersonaScopedStore({ base: h.store, getPersonaId: s.runtimePersonaId })
+  store.put('person', 'p1', { displayName: 'friend' })
+  store.put('relationship', 'r1', { personId: 'p1', scopeType: 'private', scopeId: '10001', familiarity: 0.9, initiative: 0.8 })
+  let enter, release, fire, capturedWarmth, capturedRoute, sends = 0
+  const entered = new Promise(resolve => { enter = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  const port = createProactivityPort({ store, services: { settings: s, persona: h.persona, llm: { async complete({ user }) {
+    capturedWarmth = user
+    capturedRoute = s.resolveConfig().cognition.modelRouting.privateDefault
+    return { ok: true, text: 'hello' }
+  } } }, getConfig: s.resolveConfig, clock, getState: () => ({ ready: true }),
+    memoryFactory: () => ({ async retrieveAsync() { enter(); await gate; return [] } }),
+    delivery: { async deliver() { sends++; return { ok: true, messageId: 'one' } } },
+  })
+  const engine = createProactivityEngine({ port, getConfig: () => h.getConfig().cognition.proactivity,
+    scheduler: { setTimeout(fn) { fire = fn; return 1 }, clearTimeout() {} },
+  })
+  t.after(() => engine.stop())
+  save(s, { 'cognition.persona.style.warmth': 0.1 })
+  let timerWork
+  await s.withRuntime(async () => {
+    engine.start()
+    save(s, { 'cognition.persona.style.warmth': 0.3, 'cognition.modelRouting.privateDefault': 'captured/model' })
+    timerWork = fire()
+    await entered
+    save(s, { 'cognition.persona.style.warmth': 0.9, 'cognition.modelRouting.privateDefault': 'new/model' })
+    release(); await timerWork
+  })
+  assert.match(capturedWarmth, /温暖 0.3/)
+  assert.equal(capturedRoute, 'captured/model')
+  assert.equal(sends, 1)
+  assert.equal(s.resolveConfig().cognition.persona.style.warmth, 0.9)
+})
+
+for (const missingSource of [false, true]) test(`runtime migration rollback keeps every profile legacy when ${missingSource ? 'C02 source is missing' : 'cutover persistence fails'}`, t => {
+  const base = createStore({ file: ':memory:' }); t.after(() => base.close())
+  let failing = false
+  const wrapped = { ...base, put(kind, ...args) {
+    if (failing && kind.endsWith(':profile_settings')) throw Error('PRIVATE_RUNTIME_MIGRATION_ERROR')
+    return base.put(kind, ...args)
+  } }
+  const h = setup(wrapped); h.persona.create({ name: 'other', activate: false }); h.settings.migrate()
+  for (const row of base.list('persona')) {
+    const { runtimeVersion, ...record } = profileRecord(base, row.id)
+    base.put(scopedPersonaKind(row.id, 'profile_settings'), 'config', record)
+  }
+  if (missingSource) base.remove(scopedPersonaKind('self', 'profile_settings_snapshot'), 'c02')
+  failing = !missingSource
+  const restart = setup(wrapped, h.getConfig())
+  assert.equal(restart.settings.migrate().runtimeMode, 'legacy')
+  assert.equal(restart.settings.status().editingAvailable, false)
+  for (const row of base.list('persona')) assert.equal(profileRecord(base, row.id).runtimeVersion, undefined)
+  assert.equal(restart.settings.resolveConfig().cognition.enabled, h.getConfig().cognition.enabled)
+  assert.doesNotMatch(JSON.stringify(restart.settings.status()), /PRIVATE_RUNTIME_MIGRATION_ERROR/)
+})
+
+
+test('a delayed turn cannot evolve over a newer profile edit', t => {
+  const h = setup(); t.after(() => h.store.close()); const s = h.settings; s.migrate()
+  s.withRuntime(() => {
+    save(s, { 'cognition.persona.traits.humor': 0.8 })
+    assert.throws(() => h.persona.maybeEvolve({ humor: 1 }), code('SETTINGS_CONFLICT'))
+  })
+  assert.equal(profileView(s).values['cognition.persona.traits.humor'], 0.8)
+  assert.equal(h.persona.get().traits.humor, 0.8)
 })

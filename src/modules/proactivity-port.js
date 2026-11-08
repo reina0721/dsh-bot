@@ -146,5 +146,6 @@ export function createProactivityPort({ getConfig, store, services = {}, deliver
     }
     if (current === token) current = null
   }
-  return Object.freeze({ snapshot, begin, candidates, context, complete, send, release })
+  return Object.freeze({ snapshot, begin, candidates, context, complete, send, release,
+    withRuntime: work => services.settings ? services.settings.withRuntime(work, { fresh: true }) : work() })
 }

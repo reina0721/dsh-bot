@@ -1,16 +1,30 @@
 # ADR-020: settings ownership and navigation contract
 
-- 状态：已接受；C01 契约已落地，C02 后端 profile 存储/API 已实现；运行解析切换仍有门控。
+- 状态：已接受；C01 所有权、C02 迁移/API、六区 UI 与 profile 运行时切换已实现。
 - 基线：main `b3d07a0`，v0.11.15；分支 `feat/astrbot-alignment`。
 - 实现：`src/core/settings-schema.js`、`src/core/navigation.js`、`src/core/profile-settings.js`。
 
-## C02 实现与运行门控
+<a id="c02-实现与运行门控"></a>
 
-C02 只实现后端，不改变客户端导航、表单、沙盒或 DSH 注册。`PROFILE_RUNTIME_MODE = 'legacy'` 是代码门控，没有可写配置开关。现有认知、聚合器、后台服务和模块继续从原 getConfig/persona 服务读取；**profile 保存为 staged，不改变运行输出**。System 与模块设置仍按原路径热应用。不得把 staged 保存成功解释为运行已切换。
+## Profile 运行时切换
 
-原因：管线及其依赖在异步处理、命令和后台任务中多次读取实时配置，persona 的表达数据另存于 persona record。只替换管线的一次 getConfig 会产生同一轮混用两个版本的行为。后续完整切换必须统一服务、计时器、模块 provider 的读取边界，并验证在途人格切换与版本捕获；C02 不静默做部分切换。
+运行服务统一使用 `settings.resolveConfig()`：读取原配置中的 System/全局策略、模块旧绑定和 legacy fallback，再覆盖当前激活人格的 profile-owned 字段。模块文件继续由原模块 schema/revision 与运行时消费，不复制进 profile。迁移成功时 `runtimeMode:'profile'`、`profileEditsApply:'applied'`；没有外部可写切换开关。profile 保存影响后续使用，检查/保存指定 inactive ID 不激活人格。
 
-`capture()` 组合 legacy system policy、module/legacy 配置与指定 persona，另生成加入 profile overrides 的 candidate；记录 personaId/profileRevision/runtimeMode，递归冻结且脱敏。每个 social `handleTurn` 在入口捕获到 WeakMap，不写 turn、trace、日志或 API；`settingsContext(turn)` 仅供内部核验。当前运行仍读 legacy；capture 失败也不阻塞 legacy。recall/poke/reaction、聚合及后台任务尚未切换。capture 不是可执行沙盒、运行时凭据容器或完整服务上下文隔离。
+social turn 入口用 AsyncLocalStorage 捕获 personaId/profileRevision 和 profile 字段；分析、模型路由、生成、命令、记忆/情绪/策略、交付共同读取同一人格配置，认知 store 同时绑定捕获人格。轮次中途保存/切换不会混用新旧 profile，也不会把旧轮次结果写入新人格；新轮次使用新 profile。System 安全/访问控制、宿主额度、凭据和 module 设置仍实时读取，安全撤销不被冻结。`capture()` / `settingsContext(turn)` 仅给递归冻结、脱敏的诊断 DTO，不把运行凭据或配置存到 turn/trace/日志；candidate 保留兼容字段，现与 effective 相同。
+
+聚合器使用当前 profile 决定唤醒词和后续缓冲参数；已有 timer 不承诺立即重排。recall/poke、记忆整理、内置 learning/proactivity 每次任务入口捕获新上下文，定时器即使继承旧异步上下文也重新捕获；既有 lease 的人格代次/模块停止检查继续生效。模块与核心服务所有权不变，不增加另一条执行/发送链。
+
+Profiles 唯一所有者编辑器显示「已应用」或「激活后应用」、revision、错误与重新读取；移除 staged 标签和并列旧编辑器。人格库只保留管理操作。legacy persona edit/reset/慢演化在同一 store 事务更新 profile revision；profile 表达 patch 同事务同步兼容 persona record，避免回退或旧读取使用陈旧表达，不二次触发 hook。无变化的旧人格编辑不增加 revision。
+
+### C02 已有数据的切换兼容
+
+新迁移继续保存当时有效行为（人格表达来自各 persona record），不改变默认行为。已有 C02 行在首次切换时与不可变 c02 来源逐叶比较：未改过的叶子刷新为当前真实 legacy 配置/人格值，保留 C02 后旧编辑器或配置文件的修改；与来源不同的明确 staged overrides 在此次切换后生效。之后在行上记 `runtimeVersion:1`，仅值变化时增加 revision，不重写原 snapshot/hash/marker；重启不再重采样。用户此前保存的 staged 修改现在会应用，需以有效 view 检查结果。
+
+来源缺失/不一致、非法 owner、不可用的原子事务或迁移失败时整个 resolver 回退 legacy，`editingAvailable:false`、`runtimeMode:'legacy'`、`profileEditsApply:'staged'`，profile API 拒绝写入；System/module 原路径仍可用。运行发现缺失/无效 profile 同样整份回退，不执行部分 overrides，不回显底层异常。已捕获的有效轮次继续完成；下次启动重新校验/重试。
+
+旧 `/config` adapter 仍需 personaId/revision，persona-owned 修改映射 active profile，System/module 维持原 owner。`/model` 命令写当前 profile 并校验捕获 revision/人格；过期或切换后写入拒绝。任何实际跨 owner 修改（包括同时改群聊模式和 proactivity 开关的 `/quiet`、`/active`）返回 `SETTINGS_MULTI_OWNER` 且零写入；需在 Profiles Turn 与 Extensions proactivity 分别保存。legacy fallback 命令继续使用旧 setConfig。这里不提供跨文件/store 的伪原子事务或跨进程锁。
+
+旧 C02 阶段采用 `runtimeMode:'legacy'`、`profileEditsApply:'staged'`，当时 capture 只供影子核验；以下存储/API 契约以本节的运行切换为准。
 
 ### 存储与迁移
 
@@ -18,7 +32,7 @@ C02 只实现后端，不改变客户端导航、表单、沙盒或 DSH 注册�
 - 启动在 persona.ensure 后、服务组装前事务迁移全部 persona（包括 inactive）。从当前规范化 legacy 配置提取 profile 字段，其中 traits/style/values/profile 用各 persona 实际记录覆盖，保留旧有效行为。System 凭据、宿主路径、LLM 全局额度/并发，以及模块旧绑定不进入 profile；`cognition.policy.dailyGlobalLimit` 按 C01 所有权仍是人格 policy 限额（计数本来就按 persona 隔离），不是 LLM 宿主总预算。
 - 每人格原始来源另存 `persona_<id>:profile_settings_snapshot` / `c02`，只含 profile 字段与 SHA-256 sourceHash。全局 `setting/profile.settingsMigration.c02` 存 version、初始 personaIds、初始 sources 的 sourceHash 和时间，不含全量配置或凭据。显式 profile 值按属性存在性保留，包括 false、0、空字符串/数组/null；补齐缺失项并增加 revision。已完成 profile 不因 legacy 配置变化重新取样或覆盖；marker 和初始 snapshot 不被重写。
 - SQLite 与 JSON fallback 均要求 atomicTransactions；所有 profile、snapshot、marker 在同一 tx 中提交。失败回滚，不删除或改写 legacy 配置，editingAvailable:false，错误只给 SETTINGS_MIGRATION_UNAVAILABLE；不暴露异常文本。下次启动重试。含认证信息/查询串/fragment 的 profile baseUrl 或已知 OneBot token 的来源拒绝复制，不做有损清洗后假装保留行为。
-- 新建/导入按当时 legacy 行为初始化；复制继承来源 staged 设置（新名字除外），独立 revision；切换只换 activeId；检查或保存 inactive profile 不激活、不推进 persona generation。删除同时清理 profile/snapshot；普通认知数据复制组不包含设置。persona 旧编辑/演化/reset 仍写旧记录，不回写 staged 设置。
+- 新建/导入按当时 legacy 行为初始化；复制继承来源 profile 设置（新名字除外），独立 revision；切换只换 activeId；检查或保存 inactive profile 不激活、不推进 persona generation。删除同时清理 profile/snapshot；普通认知数据复制组不包含设置。persona 旧编辑/演化/reset 与 profile 行在同一事务同步。
 
 ### API 与并发契约
 
@@ -34,16 +48,16 @@ C02 只实现后端，不改变客户端导航、表单、沙盒或 DSH 注册�
 | GET /profiles | items、activeId 和迁移/门控状态 |
 | GET /profiles/config?id=… | profile view 的别名 |
 | POST /profiles/config/save | `{id,revision,patch}`，固定 profile scope |
-| GET /config | 当前 active profile 的 staged 值覆盖 legacy 基础配置；含 personaId、revision、门控状态和脱敏配置 |
+| GET /config | 当前 active profile 的有效值覆盖 legacy 基础配置；含 personaId、revision、门控状态和脱敏配置 |
 | POST /config/save | `{config,personaId,revision}`；config 可为部分或全量；比较变化叶子后路由到唯一所有者 |
 
 profile revision 为持久单调整数，在事务内再次比较，缺失或过期均 SETTINGS_CONFLICT。System/旧 module 绑定使用当前唯一所有者值的内容摘要；不受 profile 保存干扰，但不提供多进程锁或跨进程线性 revision。legacy revision 绑定 activeId、profile revision 和完整 legacy 配置，切换/并发保存均拒绝过期请求；更保守地拒绝不相关 legacy 配置变化。多个 moduleId 也算多个所有者，一次更新跨所有者返回 SETTINGS_MULTI_OWNER，零写入；只读/未知路径拒绝。输入沿用 normalizeConfig 的类型/范围规则，patch 先检查基础类型，issues 仅返回 SETTINGS_VALUES_NORMALIZED，不回显输入。
 
 secret/secret-reference 新写入必须 `{op:'keep'}`、`{op:'set',value:'…'}` 或 `{op:'clear'}`；secret reads 为 `{masked:true,present:boolean}`。不读取环境变量内容。legacy token 读为 `***`，回传该 mask 代表 keep，明确修改仍需操作对象。publicConfig 同时屏蔽状态/旧配置中的 token、URL userinfo 和敏感 query 参数，已登记 token 在字符串中脱敏。这里不是任意自由文本的秘密识别器。
 
-**兼容限制**：未修改的旧客户端不发送 revision/personaId，旧保存将返回 SETTINGS_CONFLICT；混合所有者的全量修改也会拒绝。`/config/reset` 不再绕过检查全量改写，返回 SETTINGS_MULTI_OWNER，需逐 owner revisioned patch。后续 UI 需适配这些契约；本次无 UI。内部宿主 setConfig/resetConfig 和命令仍为 legacy 操作，不受新管理 API 迁移；不宣称这些路径已完成 profile 切换。
+**兼容限制**：未修改的旧客户端不发送 revision/personaId，旧保存将返回 SETTINGS_CONFLICT；混合所有者的全量修改也会拒绝。`/config/reset` 不再绕过检查全量改写，返回 SETTINGS_MULTI_OWNER，需逐 owner revisioned patch。六区 UI 已使用这些契约。内部宿主 setConfig/resetConfig 只维护 legacy System/module 文件；运行命令通过 resolver 的 revisioned adapter 写入，跨 owner 拒绝。
 
-测试覆盖 profile-settings（穷举所有权、两种存储重启、事务失败/重试、显式值、快照、CAS、mask、复制/删除）、config DTO 脱敏和 persona/E2E API/切换/检查/legacy/module 委托/门控。以下 C01 内容保留为契约历史；其中“尚无迁移/HTTP”的描述仅适用于 C01。
+测试覆盖 profile-settings（穷举所有权、两种存储重启、事务失败/重试、显式值、快照、CAS、mask、复制/删除）、config DTO 脱敏、persona/E2E API/切换/检查/legacy/module 委托/回退、profile-runtime（真实管线异步模型路由/人设捕获、切换后写入隔离、命令与行为变化）。以下 C01 内容保留为契约历史；其中“尚无迁移/HTTP”的描述仅适用于 C01。
 
 ## 背景与边界
 

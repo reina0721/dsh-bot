@@ -1596,14 +1596,14 @@ test('e2e: C07 client -> real health/actions/operation/loop APIs, current person
   assert.equal((await fake.call(API + '/system/loop/detail?decisionId=' + result.decision.id, undefined, { method: 'GET' })).json.code, 'LOOP_NOT_FOUND')
 })
 
-test('e2e: C02 revisioned settings/profiles, staging gate, legacy ownership, secrets and restart', async t => {
+test('e2e: profile runtime revisioned settings/profiles, cutover, legacy ownership, secrets and restart', async t => {
   const secret = 'C02_PRIVATE_GATEWAY_TOKEN'
   const { fake, handle } = await boot(t, { rowConfig: { onebot: { wsToken: secret } } })
   const schema = await getJson(fake, '/settings/schema')
   assert.equal(schema.fields.length, 311)
   assert.equal(schema.editingAvailable, true)
-  assert.equal(schema.runtimeMode, 'legacy')
-  assert.equal(schema.profileEditsApply, 'staged')
+  assert.equal(schema.runtimeMode, 'profile')
+  assert.equal(schema.profileEditsApply, 'applied')
   const profiles = await getJson(fake, '/profiles')
   assert.equal(profiles.items.length, 1)
   const other = await postJson(fake, '/cognition/persona/create', { name: 'C02 other', activate: false })
@@ -1622,13 +1622,13 @@ test('e2e: C02 revisioned settings/profiles, staging gate, legacy ownership, sec
   await postJson(fake, '/cognition/persona/switch', { id })
   const turn = { id: 'c02-captured', chatType: 'private', chatId: '10001', senderId: '10001', text: '/status', messages: [], messageIds: [] }
   const pipeline = handle.cognition.services.pipeline
-  assert.equal((await pipeline.handleTurn(turn)).command, true, 'staged disable does not affect legacy runtime')
+  assert.equal((await pipeline.handleTurn(turn)).error, 'cognition_disabled', 'profile disable changes runtime behavior')
   const captured = pipeline.settingsContext(turn)
   assert.equal(captured.personaId, id)
   assert.equal(captured.profileRevision, saved.revision)
-  assert.equal(captured.effective.cognition.enabled, true)
+  assert.equal(captured.effective.cognition.enabled, false)
   assert.equal(captured.candidate.cognition.enabled, false)
-  assert.equal((await getJson(fake, '/status')).config.cognition.enabled, true)
+  assert.equal((await getJson(fake, '/status')).config.cognition.enabled, false)
   const legacy = await getJson(fake, '/config')
   assert.equal(legacy.config.cognition.enabled, false)
   assert.equal(legacy.config.onebot.wsToken, '***')

@@ -1,5 +1,7 @@
-// C02 persistence and resolver boundary. Runtime cutover is deliberately gated.
+// Profile ownership, persistence and captured runtime resolution.
 import { createHash } from 'node:crypto'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { sanitizePersona } from '../cognition/persona.js'
 import { SETTINGS_FIELDS, SETTINGS_GROUPS } from './settings-schema.js'
 import { clone, getPath, setPath, normalizeConfig, publicConfig } from './config.js'
 import { scopedPersonaKind } from '../cognition/persona-scope.js'
@@ -7,7 +9,7 @@ import { scopedPersonaKind } from '../cognition/persona-scope.js'
 export const PROFILE_SETTINGS_KIND = 'profile_settings'
 export const PROFILE_SETTINGS_ID = 'config'
 export const PROFILE_MIGRATION_KEY = 'profile.settingsMigration.c02'
-export const PROFILE_RUNTIME_MODE = 'legacy' // No writable flag: cutover needs a separate reviewed change.
+export const PROFILE_RUNTIME_MODE = 'profile'
 const fields = new Map(SETTINGS_FIELDS.map(field => [field.path, field]))
 const profileFields = SETTINGS_FIELDS.filter(field => field.ownerClass === 'profile')
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -16,6 +18,7 @@ const owner = field => field.ownerClass === 'module' ? `module:${field.canonical
 const fail = code => { throw Object.assign(new Error(code), { code }) }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const kind = id => scopedPersonaKind(id, PROFILE_SETTINGS_KIND)
+const personaFields = profileFields.filter(field => /^cognition\.persona\.(traits\.|style\.|values$|profile\.)/.test(field.path))
 const masked = field => ['secret', 'secret-reference'].includes(field.sensitivity)
 
 function freeze(value) {
@@ -51,6 +54,7 @@ export function snapshotProfile(config, persona) {
 }
 
 export function createProfileSettings({ store, persona, getConfig, setConfig, clock = { now: Date.now } }) {
+  const runtime = new AsyncLocalStorage()
   let available = false
   let migrationState = { ok: false, code: 'SETTINGS_MIGRATION_UNAVAILABLE' }
   const read = id => store.get(kind(id), PROFILE_SETTINGS_ID)
@@ -73,7 +77,24 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
           const previous = read(id)
           if (previous && (previous.version !== 1 || !Number.isSafeInteger(previous.revision) || previous.revision < 1 || !object(previous.values))) fail('SETTINGS_PROFILE_INVALID')
           if (previous) safeSnapshot(previous.values, getConfig())
-          if (previous?.migrationVersion === 1) continue
+          if (previous?.migrationVersion === 1) {
+            if (previous.runtimeVersion === 1) continue
+            if (previous.runtimeVersion !== undefined) fail('SETTINGS_PROFILE_INVALID')
+            const source = store.get(scopedPersonaKind(id, 'profile_settings_snapshot'), 'c02')
+            if (!source || source.version !== 1 || !object(source.values) || hash(source.values) !== previous.sourceHash) fail('SETTINGS_PROFILE_INVALID')
+            safeSnapshot(source.values, getConfig())
+            // C02 legacy editors/config files could change after the snapshot.
+            // Refresh untouched leaves; keep deliberately saved staged overrides.
+            const values = snapshotProfile(getConfig(), persona.getById(id))
+            for (const [path, value] of Object.entries(previous.values)) {
+              if (!Object.hasOwn(source.values, path) || !same(value, source.values[path])) values[path] = clone(value)
+            }
+            safeSnapshot(values, getConfig())
+            const changed = !same(values, previous.values)
+            if (changed && !Number.isSafeInteger(previous.revision + 1)) fail('SETTINGS_REVISION_INVALID')
+            store.put(kind(id), PROFILE_SETTINGS_ID, { ...previous, values, runtimeVersion: 1, revision: previous.revision + (changed ? 1 : 0) })
+            continue
+          }
           if (previous?.revision === Number.MAX_SAFE_INTEGER) fail('SETTINGS_REVISION_INVALID')
           const snapshot = snapshotProfile(getConfig(), persona.getById(id))
           sources[id] = snapshot
@@ -81,7 +102,7 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
           store.put(scopedPersonaKind(id, 'profile_settings_snapshot'), 'c02', { version: 1, sourceHash, values: snapshot })
           // Presence, including false/zero/empty/null, wins over the snapshot.
           store.put(kind(id), PROFILE_SETTINGS_ID, {
-            version: 1, migrationVersion: 1, sourceHash,
+            version: 1, migrationVersion: 1, runtimeVersion: 1, sourceHash,
             revision: (previous?.revision || 0) + 1,
             values: { ...snapshot, ...previous?.values },
           })
@@ -97,7 +118,126 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
     return status()
   }
 
-  function status() { return { editingAvailable: available, runtimeMode: PROFILE_RUNTIME_MODE, profileEditsApply: 'staged', migration: clone(migrationState) } }
+  function runtimeRecord(id) {
+    if (!available) return null
+    try {
+      const record = read(id)
+      if (!record || record.version !== 1 || record.migrationVersion !== 1 || record.runtimeVersion !== 1 || !Number.isSafeInteger(record.revision) || record.revision < 1 || !object(record.values)) fail('SETTINGS_PROFILE_INVALID')
+      safeSnapshot(record.values, getConfig())
+      return record
+    } catch {
+      // Fail closed for the whole resolver, never run a partially valid profile.
+      available = false
+      migrationState = { ok: false, code: 'SETTINGS_MIGRATION_UNAVAILABLE' }
+      return null
+    }
+  }
+
+  function status() {
+    if (available) runtimeRecord(persona.activeId())
+    return { editingAvailable: available, runtimeMode: available ? PROFILE_RUNTIME_MODE : 'legacy',
+      profileEditsApply: available ? 'applied' : 'staged', migration: clone(migrationState) }
+  }
+
+  function resolution(id = persona.activeId()) {
+    const config = clone(getConfig())
+    let currentPersona = null
+    try { currentPersona = persona.getById(id) } catch { /* Legacy config remains usable. */ }
+    for (const key of ['traits', 'style', 'values', 'profile']) {
+      if (currentPersona?.[key] !== undefined) setPath(config, `cognition.persona.${key}`, currentPersona[key])
+    }
+    const record = runtimeRecord(id)
+    const values = Object.fromEntries(profileFields.map(field => [field.path, clone(getPath(config, field.path))]))
+    if (record) Object.assign(values, clone(record.values))
+    return freeze({ personaId: id, personaGeneration: persona.scopeGeneration(), profileRevision: record?.revision || null,
+      runtimeMode: record ? PROFILE_RUNTIME_MODE : 'legacy', values })
+  }
+
+  function applyResolution(config, resolved) {
+    for (const [path, value] of Object.entries(resolved.values)) setPath(config, path, clone(value))
+    return config
+  }
+
+  // Only profile-owned values are pinned. System policy, credentials and module
+  // bindings keep their live legacy reads (including safety revocations).
+  function resolveConfig() {
+    const resolved = runtime.getStore() || resolution()
+    const config = clone(getConfig())
+    return resolved.runtimeMode === 'profile' ? applyResolution(config, resolved) : config
+  }
+
+  function runtimePersonaId() { return runtime.getStore()?.personaId || persona.activeId() }
+
+  function personaView(current) {
+    if (!available) return current
+    let existing
+    try { existing = read(current.id) } catch { runtimeRecord(current.id); return current }
+    if (!existing) return current // New record, before initialize.
+    const record = runtimeRecord(current.id)
+    if (!record) return current
+    const next = clone(current)
+    for (const field of personaFields) if (Object.hasOwn(record.values, field.path)) setPath(next, field.path.slice('cognition.persona.'.length), clone(record.values[field.path]))
+    return sanitizePersona(next, getConfig()?.cognition)
+  }
+
+  function runtimePersona(current) {
+    const resolved = runtime.getStore()
+    if (!resolved) return personaView(current)
+    const next = clone(current)
+    for (const field of personaFields) setPath(next, field.path.slice('cognition.persona.'.length), clone(resolved.values[field.path]))
+    return sanitizePersona(next, getConfig()?.cognition)
+  }
+
+  function withRuntime(work, { fresh = false } = {}) {
+    if (!fresh && runtime.getStore()) return work(captureResolved(runtime.getStore()))
+    const resolved = resolution()
+    return runtime.run(resolved, () => work(captureResolved(resolved)))
+  }
+
+  // Legacy persona edits/reset/evolution share the canonical profile row. The
+  // caller's persona write and this revision update belong to the same store tx.
+  function personaSaved(previous, next) {
+    if (!available) return
+    const record = runtimeRecord(next.id)
+    if (!record) return
+    const values = clone(record.values)
+    let changed = false
+    for (const field of personaFields) {
+      const path = field.path.slice('cognition.persona.'.length)
+      if (!same(getPath(previous, path), getPath(next, path))) {
+        values[field.path] = clone(getPath(next, path)); changed = true
+      }
+    }
+    if (!changed) return
+    const captured = runtime.getStore()
+    if (captured?.personaId === next.id && captured.profileRevision !== record.revision) fail('SETTINGS_CONFLICT')
+    safeSnapshot(values, getConfig())
+    if (!Number.isSafeInteger(record.revision + 1)) fail('SETTINGS_REVISION_INVALID')
+    store.put(kind(next.id), PROFILE_SETTINGS_ID, { ...record, values, revision: record.revision + 1 })
+  }
+
+  function saveRuntimeConfig(next) {
+    const resolved = runtime.getStore() || resolution()
+    if (resolved.personaId !== persona.activeId() || resolved.personaGeneration !== persona.scopeGeneration()) fail('SETTINGS_CONFLICT')
+    if (!available) {
+      if (resolved.runtimeMode === 'profile') fail('SETTINGS_MIGRATION_UNAVAILABLE')
+      if (typeof setConfig !== 'function') fail('SETTINGS_WRITE_UNAVAILABLE')
+      return setConfig(next)
+    }
+    const current = applyResolution(clone(getConfig()), resolved)
+    const changes = {}
+    for (const field of SETTINGS_FIELDS.filter(field => field.storage === 'config.json')) {
+      const value = getPath(next, field.path)
+      if (!same(value, getPath(current, field.path))) changes[field.path] = masked(field) ? { op: 'set', value } : value
+    }
+    if (!Object.keys(changes).length) return { config: resolveConfig(), issues: [] }
+    const owners = new Set(Object.keys(changes).map(path => owner(fields.get(path))))
+    if (owners.size !== 1) fail('SETTINGS_MULTI_OWNER')
+    const scope = [...owners][0]
+    const result = patch({ scope, id: resolved.personaId,
+      revision: scope === 'profile' ? resolved.profileRevision : rawView(scope).revision, patch: changes })
+    return { config: resolveConfig(), issues: result.issues }
+  }
 
   function initialize(id, copyFrom = '') {
     requireAvailable()
@@ -107,7 +247,7 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
       Object.assign(values, clone(source.values))
       values['cognition.persona.profile.displayName'] = persona.getById(id).profile.displayName
     }
-    store.put(kind(id), PROFILE_SETTINGS_ID, { version: 1, migrationVersion: 1, revision: 1, sourceHash: hash(values), values })
+    store.put(kind(id), PROFILE_SETTINGS_ID, { version: 1, migrationVersion: 1, runtimeVersion: 1, revision: 1, sourceHash: hash(values), values })
   }
 
   function scopeFields(scope) {
@@ -120,9 +260,9 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
     const selected = scopeFields(scope)
     if (scope === 'profile') {
       requireAvailable(); requirePersona(id)
-      const record = read(id)
+      const record = runtimeRecord(id)
       if (!record) fail('SETTINGS_MIGRATION_UNAVAILABLE')
-      return { values: clone(record.values), revision: record.revision, selected }
+      return { values: resolution(id).values, revision: record.revision, selected }
     }
     if (selected.some(field => field.storage !== 'config.json')) fail('SETTINGS_MODULE_FILE_REQUIRED')
     const values = Object.fromEntries(selected.map(field => [field.path, clone(getPath(getConfig(), field.path))]))
@@ -139,7 +279,7 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
         dto[field.path] = getPath(publicConfig(container), field.path)
       }
     }
-    return { ok: true, scope, ...(scope === 'profile' ? { id } : {}), revision, values: dto, ...status() }
+    return { ok: true, scope, ...(scope === 'profile' ? { id, activeId: persona.activeId() } : {}), revision, values: dto, ...status() }
   }
 
   function patch({ scope, id = '', revision, patch: changes } = {}) {
@@ -180,7 +320,18 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
         for (const path of changed) values[path] = clone(getPath(normalized.config, path))
         safeSnapshot(values, getConfig())
         if (!Number.isSafeInteger(latest.revision + 1)) fail('SETTINGS_REVISION_INVALID')
-        if (changed.length) store.put(kind(id), PROFILE_SETTINGS_ID, { ...latest, values, revision: latest.revision + 1 })
+        if (changed.length) {
+          // Mirror expression fields to the persona record for legacy readers and
+          // fallback, without re-entering persona hooks or applying twice.
+          if (changed.some(path => personaFields.some(field => field.path === path))) {
+            const next = clone(store.get('persona', id))
+            for (const field of personaFields) if (Object.hasOwn(values, field.path)) setPath(next, field.path.slice('cognition.persona.'.length), values[field.path])
+            const sanitized = sanitizePersona(next, getConfig()?.cognition)
+            for (const field of personaFields) if (changed.includes(field.path)) values[field.path] = clone(getPath(sanitized, field.path.slice('cognition.persona.'.length)))
+            store.put('persona', id, sanitized)
+          }
+          store.put(kind(id), PROFILE_SETTINGS_ID, { ...latest, values, revision: latest.revision + 1 })
+        }
       })
     } else if (changed.length) {
       const next = clone(getConfig())
@@ -193,10 +344,12 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
 
   function legacyView() {
     const id = persona.activeId()
-    const config = clone(getConfig())
-    if (available) for (const [path, value] of Object.entries(read(id)?.values || {})) setPath(config, path, value)
+    const resolved = resolution(id)
+    const config = resolved.runtimeMode === 'profile' ? applyResolution(clone(getConfig()), resolved) : clone(getConfig())
+    let profileRevision = 0
+    if (available) { try { profileRevision = read(id)?.revision || 0 } catch { runtimeRecord(id) } }
     return { ok: true, config: publicConfig(config), personaId: id,
-      revision: hash([id, persona.scopeGeneration(), read(id)?.revision || 0, getConfig()]), ...status() }
+      revision: hash([id, persona.scopeGeneration(), profileRevision, getConfig()]), ...status() }
   }
 
   function legacySave(body) {
@@ -224,24 +377,19 @@ export function createProfileSettings({ store, persona, getConfig, setConfig, cl
     return { ...legacyView(), issues: result.issues }
   }
 
-  // Capture masks credentials and is never persisted on turn records.
-  // Candidate resolution includes profile overrides; runtime continues reading legacy config.
-  function capture(id = persona.activeId()) {
-    const config = clone(getConfig())
-    const currentPersona = persona.getById(id)
-    for (const key of ['traits', 'style', 'values', 'profile']) {
-      if (currentPersona?.[key] !== undefined) setPath(config, `cognition.persona.${key}`, currentPersona[key])
-    }
-    const record = available ? read(id) : null
-    const candidate = clone(config)
-    if (record) for (const [path, value] of Object.entries(record.values)) setPath(candidate, path, value)
-    return freeze({ personaId: id, profileRevision: record?.revision || null, runtimeMode: PROFILE_RUNTIME_MODE,
-      editingAvailable: available, effective: publicConfig(config), candidate: publicConfig(candidate) })
+  // Public diagnostic captures are redacted, frozen and never persisted on turns.
+  function captureResolved(resolved) {
+    const effective = publicConfig(applyResolution(clone(getConfig()), resolved))
+    return freeze({ personaId: resolved.personaId, profileRevision: resolved.profileRevision,
+      runtimeMode: resolved.runtimeMode, editingAvailable: resolved.runtimeMode === 'profile',
+      effective, candidate: clone(effective) })
   }
+
+  function capture(id = persona.activeId()) { return captureResolved(resolution(id)) }
 
   function schema() {
     return { ok: true, fields: clone(SETTINGS_FIELDS), groups: clone(SETTINGS_GROUPS),
       profileStorage: { kind: PROFILE_SETTINGS_KIND, id: PROFILE_SETTINGS_ID, namespace: 'persona', schemaVersion: 1 }, ...status() }
   }
-  return { migrate, status, initialize, view, patch, legacyView, legacySave, capture, schema }
+  return { migrate, status, initialize, view, patch, legacyView, legacySave, capture, schema, resolveConfig, withRuntime, runtimePersonaId, runtimePersona, personaView, personaSaved, saveRuntimeConfig }
 }
