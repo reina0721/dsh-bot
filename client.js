@@ -3431,7 +3431,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     const SECTION_LABELS = {
       overview: '概览', messages: '消息与事件', sandbox: '离线 Sandbox', library: '人格库', general: '常规', persona: '人格表达',
       models: '模型', turn: '轮次与群聊参与', reply: '回复与通知', persons: '人物', relationships: '关系', memories: '记忆',
-      timeline: '时间轴', emotion: '情绪', purpose: '目的', policy: '策略与决策', proactivity: '主动行为', loop: '闭环', learning: '学习',
+      timeline: '时间轴', emotion: '情绪', purpose: '目的', policy: '策略与决策', proactivity: '主动行为', loop: '执行记录', learning: '学习',
       skills: '技能', meta: '元认知', modules: '模块目录', module: '模块详情', media: '媒体', content: '内容', logs: '日志', events: '事件', backup: '备份',
       privacy: '隐私与保留', import: '导入', connection: '连接', timeouts: '超时与验证', appearance: '外观', security: '安全', access: '访问控制',
       runtime: '运行时', diagnostics: '诊断', about: '关于',
@@ -3742,8 +3742,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               h('p', null, row.text || row.type || row.kind)))) : h('p', { role: 'status', 'data-state': 'empty' }, '暂无模拟消息。')),
           h('div', { className: 'ob-sandbox-grid' },
             h(Panel, { title: '捕获动作' }, records('Captured actions', data.captures)),
-            h(Panel, { title: 'Receipt / Loop' }, h('p', { className: 'ob-muted' }, 'sent / parts 仅为模拟 executor 结果，真实发送数始终为 0。'),
-              records('入站回执', data.receipts), records('交付回执', data.deliveryReceipts), records('闭环', data.loops), records('阶段', data.stages))),
+            h(Panel, { title: '回执与执行记录' }, h('p', { className: 'ob-muted' }, 'sent / parts 仅为模拟 executor 结果，真实发送数始终为 0。'),
+              records('入站回执', data.receipts), records('发送回执', data.deliveryReceipts), records('执行记录', data.loops), records('阶段', data.stages))),
           h(Panel, { title: '人格 / 配置快照（只读）' }, h('p', null, '绑定人格：' + data.boundPersonaId),
             h('pre', { className: 'ob-sandbox-json' }, JSON.stringify({ persona: data.persona, config: data.configSnapshot }, null, 2)))))
     }
@@ -5965,7 +5965,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'purpose', label: '目的', icon: 'target' },
       { id: 'policy', label: '策略', icon: 'target' },
       { id: 'proactivity', label: '主动行为', icon: 'bolt' },
-      { id: 'loop', label: '闭环', icon: 'link' },
+      { id: 'loop', label: '执行记录', icon: 'link' },
       { id: 'learning', label: '学习', icon: 'book' },
       { id: 'skills', label: '技能', icon: 'chart' },
       { id: 'meta', label: '元认知', icon: 'chart' },
@@ -6116,9 +6116,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         return () => clearTimeout(timer)
       }, [props.navigation, prefix, ready])
     }
-    function metadataRows(data, keys, { labels = {}, code = true } = {}) {
+    function metadataRows(data, keys, { labels = {}, code = true, format = observedValue } = {}) {
       return h('dl', { className: 'ob-module-metadata ob-small' }, keys.map(key => {
-        const value = Array.isArray(data?.[key]) ? (data[key].join('、') || '无') : observedValue(data?.[key])
+        const value = Array.isArray(data?.[key]) ? (data[key].join('、') || '无') : format(data?.[key])
         return h('div', { key, className: 'ob-module-metadata-row' }, h('dt', null, labels[key] || key), h('dd', null, code ? h('code', { className: 'ob-module-code', tabIndex: 0 }, value) : value))
       }))
     }
@@ -6268,7 +6268,6 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       return h('section', { 'aria-label': '功能入口', className: 'ob-module-actions' },
         safeArray(MODULE_DESTINATIONS[props.item.id]).map(link => h(Fragment, { key: link.label }, destinationButton(props, link.label, link.target))),
         destinationButton(props, '配置', { tab: 'modules', moduleId: props.item.id, anchor: 'config' }),
-        destinationButton(props, '闭环', { tab: 'cognition', section: 'loop' }),
       )
     }
     function ReminderData(props) {
@@ -6284,42 +6283,64 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       return h('div', { className: 'ob-stack' }, moduleBacklink(props, 'builtin-proactivity'),
         h(Panel, { title: '主动行为', description: '当前调度与引擎状态；手动执行仍遵循人格、暂停、安静时段、预算和出站闸门。', actions: h(Btn, { small: true, onClick: api.reload }, '刷新') },
           api.error ? h(Banner, { tone: 'err', message: api.error }) : null,
-          metadataRows(api.data?.stats, ['active', 'running', 'lastTickAt', 'sent', 'skipped', 'dailyCount']),
+          metadataRows(api.data?.stats, ['active', 'running', 'lastTickAt', 'sent', 'skipped', 'dailyCount'], { labels: { active: '调度开启', running: '正在执行', lastTickAt: '最近调度', sent: '已发送', skipped: '已跳过', dailyCount: '今日次数' } }),
           h(CoreModuleActions, { ...props, moduleId: 'builtin-proactivity', actionIds: ['proactivity.runOnce'], compact: true, onSettled: api.reload }),
-        ), destinationButton(props, '查看闭环', { tab: 'cognition', section: 'loop' }),
+        ), destinationButton(props, '查看执行记录', { tab: 'cognition', section: 'loop' }),
       )
     }
     function loopStatus(value) {
       return ({ not_applicable: '不适用', not_observed: '未观察', unavailable: '不可用', interrupted: '已中断', running: '进行中', completed: '已完成', failed: '失败', sent: '已发送', partial: '部分发送', dry_run: '演练', empty: '空交付' })[value] || observedValue(value)
     }
+    const LOOP_KIND_LABELS = Object.freeze({ social: '普通回复', proactivity: '主动行为', research: '学习研究', execution: '执行' })
+    const LOOP_STAGE_LABELS = Object.freeze({ detected: '已检测', decided: '已决策', generating: '生成中', delivering: '发送中', observing: '观察中', researching: '研究中', closed: '已结束' })
+    const LOOP_FIELD_LABELS = Object.freeze({
+      loops: '执行记录数', receipts: '回执数', attemptedDeliveries: '尝试发送次数', attemptedParts: '尝试发送段数', sentParts: '已发送段数', sentPartsComplete: '段数完整', retentionMs: '保留时长（毫秒）', maxRecords: '记录上限',
+      running: '进行中', completed: '已完成', failed: '失败', interrupted: '已中断',
+      detected: '已检测', decided: '已决策', generating: '生成中', delivering: '发送中', observing: '观察中', researching: '研究中', closed: '已结束',
+      sent: '已发送', partial: '部分发送', dry_run: '演练', empty: '空交付',
+      loopsWithDeliveryResult: '有发送结果', loopsWithoutDeliveryResult: '无发送结果', loopsWithFeedback: '有反馈', deliveryResultUnknown: '发送结果未观察',
+      count: '数量', policyCommitted: '策略已更新', rewardSum: '奖励合计',
+      incoming: '入站', reaction: '回应', manual: '手动', unknown: '未知',
+      direct: '直接', heuristic: '启发式', unobserved: '未观察',
+      evidenceCount: '证据数', outcomeCount: '结果数', legacyProvenanceUnknown: '历史来源未知',
+      pending: '待处理', suggested: '已建议', done: '已完成', cancelled: '已取消',
+      source: '来源', attribution: '归因', attributionConfidence: '归因置信度', reward: '奖励', observation: '观测',
+      policyUpdated: '策略已更新', alpha: 'α', beta: 'β', trials: '试次',
+      taskCount: '任务数', claimCount: '断言数', linksLimited: '关联列表受限',
+      status: '状态', errorCode: '错误码',
+    })
+    const loopKind = value => LOOP_KIND_LABELS[value] || observedValue(value)
+    const loopStage = value => LOOP_STAGE_LABELS[value] || observedValue(value)
+    const LOOP_VALUE_LABELS = Object.freeze({ social: '普通回复', proactivity: '主动行为', research: '学习研究', incoming: '入站', reaction: '回应', manual: '手动', direct: '直接', heuristic: '启发式', unobserved: '未观察', positive: '正向', negative: '负向', neutral: '中性', open: '待处理', suggested: '已建议', running: '进行中', done: '已完成', resolved: '已解决', active: '生效', disputed: '有争议', cancelled: '已取消' })
+    const loopValue = value => LOOP_VALUE_LABELS[value] || observedValue(value)
     function LoopDetail(props) {
       const data = props.data, item = data?.item
       if (!item) return h('p', null, '详情不可用')
       const receipts = safeArray(data.receipts), feedback = safeArray(data.feedback), research = safeObject(data.research)
       const delivery = receipts.filter(row => row.kind === 'delivery')
       const researchApplicable = item.kind === 'research' || item.taskId || item.unknownId || safeArray(item.unknownRefs).length
-      return h(Panel, { title: '闭环详情', description: '仅展示核心管理投影；缺少观测不代表执行成功。' },
-        h('p', null, '闭环 ' + item.id + ' · ' + item.kind + ' · ' + loopStatus(item.status) + ' · ' + observedValue(item.reasonCode)),
-        h('h3', null, '阶段'), h('ol', null, safeArray(item.stages).map((row, index) => h('li', { key: index }, row.stage + ' · ' + formatDateTime(row.at)))),
-        h('h3', null, '交付回执'),
+      return h(Panel, { title: '执行详情', description: '只显示记录到的步骤；没有记录不代表没发生，也不代表发送成功。' },
+        h('p', null, '记录 ' + item.id + ' · 来源：' + loopKind(item.kind) + ' · ' + loopStatus(item.status) + ' · 原因码：' + observedValue(item.reasonCode)),
+        h('h3', null, '阶段'), h('ol', null, safeArray(item.stages).map((row, index) => h('li', { key: index }, loopStage(row.stage) + ' · ' + formatDateTime(row.at)))),
+        h('h3', null, '发送结果'),
         delivery.length ? delivery.map(row => h('div', { key: row.id },
-          h('p', null, loopStatus(row.status) + ' · ' + (row.data ? loopStatus(row.data.status) : '结果未观察') + ' · attemptedParts：' + observedValue(row.attemptedParts) + ' · sent parts：' + observedValue(row.data?.parts)),
-          row.data ? h('p', null, 'failedPart：' + (['sent', 'dry_run', 'empty'].includes(row.data.status) ? '不适用' : observedValue(row.data.failedPart)) + ' · errorCode：' + observedValue(row.data.errorCode)) : null,
-        )) : h('p', null, item.kind === 'research' ? '不适用' : '未观察（未保留交付回执）'),
-        h('h3', null, '反馈与来源'),
-        feedback.length ? feedback.map(row => h('div', { key: row.id }, metadataRows(row, ['source', 'attribution', 'attributionConfidence', 'reward']),
-          h('p', null, 'policy committed：' + (row.policyUpdated === true ? '已提交' : row.policyUpdated === false ? '未提交' : '未观察')),
-          h('p', null, 'policy before'), metadataRows(row.policyBefore, ['alpha', 'beta', 'trials', 'rewardSum']),
-          h('p', null, 'policy after'), metadataRows(row.policyAfter, ['alpha', 'beta', 'trials', 'rewardSum']),
+          h('p', null, loopStatus(row.status) + ' · ' + (row.data ? loopStatus(row.data.status) : '结果未观察') + ' · 尝试发送段数：' + observedValue(row.attemptedParts) + ' · 实际发送段数：' + observedValue(row.data?.parts)),
+          row.data ? h('p', null, '失败段：' + (['sent', 'dry_run', 'empty'].includes(row.data.status) ? '不适用' : observedValue(row.data.failedPart)) + ' · 错误码：' + observedValue(row.data.errorCode)) : null,
+        )) : h('p', null, item.kind === 'research' ? '不适用' : '未观察（未保留发送结果）'),
+        h('h3', null, '反馈'),
+        feedback.length ? feedback.map(row => h('div', { key: row.id }, metadataRows(row, ['source', 'attribution', 'attributionConfidence', 'reward'], { labels: LOOP_FIELD_LABELS, format: loopValue }),
+          h('p', null, '策略已更新：' + (row.policyUpdated === true ? '是' : row.policyUpdated === false ? '否' : '未观察')),
+          h('p', null, '更新前'), metadataRows(row.policyBefore, ['alpha', 'beta', 'trials', 'rewardSum'], { labels: LOOP_FIELD_LABELS }),
+          h('p', null, '更新后'), metadataRows(row.policyAfter, ['alpha', 'beta', 'trials', 'rewardSum'], { labels: LOOP_FIELD_LABELS }),
         )) : h('p', null, item.kind === 'research' ? '不适用' : '未观察'),
-        receipts.filter(row => row.kind === 'feedback').map(row => h('div', { key: row.id }, '反馈回执 · ' + loopStatus(row.status) + ' · ' + observedValue(row.data?.source) + ' · ' + observedValue(row.data?.attribution) + ' · policy committed：' + observedValue(row.data?.policyUpdated), metadataRows(row.data, ['observation', 'attributionConfidence', 'reward']))),
-        h('h3', null, '研究关联'), !researchApplicable ? h('p', null, '不适用') : h('div', null,
-          metadataRows(research, ['taskCount', 'evidenceCount', 'claimCount', 'linksLimited']),
-          ['unknowns', 'tasks', 'evidence', 'claims'].map(kind => h('div', { key: kind }, h('h4', null, kind), safeArray(research[kind]).length ? research[kind].map(row => h('div', { key: row.id },
-            h('p', null, row.id + (row.status ? ' · ' + row.status : '')),
+        receipts.filter(row => row.kind === 'feedback').map(row => h('div', { key: row.id }, '反馈 · ' + loopStatus(row.status) + ' · 来源：' + loopValue(row.data?.source) + ' · 归因：' + loopValue(row.data?.attribution) + ' · 策略已更新：' + observedValue(row.data?.policyUpdated), metadataRows(row.data, ['observation', 'attributionConfidence', 'reward'], { labels: LOOP_FIELD_LABELS, format: loopValue }))),
+        h('h3', null, '关联的学习内容'), !researchApplicable ? h('p', null, '不适用') : h('div', null,
+          metadataRows(research, ['taskCount', 'evidenceCount', 'claimCount', 'linksLimited'], { labels: LOOP_FIELD_LABELS }),
+          [['unknowns', '未知'], ['tasks', '学习任务'], ['evidence', '证据'], ['claims', '断言']].map(([kind, label]) => h('div', { key: kind }, h('h4', null, label), safeArray(research[kind]).length ? research[kind].map(row => h('div', { key: row.id },
+            h('p', null, row.id + (row.status ? ' · ' + loopValue(row.status) : '')),
             destinationButton(props, kind === 'tasks' ? '查看学习任务' : '查看学习关联', { tab: 'cognition', section: 'learning', ...(row.taskId || kind === 'tasks' ? { taskId: row.taskId || row.id } : {}), anchor: kind === 'claims' ? 'claims' : kind === 'unknowns' ? 'unknowns' : 'tasks' }),
           )) : h('p', null, '未观察'))),
-          receipts.filter(row => row.kind === 'research').map(row => h('div', { key: row.id }, h('p', null, '研究回执 · ' + loopStatus(row.status)), metadataRows(row.data, ['status', 'evidenceCount', 'errorCode']))),
+          receipts.filter(row => row.kind === 'research').map(row => h('div', { key: row.id }, h('p', null, '研究回执 · ' + loopStatus(row.status)), metadataRows(row.data, ['status', 'evidenceCount', 'errorCode'], { labels: LOOP_FIELD_LABELS, format: loopValue }))),
         ),
         item.decisionId ? destinationButton(props, '查看决策', { tab: 'cognition', section: 'policy', decisionId: item.decisionId }) : null,
         item.moduleId ? moduleBacklink(props, item.moduleId) : null,
@@ -6352,26 +6373,26 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       useEffect(() => { setView(null); load(); return () => { request.current++ } }, [load])
       const retained = view?.summary?.retained, business = view?.summary?.businessRecords
       return h('div', { className: 'ob-stack' },
-        h(Panel, { title: '闭环', description: '当前人格；保留期内观测与业务记录分别统计。页面按需刷新，不展示原文、QQ 标识或事件标识。', actions: h(Btn, { small: true, disabled: loading, onClick: load }, '刷新闭环') },
-          error ? h(Banner, { tone: 'err', message: '闭环不可用：' + error }) : null,
-          loading ? h('p', null, '加载闭环…') : null,
+        h(Panel, { title: '执行记录', description: '当前人格、最近 7 天。未观察＝当时没记录；不适用＝这类执行没有这一步；不可用＝读取失败；已中断＝进程重启时未正常结束。页面按需刷新，不展示原文、QQ 标识或事件标识。', actions: h(Btn, { small: true, disabled: loading, onClick: load }, '刷新') },
+          error ? h(Banner, { tone: 'err', message: '执行记录读取失败：' + error }) : null,
+          loading ? h('p', null, '加载中…') : null,
           retained ? h(Fragment, null,
-            metadataRows(retained, ['loops', 'receipts', 'attemptedDeliveries', 'attemptedParts', 'sentParts', 'sentPartsComplete', 'retentionMs', 'maxRecords']),
-            h('h3', null, '运行状态'), metadataRows(retained.loopStates, ['running', 'completed', 'failed', 'interrupted']),
-            h('h3', null, '阶段'), metadataRows(retained.stages, ['detected', 'decided', 'generating', 'delivering', 'observing', 'researching', 'closed']),
-            h('h3', null, '交付状态'), metadataRows(retained.deliveryStates, ['sent', 'partial', 'failed', 'dry_run', 'empty']),
-            h('h3', null, '观测覆盖'), metadataRows(retained.coverage, ['loopsWithDeliveryResult', 'loopsWithoutDeliveryResult', 'loopsWithFeedback', 'deliveryResultUnknown']),
-            h('h3', null, '反馈 / policy committed'), metadataRows(retained.feedback, ['count', 'policyCommitted', 'rewardSum']),
-            h('p', null, '反馈来源'), metadataRows(retained.feedback?.sources, ['incoming', 'reaction', 'manual', 'unknown']),
-            h('p', null, '归因'), metadataRows(retained.feedback?.attribution, ['direct', 'heuristic', 'unobserved']),
-            h('h3', null, '业务记录（独立于保留期）'), metadataRows(business, ['evidenceCount', 'outcomeCount', 'legacyProvenanceUnknown']),
-            h('p', null, '学习任务状态'), metadataRows(business?.taskStates, ['pending', 'suggested', 'running', 'done', 'failed', 'cancelled']),
+            metadataRows(retained, ['loops', 'receipts', 'attemptedDeliveries', 'attemptedParts', 'sentParts', 'sentPartsComplete', 'retentionMs', 'maxRecords'], { labels: LOOP_FIELD_LABELS }),
+            h('h3', null, '运行状态'), metadataRows(retained.loopStates, ['running', 'completed', 'failed', 'interrupted'], { labels: LOOP_FIELD_LABELS }),
+            h('h3', null, '阶段'), metadataRows(retained.stages, ['detected', 'decided', 'generating', 'delivering', 'observing', 'researching', 'closed'], { labels: LOOP_FIELD_LABELS }),
+            h('h3', null, '发送结果'), metadataRows(retained.deliveryStates, ['sent', 'partial', 'failed', 'dry_run', 'empty'], { labels: LOOP_FIELD_LABELS }),
+            h('h3', null, '观测覆盖'), metadataRows(retained.coverage, ['loopsWithDeliveryResult', 'loopsWithoutDeliveryResult', 'loopsWithFeedback', 'deliveryResultUnknown'], { labels: LOOP_FIELD_LABELS }),
+            h('h3', null, '反馈与策略'), metadataRows(retained.feedback, ['count', 'policyCommitted', 'rewardSum'], { labels: LOOP_FIELD_LABELS }),
+            h('p', null, '反馈来源'), metadataRows(retained.feedback?.sources, ['incoming', 'reaction', 'manual', 'unknown'], { labels: LOOP_FIELD_LABELS }),
+            h('p', null, '归因'), metadataRows(retained.feedback?.attribution, ['direct', 'heuristic', 'unobserved'], { labels: LOOP_FIELD_LABELS }),
+            h('h3', null, '业务记录（独立于保留期）'), metadataRows(business, ['evidenceCount', 'outcomeCount', 'legacyProvenanceUnknown'], { labels: LOOP_FIELD_LABELS }),
+            h('p', null, '学习任务状态'), metadataRows(business?.taskStates, ['pending', 'suggested', 'running', 'done', 'failed', 'cancelled'], { labels: LOOP_FIELD_LABELS }),
             h('p', null, '观测写入失败：' + observedValue(view.summary.processLifetime?.observationFailures)),
           ) : null,
         ),
-        view ? h(Panel, { title: '闭环运行' },
+        view ? h(Panel, { title: '最近运行' },
           safeArray(view.runs.items).length ? view.runs.items.map(row => h('div', { key: row.id, className: 'ob-cog-card' },
-            h('p', null, row.id + ' · ' + row.kind + ' · ' + loopStatus(row.status) + ' · ' + row.stage),
+            h('p', null, row.id + ' · ' + loopKind(row.kind) + ' · ' + loopStatus(row.status) + ' · ' + loopStage(row.stage)),
             h(Btn, { small: true, onClick: () => { setView(null); setSelected({ id: row.id }) } }, '查看详情'),
           )) : h('p', null, '未观察（当前保留期内没有运行）'),
           view.runs.nextBefore ? h(Btn, { small: true, onClick: () => { setView(null); setBefore(view.runs.nextBefore) } }, '下一页') : null,
@@ -7041,7 +7062,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h('div', { key: item.id, id: 'ob-cog-decision-' + item.id, className: 'ob-cog-card', 'aria-current': props.navigation?.decisionId === item.id ? 'true' : undefined },
               h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: item.action === 'silence' || item.action === 'wait' ? 'muted' : 'brand' }, label[item.action] || item.action), h(CogTag, { tone: 'muted' }, String(item.chatType || '') + (item.chatId ? ':' + item.chatId : '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(item.confidence || 0).toFixed(2))), h(Badge, { tone: item.status === 'sent' ? 'ok' : item.status === 'failed' ? 'err' : 'muted' }, String(item.status || ''))),
               h('p', { className: 'ob-field-help', style: { margin: '2px 0 0' } }, String(item.reason || '')),
-              destinationButton(props, '查看闭环', { tab: 'cognition', section: 'loop', decisionId: item.id }),
+              destinationButton(props, '查看这次执行', { tab: 'cognition', section: 'loop', decisionId: item.id }),
               h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, requestId: globalThis.crypto.randomUUID(), observation: { positiveReaction: true, attributionConfidence: 0.6 } }); if (result) { props.toast('已记录正向结果', 'ok'); list.reload() } } }, '标记正向'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, requestId: globalThis.crypto.randomUUID(), observation: { explicitCorrection: true, attributionConfidence: 0.7 } }); if (result) { props.toast('已记录负向结果', 'ok'); list.reload() } } }, '标记负向')),
             ),
           )) : h(CogEmpty, { title: '还没有决策', description: '聚合后的完整轮次会生成决策；沉默也会记录。', icon: 'target' }),
@@ -7070,7 +7091,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         'div',
         { className: 'ob-stack', style: { gap: '14px' } },
         moduleBacklink(props, 'builtin-learning'),
-        destinationButton(props, '查看闭环', { tab: 'cognition', section: 'loop' }),
+        destinationButton(props, '查看执行记录', { tab: 'cognition', section: 'loop' }),
         props.navigation?.taskId ? h('p', { role: 'status' }, '定位学习任务：' + props.navigation.taskId + (safeArray(tasks.data?.items).some(task => task.id === props.navigation.taskId) ? '' : '（当前列表未包含；仅显示最近任务）')) : null,
         h(Panel, { title: '未知与学习', description: '未知检测不等于真正学习；外部资料多源验证后才形成带引用的 claim。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: () => { unknowns.reload(); tasks.reload(); claims.reload() } }, '刷新'), h(CoreModuleActions, { ...props, moduleId: 'builtin-learning', actionIds: ['learning.runPending'], compact: true, onSettled: () => { tasks.reload(); unknowns.reload(); claims.reload() } })) },
           h('div', { className: 'ob-stat-grid' },

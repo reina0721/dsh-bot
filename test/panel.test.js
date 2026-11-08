@@ -2701,7 +2701,8 @@ test('C07 typed navigation: same mounted cognition/config destinations, go compa
       assert.equal(render().props.active, section)
     }
     assert.ok(panel.COG_SECTIONS.some(row => row.label === '主动行为'))
-    assert.ok(panel.COG_SECTIONS.some(row => row.label === '闭环'))
+    assert.ok(panel.COG_SECTIONS.some(row => row.label === '执行记录'))
+    assert.equal(panel.COG_SECTIONS.some(row => row.label === '闭环'), false)
   } finally { reactShim.useEffect = originalEffect }
   // Root go() remains compatible with config group arguments and shares typed state.
   const session = { values: ['overview', { gateway: {} }, {}, {}, false], index: 0 }
@@ -2791,7 +2792,7 @@ test('C07 loop rendering: stages, partial/interrupted receipts, provenance/polic
     research: { unknowns: [{ id: 'unknown_1', status: 'open' }], tasks: [{ id: 'task_1', status: 'done' }], evidence: [{ id: 'evidence_1', taskId: 'task_1' }], claims: [{ id: 'claim_1', taskId: 'task_1', status: 'active' }], taskCount: 1, evidenceCount: 1, claimCount: 1 },
   }
   const tree = panel.LoopDetail({ data, goTo: value => navigation.push(value) }), text = JSON.stringify(tree)
-  for (const word of ['已中断', 'detected', 'delivering', '部分发送', 'attemptedParts：3', 'sent parts：1', 'failedPart：2', 'SEND_FAILED', 'manual', 'direct', 'negative', 'policy committed：已提交', 'unknown_1', 'task_1', 'evidence_1', 'claim_1']) assert.ok(text.includes(word), word)
+  for (const word of ['已中断', '已检测', '发送中', '部分发送', '尝试发送段数：3', '实际发送段数：1', '失败段：2', 'SEND_FAILED', '来源：手动', '归因：直接', '负向', '策略已更新：是', 'unknown_1', 'task_1', 'evidence_1', 'claim_1']) assert.ok(text.includes(word), word)
   assert.doesNotMatch(text, /PRIVATE_CONTENT|PRIVATE_EVENT_ID|sourceEventId/)
   control(tree, '查看学习任务').props.onClick()
   assert.deepEqual(navigation.at(-1), { tab: 'cognition', section: 'learning', taskId: 'task_1', anchor: 'tasks' })
@@ -2814,23 +2815,25 @@ test('C07 loop summary/detail loader: local current-persona paths, pagination, f
     return { ok: true, json: async () => result }
   }
   try {
-    await moduleControl(render(), '刷新闭环').props.onClick()
+    await moduleControl(render(), '刷新').props.onClick()
     const tree = render(), text = JSON.stringify(tree)
-    assert.match(text, /attemptedParts/); assert.match(text, /未观察/); assert.match(text, /policyCommitted/)
+    assert.match(text, /尝试发送段数/); assert.match(text, /未观察/); assert.match(text, /策略已更新/)
+    assert.match(text, /执行记录/)
+    assert.doesNotMatch(text, /policy committed|sent parts|failedPart：|闭环/)
     assert.doesNotMatch(text, /DO_NOT_RENDER/)
     assert.ok(treeNodes(tree).some(node => node.type === panel.LoopDetail))
     assert.ok(calls.some(path => path.endsWith('/system/loop/detail?decisionId=decision_1')))
     assert.equal(calls.some(path => path.includes('personaId=')), false)
     control(tree, '下一页').props.onClick()
-    await moduleControl(render(), '刷新闭环').props.onClick()
+    await moduleControl(render(), '刷新').props.onClick()
     assert.ok(calls.some(path => path.includes('before=signed.cursor')))
     mixed = true
-    await moduleControl(render(), '刷新闭环').props.onClick()
+    await moduleControl(render(), '刷新').props.onClick()
     assert.match(JSON.stringify(render()), /当前人格已变化/)
     assert.equal(treeNodes(render()).some(node => node.type === panel.LoopDetail), false)
     fail = true
-    await moduleControl(render(), '刷新闭环').props.onClick()
-    assert.match(JSON.stringify(render()), /闭环不可用/)
+    await moduleControl(render(), '刷新').props.onClick()
+    assert.match(JSON.stringify(render()), /执行记录读取失败/)
   } finally { globalThis.fetch = originalFetch }
 })
 

@@ -35,7 +35,7 @@ C01–C07 的提交链、贴纸库/发送矩阵、恢复与系统闭环验收、
 
 客户端使用 `goTo({tab,section,moduleId,anchor,decisionId,taskId})`，兼容 `go(id,group)`；同一已挂载页面也响应新目标。内置功能目的地由核心 `MODULE_DESTINATIONS` 定义：B站直达媒体模块 panel，表情包库到媒体页，主动/学习到认知分区，提醒到当前人格提醒记录数，配置锚点定位已有唯一编辑器。媒体/主动/学习提供返回模块详情。无新增 DSH slot/sidebar、配置键或后端契约；外部 schema/iframe 授权与隔离保持。
 
-「认知 → 闭环」使用既有 `/system/loop/summary`、`runs`、`detail`，每页 50 条与服务端 cursor 翻页；可从决策直达详情。只显示核心投影的阶段、交付状态和 attempted/sent parts、反馈来源/归因/观测、policy committed 与 Beta before/after、研究 unknown/task/evidence/claim 允许 ID 和关联入口。不显示正文、QQ/消息/事件 ID、路径或任意 JSON；没有人格选择参数，跨读取人格变化丢弃结果。未观察、不适用、不可用、已中断分别呈现。学习页保留队列「运行待处理」及 taskId 精确重试/取消，移除逐任务“运行”；目标在最近 100 条内会优先显示，超出时提示定位限制。提醒仅复用人格数据汇总，逐条查看/取消沿用 QQ 命令。无浏览器或真实 QQ/模型验收。
+「认知 → 执行记录」使用既有 `/system/loop/summary`、`runs`、`detail`，每页 50 条与服务端 cursor 翻页；可从决策直达详情。只显示核心投影的阶段、发送结果与 attempted/sent parts、反馈来源/归因/观测、策略是否更新（policy committed）与 Beta before/after、研究 unknown/task/evidence/claim 允许 ID 和关联入口。不显示正文、QQ/消息/事件 ID、路径或任意 JSON；没有人格选择参数，跨读取人格变化丢弃结果。未观察、不适用、不可用、已中断分别呈现。学习页保留队列「运行待处理」及 taskId 精确重试/取消，移除逐任务“运行”；目标在最近 100 条内会优先显示，超出时提示定位限制。提醒仅复用人格数据汇总，逐条查看/取消沿用 QQ 命令。无浏览器或真实 QQ/模型验收。
 
 ## 内置媒体功能（one-shot 模块 1）
 

@@ -1588,7 +1588,7 @@ test('e2e: C07 client -> real health/actions/operation/loop APIs, current person
   await postJson(fake, '/cognition/decision/correct', { decisionId: result.decision.id, observation: { positiveReaction: true }, requestId: 'manual_c07' })
   const detail = await getJson(fake, '/system/loop/detail?decisionId=' + result.decision.id)
   const rendered = JSON.stringify(panel.LoopDetail({ data: detail, goTo: target => navigations.push(target) }))
-  assert.match(rendered, /sent parts：1/); assert.match(rendered, /policy committed：已提交/)
+  assert.match(rendered, /实际发送段数：1/); assert.match(rendered, /策略已更新：是/)
   assert.doesNotMatch(rendered, /PRIVATE_C07_CONTENT|PRIVATE_C07_QQ_ID|sourceEventId|10001/)
   const summary = await getJson(fake, '/system/loop/summary')
   assert.equal(summary.retained.feedback.policyCommitted, 1)

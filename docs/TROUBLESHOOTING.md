@@ -13,16 +13,16 @@ AstrBot alignment 的当前证据见 [C09 最终验收](architecture/ASTRBOT-ALI
 
 报告问题请附版本、系统、DSH 版本、复现步骤及脱敏日志，不要附密钥、token 或完整私人聊天记录。
 
-## 模块健康、动作与闭环（C07）
+## 模块健康、动作与执行记录（C07）
 
-[C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)集中列出闭环语义、测试和包证据。故障排查不会自动重启/重放；刷新只读，操作幂等仅限当前进程保留期，不承诺 exactly-once。
+[C08 最终验收](architecture/CLOSED-LOOP-ACCEPTANCE.md)集中列出执行记录（内部实现与 ADR 中称闭环/loop）的语义、测试和包证据。故障排查不会自动重启/重放；刷新只读，操作幂等仅限当前进程保留期，不承诺 exactly-once。
 
 - **图片关闭后表情包库是否可用**：媒体模块、media.enabled、media.stickers.enabled 及库服务可用时，关闭 media.images.enabled 只禁发送；库仍可列表/上传/标签/删除/预览。模块或媒体/贴纸关闭才关闭库；看 libraryAvailable/sendAvailable 及各自 reason，不用单一 available 推断送达。
 - **loaded 但不工作**：到「模块 → 详情 → 核心健康」分别检查 health/reasons/lastError、业务开关、Provider registeredModuleId 与实际 owner/fallback、依赖和 scheduler/engine。loaded 只表示 setup 完成；null 是未观察，接口失败为不可用，零表示已观测计数为零。
 - **动作不可用或代次冲突**：点「刷新动作」重新读取可用性与 expectedGeneration；MODULE_RUNTIME_CONFLICT/MODULE_PERSONA_CONFLICT 表示运行实例或人格已变化，先刷新检查目标，再由操作员决定新动作。外部只有核心允许的启停/重载，不支持 restart 或主动/学习执行器。
 - **STOP_PENDING**：同一操作仍在排空，不是成功也不是取消；继续观察，不反复重启或启动第二 owner。长时间排空可能需要宿主运维处理，UI 不强制停止。网络异常保留原 requestId/operation 查询，可「继续观察操作」；如果服务端记录已丢失，先核实健康/所有权，不自动重发。页面离开会停止 UI 轮询，服务端操作继续；UI 不跨页面保存观察记录。
 - **手动执行没显示成功**：BUSY、NO_TASK、MODULE_RUN_FAILED 或 skip 都不是成功；检查业务开关、安静时段、候选、预算、暂停及任务到期状态。「学习 → 运行待处理」作用于队列；逐任务只有重试/取消，不指定执行单个 pending。
-- **闭环为空/详情缺失**：「认知 → 闭环」只读取当前人格和 7 天/5000 条保留观测；切换人格、保留期淘汰或未执行过时可能没有记录。未观察不等于负反馈，不适用不等于失败，不可用表示接口读取失败，interrupted 不会触发补发/补跑。先刷新闭环，再从策略决策进入；尝试/已发送 parts 分开看，policy committed 仅显示真实提交状态。
+- **执行记录为空/详情缺失**：「认知 → 执行记录」只读取当前人格和 7 天/5000 条保留观测；切换人格、保留期淘汰或未执行过时可能没有记录。未观察不等于负反馈，不适用不等于失败，不可用表示接口读取失败，interrupted 不会触发补发/补跑。先刷新执行记录，再从策略决策进入；尝试发送段数与实际发送段数分开看，策略是否更新仅显示真实提交状态。
 - **研究链接未定位任务**：学习 API 读取最近 100 条、界面最多显示 20 条，目标任务在读取范围内优先显示；超出时提示当前列表未包含，不新建任务、不补跑。提醒详情只显示当前人格记录数，逐条管理继续使用 QQ 命令。
 
 验证使用 Node React shim、fake DSH/网关与实际管理 API；环境没有浏览器二进制，布局、焦点/滚动、iframe/CSP 的真实浏览器行为未验证，也未执行真实 QQ/远程模型验收。
@@ -57,3 +57,13 @@ client Slots -> sidebar.panellist / onebot-qq active
 ```
 
 **部署顺序**：安装新包后使用 bundle toggle（或完整重启 DSH），不要再对 `onebot-qq` 调用 `dsh_hot_reload`。
+
+## 界面无响应、整轮卡住、只能重启 DSH
+
+**先刷新页面，不要急着重启。** 客户端刷新会重新从会话 projection 渲染仍待回答的提问；只有刷新后仍无响应才重启 profile。
+
+**根因**：`ask_user_question` 默认是阻塞式提问（`dsh-tool-ask-user` 的 `mode: legacy`），等不到人类回答不会超时，整轮对话悬停，新消息只能排队——表现为“页面还在、能打字、永远不回复”。持久日志里会留下一个未闭合的 turn：`tool/call ask_user_question` 有记录但无结果，`turn/end` 的 reason 为 `interrupted` 且时间戳复用了最后一个真实事件；这是重启后由会话 repair 补写的，不代表当时正常结束。
+
+**为什么不能直接改配置**：`dsh-tool-ask-user` 本身支持 `mode: timed` 与 `timeout`（到期返回 `pending`，本轮继续执行），但该行位于 agent preset（`preset-standard`）的 `config.plugins` 内，不是可寻址的 Loader 行。在 profile 的 `cordis.patch.yml` 写 `- id: tool-ask-user` 会被丢弃并告警 `patch: entry "tool-ask-user" not found`，配置不生效。唯一的配置改法是整体重写 `preset-standard` 的 `config`，等于钉死整份 preset，DSH 升级后必须重新生成——默认不要采用。
+
+**实际处置**：会话侧不使用阻塞式提问，改为在回复末尾直接提问；界面无响应时按「刷新 → 仍无响应再重启 profile」的顺序恢复。这是 DSH 宿主行为，不属于插件；插件自身的失败排查见上一节。
