@@ -325,7 +325,7 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
 
-`cognition.reply.split`（允许气泡分条（模型决定））按 `<bubble>文本</bubble>` 排版，关闭后合成一条消息。无标签默认一泡；`maxChars`（异常长文兜底上限）仅在无标签/损坏标签且单泡超过 2000 字时用于安全切分，不参与正常节奏。有效标签单泡超过 2000 字按 2000 字兜底。`maxParts` 是安全上限，模型通常用 1–3 泡，超出部分并入最后一泡，保留全部正文；`delayMs` 是气泡间隔，最后一泡之后不等待。标签不会发送到 QQ，第一泡独享引用和 @。详见[用户手册](USER-MANUAL.md#34-回复分条引用-与群聊节奏)。
+`cognition.reply.split`（允许气泡分条（模型决定））多泡时按 `<bubble>文本</bubble>` 排版；一次说完直接输出正文。无标签默认一泡；`maxChars`（异常长文兜底上限）仅在无标签/损坏标签且单泡超过 2000 字时用于安全切分，不参与正常节奏。有效标签单泡超过 2000 字按 2000 字兜底。`maxParts` 是安全上限，模型通常用 1–3 泡，超出部分并入最后一泡，保留全部正文；`delayMs` 是气泡间隔，最后一泡之后不等待。标签不会发送到 QQ，第一泡独享引用和 @。详见[用户手册](USER-MANUAL.md#34-回复分条引用-与群聊节奏)。
 
 ### LLM 每日预算与今日用量
 

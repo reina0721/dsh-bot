@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-08T18:50:00Z",
-  "scope": "dsh-bot 0.11.24 live — LLM bubble pacing protocol, sandbox fixture, top command shell",
+  "at": "2026-11-08T19:20:00Z",
+  "scope": "dsh-bot 0.11.25 live — LLM bubble pacing, real model canary, token budget 1200",
   "live": {
     "ok": true,
-    "version": "0.11.24",
+    "version": "0.11.25",
     "apiVersion": 1,
     "state": "connected",
     "uptimeMsAtCheck": 44272370
@@ -43,7 +43,7 @@
     "real model preview",
     "egress"
   ],
-  "installedFrom": "local dist/dsh-bot.tgz (0.11.24); GitHub release v0.11.24 published",
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.25); GitHub release v0.11.25 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
     "observed": true,
@@ -188,6 +188,20 @@
       "p50": 60,
       "max": 79
     },
-    "liveModelCanary": "pending next live QQ reply"
+    "liveModelCanary": {
+      "route": "opencode-go/deepseek-v4.1-flash",
+      "groupTease": {
+        "bubbles": 2,
+        "chars": 50
+      },
+      "serious": {
+        "bubbles": 1,
+        "chars": 96,
+        "note": "one-shot; no tag required"
+      },
+      "composeMaxTokens": 1200,
+      "realSend": false
+    },
+    "liveModelCanaryNote": "called plugin cognition/llm/test with the exact compose prompt; not a QQ gateway send"
   }
 }
